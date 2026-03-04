@@ -72,4 +72,4 @@ ENV CLAUDE_CONFIG_DIR=/home/claude/.claude
 ENV HOME=/home/claude
 
 ENTRYPOINT ["/opt/claude-portable/scripts/bootstrap.sh"]
-CMD ["claude"]
+CMD ["sleep", "infinity"]

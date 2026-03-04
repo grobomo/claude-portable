@@ -80,21 +80,36 @@ if [ -d "$SKILLS_DIR/plugins" ]; then
   echo "  Skills synced from marketplace."
 fi
 
-# --- Clone MCP server repos (private -- needs GITHUB_TOKEN) ---
+# --- Clone MCP monorepo + copy server dirs ---
+# IMPORTANT: Most MCP servers live in a MONOREPO (joel-ginsberg_tmemu/mcp-dev),
+# NOT as individual repos. mcp-manager has no remote at all.
+# See rules/mcp-repo-layout.md for full details.
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-  MCP_REPOS="${CLAUDE_PORTABLE_MCP_REPOS:-mcp-manager mcp-v1-lite mcp-wiki-lite mcp-jira-lite mcp-trello-lite mcp-trendgpt}"
   MCP_ORG="${CLAUDE_PORTABLE_MCP_ORG:-joel-ginsberg_tmemu}"
+  MCP_DEV_DIR="/opt/claude-portable/mcp-dev"
+  MCP_SERVERS="${CLAUDE_PORTABLE_MCP_REPOS:-mcp-manager mcp-v1-lite mcp-jira-lite mcp-trend-docs mcp-trendgpt}"
 
-  for repo in $MCP_REPOS; do
-    target="$MCP_DIR/$repo"
-    if [ -d "$target/.git" ]; then
-      (cd "$target" && git pull -q 2>/dev/null) || true
-    else
-      git clone -q "https://github.com/${MCP_ORG}/${repo}.git" "$target" 2>/dev/null || {
-        echo "  WARNING: Failed to clone $repo"
-      }
-    fi
-  done
+  # Clone the monorepo
+  if [ -d "$MCP_DEV_DIR/.git" ]; then
+    (cd "$MCP_DEV_DIR" && git pull -q 2>/dev/null) || true
+  else
+    git clone -q "https://github.com/${MCP_ORG}/mcp-dev.git" "$MCP_DEV_DIR" 2>/dev/null || {
+      echo "  WARNING: Failed to clone mcp-dev monorepo"
+    }
+  fi
+
+  # Copy individual server dirs from monorepo to /opt/mcp/
+  if [ -d "$MCP_DEV_DIR" ]; then
+    for server in $MCP_SERVERS; do
+      if [ -d "$MCP_DEV_DIR/$server" ]; then
+        cp -r "$MCP_DEV_DIR/$server" "$MCP_DIR/$server" 2>/dev/null || true
+        echo "  Copied $server from monorepo"
+      else
+        echo "  WARNING: $server not found in mcp-dev monorepo"
+      fi
+    done
+  fi
+
   echo "  MCP repos synced."
 else
   echo "  No GITHUB_TOKEN -- skipping MCP repo clone."
