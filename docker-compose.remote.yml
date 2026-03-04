@@ -1,0 +1,14 @@
+# Override for remote deployments (AWS EC2, ESXi VM).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+services:
+  claude:
+    environment:
+      - CLAUDE_PORTABLE_MODE=remote
+    # No local volume mounts -- everything from git + BWS
+    volumes:
+      - claude-config:/home/claude/.claude
+      - claude-mcp:/opt/mcp
+    # Expose SSH on standard port for easier access
+    ports:
+      - "22:22"
+      - "2222:22"

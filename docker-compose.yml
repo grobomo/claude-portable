@@ -1,0 +1,29 @@
+services:
+  claude:
+    build: .
+    image: claude-portable:latest
+    container_name: claude-portable
+    hostname: claude-portable
+    environment:
+      - BWS_ACCESS_TOKEN=${BWS_ACCESS_TOKEN:-}
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY:-}
+      - CLAUDE_PORTABLE_MCP_ORG=${CLAUDE_PORTABLE_MCP_ORG:-joel-ginsberg_tmemu}
+      - CLAUDE_PORTABLE_MCP_REPOS=${CLAUDE_PORTABLE_MCP_REPOS:-mcp-manager mcp-v1-lite mcp-wiki-lite mcp-jira-lite mcp-trello-lite mcp-trendgpt}
+      - CLAUDE_PORTABLE_SERVERS=${CLAUDE_PORTABLE_SERVERS:-wiki-lite,v1-lite,jira-lite,trello-lite}
+      - NODE_OPTIONS=--max-old-space-size=4096
+    ports:
+      - "2222:22"
+    volumes:
+      # Persistent config survives container restart (not rebuild)
+      - claude-config:/home/claude/.claude
+      # Persistent MCP repos survive restart
+      - claude-mcp:/opt/mcp
+      # Local workspace bind mount (optional -- uncomment to use)
+      # - ./workspace:/workspace
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+volumes:
+  claude-config:
+  claude-mcp:

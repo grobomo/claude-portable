@@ -1,0 +1,108 @@
+#!/bin/bash
+# claude-portable: CLI wrapper for managing Claude Portable containers.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CONTAINER_NAME="claude-portable"
+SSH_PORT=2222
+
+compose() { docker compose --project-directory "$SCRIPT_DIR" "$@"; }
+
+[ -f "$SCRIPT_DIR/.env" ] && set -a && source "$SCRIPT_DIR/.env" && set +a
+
+usage() {
+  cat <<'USAGE'
+claude-portable -- Portable Claude Code Container Manager
+
+COMMANDS:
+  build              Build the container image
+  start              Start container (local Docker Desktop)
+  stop               Stop container
+  restart            Rebuild and restart
+  shell              Open bash shell in container
+  claude [args]      Run Claude Code interactively in container
+  ssh                SSH into container
+  sync push DIR      rsync laptop -> container
+  sync pull DIR      rsync container -> laptop
+  push-config        Push config changes from container to git repos
+  logs               Show container logs
+  status             Show container status
+  nuke               Destroy container + volumes (fresh start)
+
+EC2 COMMANDS:
+  ec2-deploy         Launch guidance for EC2 deployment
+  ec2-ssh            SSH into EC2 container
+  ec2-ip             Get current EC2 public IP
+  ec2-stop           Stop EC2 instance
+  ec2-start          Start EC2 instance
+
+ENV VARS:
+  BWS_ACCESS_TOKEN   Bitwarden Secrets Manager access token
+  SSH_PUBLIC_KEY     SSH public key for file sync
+USAGE
+}
+
+case "${1:-help}" in
+  build)
+    compose build --no-cache ;;
+  start)
+    compose up -d
+    echo "Container running. Use 'claude-portable claude' to start Claude." ;;
+  stop)
+    compose down ;;
+  restart)
+    compose down && compose build && compose up -d ;;
+  shell)
+    docker exec -it $CONTAINER_NAME /bin/bash ;;
+  claude)
+    shift; docker exec -it $CONTAINER_NAME claude "$@" ;;
+  ssh)
+    ssh -p $SSH_PORT -o StrictHostKeyChecking=no claude@localhost ;;
+  sync)
+    shift
+    direction="$1"; shift; dir="${1:-.}"
+    case "$direction" in
+      push)
+        rsync -avz --progress -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
+          "$dir/" "claude@localhost:/workspace/$(basename "$dir")/" ;;
+      pull)
+        rsync -avz --progress -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
+          "claude@localhost:/workspace/$(basename "$dir")/" "$dir/" ;;
+      *) echo "Usage: claude-portable sync push|pull DIR"; exit 1 ;;
+    esac ;;
+  push-config)
+    docker exec -it $CONTAINER_NAME /opt/claude-portable/scripts/push-config.sh ;;
+  logs)
+    compose logs -f ;;
+  status)
+    compose ps
+    echo ""
+    docker exec $CONTAINER_NAME claude --version 2>/dev/null || echo "Container not running." ;;
+  nuke)
+    echo "Destroy container + all volumes? Config will re-pull from git on next start."
+    read -p "(y/N) " -n 1 -r; echo
+    [[ $REPLY =~ ^[Yy]$ ]] && compose down -v && echo "Nuked." ;;
+  ec2-deploy)
+    echo "On your EC2 instance, run:"
+    echo "  sudo yum install -y docker git && sudo systemctl enable --now docker"
+    echo "  git clone <repo-url> && cd claude-portable"
+    echo "  BWS_ACCESS_TOKEN=<token> docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d" ;;
+  ec2-ssh)
+    EC2_KEY="${CLAUDE_PORTABLE_EC2_KEY:-$HOME/.aws/png.pem}"
+    EC2_IP=$(aws ec2 describe-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
+      --query 'Reservations[0].Instances[0].PublicIpAddress' --output text \
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}")
+    ssh -i "$EC2_KEY" -p 2222 -o StrictHostKeyChecking=no "claude@$EC2_IP" ;;
+  ec2-ip)
+    aws ec2 describe-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
+      --query 'Reservations[0].Instances[0].PublicIpAddress' --output text \
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+  ec2-stop)
+    aws ec2 stop-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+  ec2-start)
+    aws ec2 start-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+  help|--help|-h) usage ;;
+  *) echo "Unknown command: $1"; usage; exit 1 ;;
+esac
