@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages
-RUN python3 -m pip install --break-system-packages keyring keyrings.alt
+RUN python3 -m pip install --break-system-packages keyring keyrings.alt pyyaml
 
 # Bitwarden Secrets Manager CLI
 RUN ARCH=$(dpkg --print-architecture) && \
