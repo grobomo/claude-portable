@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Claude Portable on Spot EC2 with Docker (builds from git repo)
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: claude-portable-key
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large, t3.xlarge, m5.large]
+
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    Description: GitHub PAT for private repos
+
+  OAuthAccessToken:
+    Type: String
+    NoEcho: true
+    Description: Claude OAuth access token
+
+  OAuthRefreshToken:
+    Type: String
+    NoEcho: true
+    Description: Claude OAuth refresh token
+
+  SSHPubKey:
+    Type: String
+    Default: ''
+    Description: SSH public key for rsync into container
+
+  SpotMaxPrice:
+    Type: String
+    Default: '0.05'
+
+Resources:
+  SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: claude-portable SSH
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 2222
+          ToPort: 2222
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: claude-portable-sg
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: claude-portable-lt
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: !FindInMap [RegionAMI, !Ref 'AWS::Region', AMI]
+        KeyName: !Ref KeyPairName
+        SecurityGroupIds:
+          - !GetAtt SG.GroupId
+        InstanceMarketOptions:
+          MarketType: spot
+          SpotOptions:
+            MaxPrice: !Ref SpotMaxPrice
+            SpotInstanceType: one-time
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 30
+              VolumeType: gp3
+              DeleteOnTermination: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: claude-portable
+              - Key: no-delete
+                Value: 'true'
+        UserData:
+          Fn::Base64:
+            Fn::Sub: |
+              #!/bin/bash -xe
+              exec > /var/log/claude-portable-init.log 2>&1
+
+              # Install Docker on Ubuntu 24.04
+              apt-get update -y
+              apt-get install -y ca-certificates curl git
+              install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+              apt-get update -y
+              apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+              systemctl enable --now docker
+              usermod -aG docker ubuntu
+
+              # Clone the repo
+              export HOME=/root
+              git config --global credential.helper store
+              printf 'https://x-access-token:%s@github.com\n' '${GitHubToken}' > /root/.git-credentials
+
+              cd /opt
+              git clone https://github.com/joel-ginsberg_tmemu/claude-portable.git
+              cd claude-portable
+
+              # Write secrets to .env
+              printf 'CLAUDE_OAUTH_ACCESS_TOKEN=%s\n' '${OAuthAccessToken}' > .env
+              printf 'CLAUDE_OAUTH_REFRESH_TOKEN=%s\n' '${OAuthRefreshToken}' >> .env
+              printf 'GITHUB_TOKEN=%s\n' '${GitHubToken}' >> .env
+              printf 'SSH_PUBLIC_KEY=%s\n' '${SSHPubKey}' >> .env
+
+              # Build and start container
+              docker compose -f docker-compose.yml -f docker-compose.remote.yml build
+              docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+
+              # Clean up credentials
+              rm -f /root/.git-credentials
+              git config --global --unset credential.helper || true
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+
+Mappings:
+  RegionAMI:
+    us-east-2:
+      AMI: ami-0198cdf7458a7a932
+    us-east-1:
+      AMI: ami-0c614dee691cbbf37
+    us-west-2:
+      AMI: ami-093467ec28ae4fe03
+
+Outputs:
+  InstanceId:
+    Value: !Ref Instance
+  PublicIP:
+    Value: !GetAtt Instance.PublicIp
+  SSHHost:
+    Value: !Sub 'ssh -i ~/.ssh/claude-portable.pem ubuntu@${Instance.PublicIp}'
+  SSHContainer:
+    Value: !Sub 'ssh -p 2222 claude@${Instance.PublicIp}'
+  RunClaude:
+    Value: !Sub 'ssh -t -i ~/.ssh/claude-portable.pem ubuntu@${Instance.PublicIp} "docker exec -it claude-portable claude"'
