@@ -32,6 +32,7 @@ COMMANDS:
 SESSION COMMANDS:
   sessions [cmd]     Manage conversation sessions (list/view/search/tail/export)
   session-logs       Pull session logs from container to ./session-logs/
+  health             Run health check inside container
 
 EC2 COMMANDS:
   ec2-deploy         Launch guidance for EC2 deployment
@@ -113,6 +114,8 @@ case "${1:-help}" in
     mkdir -p ./session-logs
     docker cp "$CONTAINER_NAME:/data/sessions/." ./session-logs/
     echo "Session logs pulled to ./session-logs/ ($(ls ./session-logs/ | wc -l) sessions)" ;;
+  health)
+    docker exec -it $CONTAINER_NAME /opt/claude-portable/scripts/health-check.sh ;;
   help|--help|-h) usage ;;
   *) echo "Unknown command: $1"; usage; exit 1 ;;
 esac

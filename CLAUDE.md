@@ -47,6 +47,8 @@ claude-portable container (Debian bookworm + Node 20)
 | `cloudformation/claude-portable-spot.yaml` | EC2 spot instance with Docker, builds from git |
 | `components.yaml` | Component manifest -- repos to pull at startup |
 | `config/components.yaml` | Copy baked into image |
+| `run.sh` | One-click EC2 deploy wrapper (creates CF stack, waits, prints connection info) |
+| `scripts/health-check.sh` | Verify Claude auth, MCP servers, skills, session storage |
 | `.env.example` | Template for secrets (OAuth, GitHub, API tokens) |
 | `.env` | Actual secrets (gitignored) |
 
@@ -162,7 +164,9 @@ The `claude-sessions` volume is the only truly persistent state. Config and MCP 
 | `scripts/claude-session.sh` | Wraps Claude CLI with per-session logging |
 | `scripts/sessions.sh` | List/view/search/export session logs |
 | `config/bashrc-session.sh` | Sourced on SSH login -- generates session ID, sets up aliases |
+| `scripts/health-check.sh` | Verify Claude auth, MCP, skills, sessions (exit 1 if unhealthy) |
 | `bin/claude-portable` | CLI wrapper (local convenience) |
+| `run.sh` | One-click CF stack deploy + wait + connection info |
 
 ## Gotchas
 
@@ -176,8 +180,8 @@ The `claude-sessions` volume is the only truly persistent state. Config and MCP 
 ## TODO
 
 - [ ] Test full CF deploy end-to-end on fresh spot instance
-- [ ] Add health check script (verify Claude auth, MCP servers, skills loaded)
-- [ ] Add `run.sh` one-click deploy wrapper
+- [x] Add health check script (verify Claude auth, MCP servers, skills loaded)
+- [x] Add `run.sh` one-click deploy wrapper
 - [ ] Test BWS secret injection mode
 - [ ] Add auto-shutdown on idle (spot cost savings)
 - [ ] Fix push-config.sh path mismatch (defaults vs repos cache dir)
