@@ -8,6 +8,7 @@ services:
     volumes:
       - claude-config:/home/claude/.claude
       - claude-mcp:/opt/mcp
+      - claude-sessions:/data
     # Container SSH on 2222 (host port 22 is used by host sshd)
     ports:
       - "2222:22"

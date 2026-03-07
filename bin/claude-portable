@@ -29,6 +29,10 @@ COMMANDS:
   status             Show container status
   nuke               Destroy container + volumes (fresh start)
 
+SESSION COMMANDS:
+  sessions [cmd]     Manage conversation sessions (list/view/search/tail/export)
+  session-logs       Pull session logs from container to ./session-logs/
+
 EC2 COMMANDS:
   ec2-deploy         Launch guidance for EC2 deployment
   ec2-ssh            SSH into EC2 container
@@ -88,21 +92,27 @@ case "${1:-help}" in
     echo "  git clone <repo-url> && cd claude-portable"
     echo "  BWS_ACCESS_TOKEN=<token> docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d" ;;
   ec2-ssh)
-    EC2_KEY="${CLAUDE_PORTABLE_EC2_KEY:-$HOME/.aws/png.pem}"
+    EC2_KEY="${CLAUDE_PORTABLE_EC2_KEY:-$HOME/.ssh/claude-portable.pem}"
     EC2_IP=$(aws ec2 describe-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
       --query 'Reservations[0].Instances[0].PublicIpAddress' --output text \
-      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}")
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-default}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}")
     ssh -i "$EC2_KEY" -p 2222 -o StrictHostKeyChecking=no "claude@$EC2_IP" ;;
   ec2-ip)
     aws ec2 describe-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
       --query 'Reservations[0].Instances[0].PublicIpAddress' --output text \
-      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-default}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
   ec2-stop)
     aws ec2 stop-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
-      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-default}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
   ec2-start)
     aws ec2 start-instances --instance-ids "${CLAUDE_PORTABLE_EC2_INSTANCE}" \
-      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-joeltest}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+      --profile "${CLAUDE_PORTABLE_AWS_PROFILE:-default}" --region "${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}" ;;
+  sessions)
+    shift; docker exec -it $CONTAINER_NAME /opt/claude-portable/scripts/sessions.sh "$@" ;;
+  session-logs)
+    mkdir -p ./session-logs
+    docker cp "$CONTAINER_NAME:/data/sessions/." ./session-logs/
+    echo "Session logs pulled to ./session-logs/ ($(ls ./session-logs/ | wc -l) sessions)" ;;
   help|--help|-h) usage ;;
   *) echo "Unknown command: $1"; usage; exit 1 ;;
 esac

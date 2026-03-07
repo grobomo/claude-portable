@@ -31,6 +31,11 @@ Parameters:
     Default: ''
     Description: SSH public key for rsync into container
 
+  RepoUrl:
+    Type: String
+    Default: ''
+    Description: Git clone URL for claude-portable repo (uses GitHubToken for auth)
+
   SpotMaxPrice:
     Type: String
     Default: '0.05'
@@ -105,7 +110,7 @@ Resources:
               printf 'https://x-access-token:%s@github.com\n' '${GitHubToken}' > /root/.git-credentials
 
               cd /opt
-              git clone https://github.com/joel-ginsberg_tmemu/claude-portable.git
+              git clone ${RepoUrl} claude-portable
               cd claude-portable
 
               # Write secrets to .env

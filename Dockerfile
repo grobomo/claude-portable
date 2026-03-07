@@ -56,14 +56,17 @@ ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Workspace and config dirs
-RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp && \
-  chown -R claude:claude /workspace /home/claude /opt/mcp
+# Workspace, config, and persistent session dirs
+RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp /data/sessions /data/exports && \
+  chown -R claude:claude /workspace /home/claude /opt/mcp /data
 
 # Copy scripts and config
 COPY --chown=claude:claude scripts/ /opt/claude-portable/scripts/
 COPY --chown=claude:claude config/ /opt/claude-portable/config/
 RUN chmod +x /opt/claude-portable/scripts/*.sh
+
+# Wire session tracking into user's bashrc
+RUN echo 'source /opt/claude-portable/config/bashrc-session.sh' >> /home/claude/.bashrc
 
 USER claude
 WORKDIR /workspace

@@ -18,7 +18,7 @@ services:
       - TRELLO_API_TOKEN=${TRELLO_API_TOKEN:-}
       - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY:-}
       # Container config
-      - CLAUDE_PORTABLE_MCP_ORG=${CLAUDE_PORTABLE_MCP_ORG:-joel-ginsberg_tmemu}
+      - CLAUDE_PORTABLE_MCP_ORG=${CLAUDE_PORTABLE_MCP_ORG:-}
       - CLAUDE_PORTABLE_MCP_REPOS=${CLAUDE_PORTABLE_MCP_REPOS:-mcp-manager mcp-v1-lite mcp-jira-lite mcp-trend-docs mcp-trendgpt}
       - CLAUDE_PORTABLE_SERVERS=${CLAUDE_PORTABLE_SERVERS:-wiki-lite,v1-lite,jira-lite,trello-lite}
       - NODE_OPTIONS=--max-old-space-size=4096
@@ -29,6 +29,8 @@ services:
       - claude-config:/home/claude/.claude
       # Persistent MCP repos survive restart
       - claude-mcp:/opt/mcp
+      # Persistent session logs -- survives container destroy/rebuild
+      - claude-sessions:/data
       # Local workspace bind mount (optional -- uncomment to use)
       # - ./workspace:/workspace
     stdin_open: true
@@ -38,3 +40,4 @@ services:
 volumes:
   claude-config:
   claude-mcp:
+  claude-sessions:

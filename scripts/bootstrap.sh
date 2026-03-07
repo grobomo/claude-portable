@@ -30,12 +30,42 @@ if [ ! -f "$HOME/.claude/settings.local.json" ]; then
   "preferredNotifChannel": "terminal"
 }
 SETTINGS_LOCAL_EOF
-  echo "  Onboarding marked complete."
+  echo "  Onboarding marked complete (settings.local.json)."
+fi
+
+# Write .claude.json to $HOME/ (NOT $HOME/.claude/) -- Claude Code expects it at ~/
+# Without this file at ~/, interactive mode shows the login wizard even with valid OAuth creds.
+if [ ! -f "$HOME/.claude.json" ]; then
+  cat > "$HOME/.claude.json" << 'CLAUDE_JSON_EOF'
+{
+  "numStartups": 1,
+  "hasCompletedOnboarding": true,
+  "autoUpdates": false,
+  "hasSeenTasksHint": true,
+  "installMethod": "container"
+}
+CLAUDE_JSON_EOF
+  echo "  Wrote $HOME/.claude.json (onboarding bypass)."
 fi
 
 # --- Step 3: Pull config from repos ---
 echo "[3/6] Syncing config from repos..."
 /opt/claude-portable/scripts/sync-config.sh
+
+# Fix .claude.json location: Claude Code needs it at ~/ but hooks expect it at ~/.claude/ too.
+# Canonical location: $HOME/.claude.json. Symlink at $HOME/.claude/.claude.json.
+if [ -f "$HOME/.claude/.claude.json" ] && [ ! -L "$HOME/.claude/.claude.json" ]; then
+  # sync-config copied it into ~/.claude/ -- move to ~/ and symlink back
+  if [ ! -f "$HOME/.claude.json" ]; then
+    mv "$HOME/.claude/.claude.json" "$HOME/.claude.json"
+  else
+    rm "$HOME/.claude/.claude.json"
+  fi
+fi
+if [ -f "$HOME/.claude.json" ] && [ ! -L "$HOME/.claude/.claude.json" ]; then
+  ln -sf "$HOME/.claude.json" "$HOME/.claude/.claude.json"
+  echo "  Symlinked ~/.claude/.claude.json -> ~/.claude.json"
+fi
 
 # --- Step 4: Rewrite paths for container ---
 echo "[4/6] Rewriting paths for container..."
@@ -87,11 +117,17 @@ if [ -n "${TRELLO_API_TOKEN:-}" ] && [ -d /opt/mcp/mcp-trello-lite ]; then
   echo "  Wrote mcp-trello-lite/.env"
 fi
 
+# --- Ensure session dirs exist on persistent volume ---
+mkdir -p /data/sessions /data/exports
+echo "  Session logs: /data/sessions/"
+
 echo ""
 echo "=== Claude Portable Ready ==="
 echo "  Config:    $HOME/.claude/"
 echo "  Workspace: /workspace/"
 echo "  MCP:       /opt/mcp/"
+echo "  Sessions:  /data/sessions/"
+echo "  Use 'sessions list' to view past conversations."
 echo ""
 
 exec "$@"
