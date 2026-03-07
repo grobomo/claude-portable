@@ -179,7 +179,7 @@ The `claude-sessions` volume is the only truly persistent state. Config and MCP 
 
 ## TODO
 
-- [ ] Test full CF deploy end-to-end on fresh spot instance
+- [x] Test full CF deploy end-to-end on fresh spot instance (2026-03-06, health check HEALTHY)
 - [x] Add health check script (verify Claude auth, MCP servers, skills loaded)
 - [x] Add `run.sh` one-click deploy wrapper
 - [ ] Test BWS secret injection mode
