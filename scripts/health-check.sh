@@ -10,17 +10,17 @@ check() {
   local label="$1"; shift
   if "$@" > /dev/null 2>&1; then
     echo "  [OK]   $label"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     echo "  [FAIL] $label"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
   fi
 }
 
 warn() {
   local label="$1"
   echo "  [WARN] $label"
-  ((WARN++))
+  WARN=$((WARN + 1))
 }
 
 echo "=== Claude Portable Health Check ==="
@@ -40,14 +40,14 @@ if [ -f "$CREDS_FILE" ]; then
   # Check token is not empty
   if python3 -c "import json; d=json.load(open('$CREDS_FILE')); assert d.get('claudeAiOauth',{}).get('accessToken','')" 2>/dev/null; then
     echo "  [OK]   OAuth access token present"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     echo "  [FAIL] OAuth access token missing or empty"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
   fi
 else
   echo "  [FAIL] credentials.json not found"
-  ((FAIL++))
+  FAIL=$((FAIL + 1))
 fi
 
 # 3. Onboarding bypass
@@ -57,10 +57,10 @@ check "settings.local.json exists" test -f "$HOME/.claude/settings.local.json"
 if [ -f "$HOME/.claude.json" ]; then
   if python3 -c "import json; assert json.load(open('$HOME/.claude.json')).get('hasCompletedOnboarding')" 2>/dev/null; then
     echo "  [OK]   hasCompletedOnboarding = true"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     echo "  [FAIL] hasCompletedOnboarding not set"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
   fi
 fi
 
@@ -73,13 +73,13 @@ RULES_COUNT=$(find "$CLAUDE_DIR/rules" -name "*.md" 2>/dev/null | wc -l)
 echo "       Skills: $SKILLS_COUNT | Hooks: $HOOKS_COUNT | Rules: $RULES_COUNT"
 if [ "$SKILLS_COUNT" -gt 0 ]; then
   echo "  [OK]   Skills loaded"
-  ((PASS++))
+  PASS=$((PASS + 1))
 else
   warn "No skills found (sync may not have run)"
 fi
 if [ "$HOOKS_COUNT" -gt 0 ]; then
   echo "  [OK]   Hooks loaded"
-  ((PASS++))
+  PASS=$((PASS + 1))
 else
   warn "No hooks found"
 fi
@@ -93,7 +93,7 @@ for dir in /opt/mcp/mcp-*/; do
   svc=$(basename "$dir")
   if [ -f "$dir/package.json" ] || [ -f "$dir/server.py" ]; then
     echo "  [OK]   $svc"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     warn "$svc (no server entry point found)"
   fi
@@ -106,7 +106,7 @@ fi
 echo "[6/7] SSH Server"
 if pgrep -x sshd > /dev/null 2>&1; then
   echo "  [OK]   sshd running"
-  ((PASS++))
+  PASS=$((PASS + 1))
 else
   warn "sshd not running (SSH disabled or no key provided)"
 fi
