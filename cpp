@@ -321,6 +321,68 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
 
     return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running"}
 
+def _get_aws_credentials():
+    """Get AWS credentials content. Tries OS keyring first, then ~/.aws/credentials."""
+    profiles = {}
+
+    # Try keyring for each known profile
+    try:
+        import keyring
+        KEYRING_SERVICE = "claude-code"
+        # Check for stored profiles
+        for profile in ("default", "joeltest"):
+            ak = keyring.get_password(KEYRING_SERVICE, f"aws/{profile}/access_key_id")
+            sk = keyring.get_password(KEYRING_SERVICE, f"aws/{profile}/secret_access_key")
+            if ak and sk:
+                profiles[profile] = {"aws_access_key_id": ak, "aws_secret_access_key": sk}
+    except Exception:
+        pass
+
+    if profiles:
+        lines = []
+        for profile, creds in profiles.items():
+            lines.append(f"[{profile}]")
+            for k, v in creds.items():
+                lines.append(f"{k} = {v}")
+            lines.append("")
+        return "\n".join(lines)
+
+    # Fall back to ~/.aws/credentials file
+    creds_file = os.path.expanduser("~/.aws/credentials")
+    if os.path.isfile(creds_file):
+        return open(creds_file).read().replace("'", "'\\''")
+    return ""
+
+def _get_aws_config():
+    """Get AWS config content from ~/.aws/config."""
+    config_file = os.path.expanduser("~/.aws/config")
+    if os.path.isfile(config_file):
+        return open(config_file).read().replace("'", "'\\''")
+    return ""
+
+def _store_aws_creds_in_keyring():
+    """Store current ~/.aws/credentials into OS keyring for future use."""
+    try:
+        import keyring
+        import configparser
+        KEYRING_SERVICE = "claude-code"
+        creds_file = os.path.expanduser("~/.aws/credentials")
+        if not os.path.isfile(creds_file):
+            return False
+        cp = configparser.ConfigParser()
+        cp.read(creds_file)
+        stored = 0
+        for profile in cp.sections():
+            ak = cp.get(profile, "aws_access_key_id", fallback="")
+            sk = cp.get(profile, "aws_secret_access_key", fallback="")
+            if ak and sk:
+                keyring.set_password(KEYRING_SERVICE, f"aws/{profile}/access_key_id", ak)
+                keyring.set_password(KEYRING_SERVICE, f"aws/{profile}/secret_access_key", sk)
+                stored += 1
+        return stored > 0
+    except Exception:
+        return False
+
 def push_credentials(ip, ssh_key):
     """Push fresh auth credentials to the container."""
     # Try OAuth credentials
@@ -381,20 +443,23 @@ def setup_instance(ip, ssh_key, label):
         # Instance identity
         f"docker exec claude-portable bash -c 'echo export CLAUDE_PORTABLE_ID={label} >> /home/claude/.bashrc'",
     ]
-    # AWS credentials for state-sync
+    # Push AWS config + credentials to container
+    # Source priority: OS keyring > ~/.aws/ files
     try:
-        ak = subprocess.run(["aws", "configure", "get", "aws_access_key_id"],
-                            capture_output=True, text=True).stdout.strip()
-        sk = subprocess.run(["aws", "configure", "get", "aws_secret_access_key"],
-                            capture_output=True, text=True).stdout.strip()
-        rg = subprocess.run(["aws", "configure", "get", "region"],
-                            capture_output=True, text=True).stdout.strip()
-        if ak and sk:
-            cmds.append(
-                f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && "
-                f'printf "[default]\\naws_access_key_id = {ak}\\naws_secret_access_key = {sk}\\nregion = {rg}\\n" '
-                f"> /home/claude/.aws/credentials'"
-            )
+        aws_config = _get_aws_config()
+        aws_creds = _get_aws_credentials()
+        if aws_config:
+            subprocess.run([
+                "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+                "-i", ssh_key, f"ubuntu@{ip}",
+                f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && cat > /home/claude/.aws/config << \"AWSEOF\"\n{aws_config}\nAWSEOF'"
+            ], capture_output=True, timeout=15)
+        if aws_creds:
+            subprocess.run([
+                "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+                "-i", ssh_key, f"ubuntu@{ip}",
+                f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && cat > /home/claude/.aws/credentials << \"AWSEOF\"\n{aws_creds}\nAWSEOF\nchmod 600 /home/claude/.aws/credentials'"
+            ], capture_output=True, timeout=15)
     except Exception:
         pass
 
@@ -531,6 +596,19 @@ def cmd_kill(args):
         aws("ec2", "terminate-instances", "--instance-ids", inst["id"])
     print("  Done.")
 
+def cmd_secure(args):
+    """Migrate AWS credentials from plaintext ~/.aws/ into OS keyring."""
+    print("\n  Migrating AWS credentials to OS credential store...\n")
+    if _store_aws_creds_in_keyring():
+        print("  Done. AWS credentials stored in OS keyring.")
+        print("  cpp will now read from keyring instead of ~/.aws/credentials.")
+        print("\n  You can optionally delete ~/.aws/credentials (keep ~/.aws/config).")
+        print("  To verify: python3 -c \"import keyring; print(keyring.get_password('claude-code', 'aws/default/access_key_id'))\"")
+    else:
+        print("  Failed. Make sure 'keyring' Python package is installed:")
+        print("    pip install keyring")
+    print()
+
 def cmd_config(args):
     config_path = CFG.get("_config_path", "not found")
     print(f"\n  Config: {config_path}\n")
@@ -557,6 +635,7 @@ def main():
     p_kill.add_argument("name", nargs="?", help="Instance name")
     p_kill.add_argument("--all", action="store_true", help="Terminate all")
     p_config = sub.add_parser("config", help="Show current config")
+    p_secure = sub.add_parser("secure", help="Migrate AWS creds to OS keyring")
 
     args = parser.parse_args()
 
@@ -568,6 +647,8 @@ def main():
         cmd_kill(args)
     elif args.command == "config":
         cmd_config(args)
+    elif args.command == "secure":
+        cmd_secure(args)
     else:
         cmd_connect(args)
 
