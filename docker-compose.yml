@@ -5,9 +5,11 @@ services:
     container_name: claude-portable
     hostname: claude-portable
     environment:
+      # Auth: API key (simplest) or OAuth (enterprise)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # BWS mode (set BWS_ACCESS_TOKEN to use Bitwarden Secrets Manager)
       - BWS_ACCESS_TOKEN=${BWS_ACCESS_TOKEN:-}
-      # Direct mode (set these when not using BWS)
+      # OAuth mode (enterprise)
       - CLAUDE_OAUTH_ACCESS_TOKEN=${CLAUDE_OAUTH_ACCESS_TOKEN:-}
       - CLAUDE_OAUTH_REFRESH_TOKEN=${CLAUDE_OAUTH_REFRESH_TOKEN:-}
       - CLAUDE_OAUTH_EXPIRES_AT=${CLAUDE_OAUTH_EXPIRES_AT:-}

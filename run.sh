@@ -67,14 +67,17 @@ fi
 
 # Validate required secrets
 MISSING=""
-[ -z "${CLAUDE_OAUTH_ACCESS_TOKEN:-}" ] && MISSING="$MISSING CLAUDE_OAUTH_ACCESS_TOKEN"
-[ -z "${CLAUDE_OAUTH_REFRESH_TOKEN:-}" ] && MISSING="$MISSING CLAUDE_OAUTH_REFRESH_TOKEN"
-[ -z "${GITHUB_TOKEN:-}" ] && MISSING="$MISSING GITHUB_TOKEN"
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  # OAuth mode -- need tokens
+  [ -z "${CLAUDE_OAUTH_ACCESS_TOKEN:-}" ] && MISSING="$MISSING CLAUDE_OAUTH_ACCESS_TOKEN"
+  [ -z "${CLAUDE_OAUTH_REFRESH_TOKEN:-}" ] && MISSING="$MISSING CLAUDE_OAUTH_REFRESH_TOKEN"
+fi
 [ -z "${REPO_URL:-}" ] && MISSING="$MISSING REPO_URL"
 
 if [ -n "$MISSING" ]; then
   echo "ERROR: Missing required variables:$MISSING"
   echo "Set them in .env or pass via environment / --repo-url flag."
+  echo "Either set ANTHROPIC_API_KEY (simplest) or CLAUDE_OAUTH_ACCESS_TOKEN + CLAUDE_OAUTH_REFRESH_TOKEN."
   exit 1
 fi
 
@@ -133,9 +136,10 @@ aws cloudformation create-stack \
   --parameters \
     "ParameterKey=KeyPairName,ParameterValue=$KEY_PAIR" \
     "ParameterKey=InstanceType,ParameterValue=$INSTANCE_TYPE" \
-    "ParameterKey=GitHubToken,ParameterValue=$GITHUB_TOKEN" \
-    "ParameterKey=OAuthAccessToken,ParameterValue=$CLAUDE_OAUTH_ACCESS_TOKEN" \
-    "ParameterKey=OAuthRefreshToken,ParameterValue=$CLAUDE_OAUTH_REFRESH_TOKEN" \
+    "ParameterKey=GitHubToken,ParameterValue=${GITHUB_TOKEN:-none}" \
+    "ParameterKey=AnthropicApiKey,ParameterValue=${ANTHROPIC_API_KEY:-}" \
+    "ParameterKey=OAuthAccessToken,ParameterValue=${CLAUDE_OAUTH_ACCESS_TOKEN:-}" \
+    "ParameterKey=OAuthRefreshToken,ParameterValue=${CLAUDE_OAUTH_REFRESH_TOKEN:-}" \
     "ParameterKey=SSHPubKey,ParameterValue=${SSH_PUBLIC_KEY:-}" \
     "ParameterKey=RepoUrl,ParameterValue=$REPO_URL" \
     "ParameterKey=SpotMaxPrice,ParameterValue=$SPOT_MAX_PRICE" \

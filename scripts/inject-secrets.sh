@@ -63,6 +63,12 @@ fi
 # --- Mode 2: Direct env vars (already set in docker-compose environment) ---
 # Both modes converge here: write credentials from env vars (however they were loaded)
 
+# Write Anthropic API key (simplest auth mode)
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" >> "$HOME/.bashrc"
+  echo "  Configured Anthropic API key"
+fi
+
 # Write Claude OAuth credentials
 if [ -n "${CLAUDE_OAUTH_ACCESS_TOKEN:-}" ] && [ -n "${CLAUDE_OAUTH_REFRESH_TOKEN:-}" ]; then
   mkdir -p "$CLAUDE_DIR"

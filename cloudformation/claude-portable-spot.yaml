@@ -16,14 +16,22 @@ Parameters:
     NoEcho: true
     Description: GitHub PAT for private repos
 
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Anthropic API key (alternative to OAuth)
+
   OAuthAccessToken:
     Type: String
     NoEcho: true
+    Default: ''
     Description: Claude OAuth access token
 
   OAuthRefreshToken:
     Type: String
     NoEcho: true
+    Default: ''
     Description: Claude OAuth refresh token
 
   SSHPubKey:
@@ -121,7 +129,8 @@ Resources:
               cd claude-portable
 
               # Write secrets to .env
-              printf 'CLAUDE_OAUTH_ACCESS_TOKEN=%s\n' '${OAuthAccessToken}' > .env
+              printf 'ANTHROPIC_API_KEY=%s\n' '${AnthropicApiKey}' > .env
+              printf 'CLAUDE_OAUTH_ACCESS_TOKEN=%s\n' '${OAuthAccessToken}' >> .env
               printf 'CLAUDE_OAUTH_REFRESH_TOKEN=%s\n' '${OAuthRefreshToken}' >> .env
               printf 'GITHUB_TOKEN=%s\n' '${GitHubToken}' >> .env
               printf 'SSH_PUBLIC_KEY=%s\n' '${SSHPubKey}' >> .env
