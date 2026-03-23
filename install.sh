@@ -174,7 +174,8 @@ echo "  Done."
 
 # ── 7. Shell alias ──────────────────────────────────────────────────────────
 
-ALIAS_NAME=$($PY -c "import json; print(json.load(open('$INSTALL_DIR/cpp.config.json')).get('alias','cpp'))" 2>/dev/null || echo "cpp")
+PY_INSTALL_DIR=$($PY -c "import os; print(os.path.expanduser('~') + '/claude-portable')" 2>/dev/null || echo "$INSTALL_DIR")
+ALIAS_NAME=$($PY -c "import json; print(json.load(open('$PY_INSTALL_DIR/cpp.config.json')).get('alias','cpp'))" 2>/dev/null || echo "cpp")
 total_steps "Adding '$ALIAS_NAME' to shell..."
 CPP_PATH="$INSTALL_DIR/cpp"
 ALIAS_LINE="alias $ALIAS_NAME='$PY \"$CPP_PATH\"'"
