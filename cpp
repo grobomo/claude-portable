@@ -100,14 +100,19 @@ def _ensure_instance_profile(role_name, profile_name):
         "--assume-role-policy-document", trust_policy,
         "--description", "Claude Portable EC2 instance role - S3 state sync + messaging")
 
-    # Attach permissions: S3 access for state-sync and messaging buckets
+    account_id = aws("sts", "get-caller-identity", "--query", "Account", parse_json=False).strip().strip('"')
+
     policy = json.dumps({
         "Version": "2012-10-17",
         "Statement": [
             {
+                "Sid": "S3StateSyncAndMessaging",
                 "Effect": "Allow",
                 "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket",
-                           "s3:DeleteObject", "s3:GetBucketLocation"],
+                           "s3:DeleteObject", "s3:GetBucketLocation",
+                           "s3:CreateBucket", "s3:PutBucketEncryption",
+                           "s3:PutBucketVersioning", "s3:PutPublicAccessBlock",
+                           "s3:PutLifecycleConfiguration"],
                 "Resource": [
                     "arn:aws:s3:::claude-portable-state-*",
                     "arn:aws:s3:::claude-portable-state-*/*",
@@ -116,24 +121,72 @@ def _ensure_instance_profile(role_name, profile_name):
                 ]
             },
             {
+                "Sid": "EC2ManagePortableInstances",
                 "Effect": "Allow",
-                "Action": ["s3:CreateBucket", "s3:PutBucketEncryption",
-                           "s3:PutBucketVersioning", "s3:PutPublicAccessBlock",
-                           "s3:PutLifecycleConfiguration"],
-                "Resource": [
-                    "arn:aws:s3:::claude-portable-state-*",
-                    "arn:aws:s3:::claude-portable-msg-*"
-                ]
+                "Action": [
+                    "ec2:RunInstances",
+                    "ec2:StartInstances",
+                    "ec2:StopInstances",
+                    "ec2:TerminateInstances",
+                    "ec2:CreateTags"
+                ],
+                "Resource": "*",
+                "Condition": {
+                    "StringEquals": {"aws:RequestTag/Project": "claude-portable"}
+                }
             },
             {
+                "Sid": "EC2ManageTaggedInstances",
                 "Effect": "Allow",
-                "Action": ["ec2:StopInstances"],
+                "Action": [
+                    "ec2:StartInstances",
+                    "ec2:StopInstances",
+                    "ec2:TerminateInstances"
+                ],
                 "Resource": "*",
                 "Condition": {
                     "StringEquals": {"ec2:ResourceTag/Project": "claude-portable"}
                 }
             },
             {
+                "Sid": "EC2RunInstancesDeps",
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:RunInstances"
+                ],
+                "Resource": [
+                    f"arn:aws:ec2:*:{account_id}:subnet/*",
+                    f"arn:aws:ec2:*:{account_id}:security-group/*",
+                    f"arn:aws:ec2:*:{account_id}:key-pair/{KEY_NAME}",
+                    f"arn:aws:ec2:*:{account_id}:volume/*",
+                    f"arn:aws:ec2:*:{account_id}:network-interface/*",
+                    "arn:aws:ec2:*::image/*"
+                ]
+            },
+            {
+                "Sid": "EC2ReadOnly",
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:DescribeInstances",
+                    "ec2:DescribeImages",
+                    "ec2:DescribeKeyPairs",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeVpcs"
+                ],
+                "Resource": "*"
+            },
+            {
+                "Sid": "IAMPassRoleToSelf",
+                "Effect": "Allow",
+                "Action": ["iam:PassRole", "iam:GetInstanceProfile"],
+                "Resource": [
+                    f"arn:aws:iam::{account_id}:role/{role_name}",
+                    f"arn:aws:iam::{account_id}:instance-profile/{profile_name}"
+                ]
+            },
+            {
+                "Sid": "STSIdentity",
                 "Effect": "Allow",
                 "Action": ["sts:GetCallerIdentity"],
                 "Resource": "*"
@@ -542,9 +595,8 @@ def setup_instance(ip, ssh_key, label):
         # Instance identity
         f"docker exec claude-portable bash -c 'echo export CLAUDE_PORTABLE_ID={label} >> /home/claude/.bashrc'",
     ]
-    # AWS access: IAM instance profile handles S3/EC2 permissions (no keys needed).
-    # Push ~/.aws/config for region/profile settings (no secrets in this file).
-    # Only push credentials if user has extra profiles beyond what the role covers.
+    # AWS access: IAM instance profile handles all permissions (S3, EC2, STS).
+    # No access keys pushed. Just set the default region in config.
     try:
         aws_config = _get_aws_config()
         if aws_config:
@@ -553,15 +605,12 @@ def setup_instance(ip, ssh_key, label):
                 "-i", ssh_key, f"ubuntu@{ip}",
                 f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && cat > /home/claude/.aws/config << \"AWSEOF\"\n{aws_config}\nAWSEOF'"
             ], capture_output=True, timeout=15)
-        # The IAM role gives the container S3 + EC2 stop permissions.
-        # Only push explicit credentials if user has additional profiles
-        # they need on the instance (e.g. cross-account access).
-        aws_creds = _get_aws_credentials()
-        if aws_creds:
+        else:
+            # At minimum set the default region
             subprocess.run([
                 "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
                 "-i", ssh_key, f"ubuntu@{ip}",
-                f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && cat > /home/claude/.aws/credentials << \"AWSEOF\"\n{aws_creds}\nAWSEOF\nchmod 600 /home/claude/.aws/credentials'"
+                f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && printf \"[default]\\nregion = {REGION}\\n\" > /home/claude/.aws/config'"
             ], capture_output=True, timeout=15)
     except Exception:
         pass
