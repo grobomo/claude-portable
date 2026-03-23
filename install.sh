@@ -182,6 +182,8 @@ ALIAS_LINE="alias $ALIAS_NAME='$PY \"$CPP_PATH\"'"
 ADDED=false
 for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
   if [ -f "$RC" ]; then
+    # Remove any old Claude Portable alias (handles renames like cpp -> ccp)
+    sed -i '/# Claude Portable/d; /alias.*=.*python3.*claude-portable.*cpp/d' "$RC" 2>/dev/null || true
     if grep -q "alias $ALIAS_NAME=" "$RC" 2>/dev/null; then
       echo "  Already in $(basename $RC)"
     else
@@ -198,7 +200,9 @@ if [ -n "${USERPROFILE:-}" ]; then
   mkdir -p "$(dirname "$PS_PROFILE")" 2>/dev/null || true
   WIN_PATH="$(cygpath -w "$CPP_PATH" 2>/dev/null || echo "$CPP_PATH")"
   PS_LINE="function $ALIAS_NAME { python3 \"$WIN_PATH\" \$args }"
-  if [ -f "$PS_PROFILE" ] && grep -q "function $ALIAS_NAME" "$PS_PROFILE" 2>/dev/null; then
+  # Remove old Claude Portable function (handles renames)
+  sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
+  if grep -q "function $ALIAS_NAME" "$PS_PROFILE" 2>/dev/null; then
     echo "  Already in PowerShell profile"
   else
     printf '\n# Claude Portable\n%s\n' "$PS_LINE" >> "$PS_PROFILE"
