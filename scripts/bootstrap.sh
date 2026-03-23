@@ -142,6 +142,11 @@ if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; th
     echo "[+] Starting auto-sync (every 60s)..."
     nohup /opt/claude-portable/scripts/state-sync.sh auto 60 &>/dev/null &
     echo "  Auto-sync PID: $!"
+
+    # Start credential refresh daemon
+    echo "[+] Starting credential refresh daemon (every 15min)..."
+    nohup /opt/claude-portable/scripts/cred-refresh.sh 15 &>/dev/null &
+    echo "  Cred-refresh PID: $!"
   fi
 fi
 

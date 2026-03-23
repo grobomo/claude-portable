@@ -536,7 +536,7 @@ def _store_aws_creds_in_keyring():
         return False
 
 def push_credentials(ip, ssh_key):
-    """Push fresh auth credentials to the container."""
+    """Push fresh auth credentials to the container and S3."""
     # Try OAuth credentials
     creds_candidates = [
         os.path.expanduser("~/.claude/.credentials.json"),
@@ -545,11 +545,24 @@ def push_credentials(ip, ssh_key):
     for creds_file in creds_candidates:
         if os.path.isfile(creds_file):
             creds = open(creds_file).read().strip()
+            # Push to this instance
             subprocess.run([
                 "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
                 "-i", ssh_key, f"ubuntu@{ip}",
                 f"docker exec claude-portable bash -c 'cat > /home/claude/.claude/.credentials.json << CREDEOF\n{creds}\nCREDEOF'"
             ], capture_output=True)
+            # Also push to S3 so other instances can pull fresh creds
+            try:
+                acct = subprocess.run(["aws", "sts", "get-caller-identity", "--query", "Account",
+                                       "--output", "text", "--region", REGION],
+                                      capture_output=True, text=True).stdout.strip()
+                if acct:
+                    subprocess.run(["aws", "s3", "cp", creds_file,
+                                    f"s3://claude-portable-state-{acct}/shared-creds/credentials.json",
+                                    "--region", REGION, "--sse", "AES256", "--quiet"],
+                                   capture_output=True)
+            except Exception:
+                pass
             return "oauth"
 
     # Try API key from .env
