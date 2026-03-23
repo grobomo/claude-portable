@@ -1,0 +1,12 @@
+{
+  "region": "us-east-2",
+  "instance_type": "t3.large",
+  "max_instances": 3,
+  "key_name": "claude-portable-key",
+  "idle_timeout_minutes": 30,
+  "disk_size_gb": 40,
+  "repo_url": "https://github.com/grobomo/claude-portable.git",
+  "spot": false,
+  "auto_sync_interval_seconds": 60,
+  "auto_stop_on_idle": true
+}
