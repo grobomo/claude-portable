@@ -60,6 +60,9 @@ AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 echo "  AWS account: $AWS_ACCOUNT"
 echo "  Region: $REGION"
 
+# Create encrypted state bucket (idempotent)
+bash "$SCRIPT_DIR/scripts/state-sync.sh" setup 2>/dev/null || true
+
 if ! command -v git &>/dev/null; then
   echo "ERROR: Git not found. Install: https://git-scm.com/"
   exit 1

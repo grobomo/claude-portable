@@ -129,6 +129,22 @@ fi
 mkdir -p /data/sessions /data/exports
 echo "  Session logs: /data/sessions/"
 
+# --- Pull conversation state from S3 (if bucket exists) ---
+if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; then
+  if [ -x /usr/local/bin/state-sync ] || [ -x /opt/claude-portable/scripts/state-sync.sh ]; then
+    SYNC_CMD="${CLAUDE_DIR:+CLAUDE_CONFIG_DIR=$CLAUDE_DIR} "
+    SYNC_CMD="CLAUDE_PORTABLE_ID=${CLAUDE_PORTABLE_ID:-$(hostname)}"
+    echo "[+] Pulling conversation state from S3..."
+    /opt/claude-portable/scripts/state-sync.sh pull 2>/dev/null || \
+      /usr/local/bin/state-sync pull 2>/dev/null || \
+      echo "  No state bucket found (run state-sync setup first)."
+    # Start auto-sync in background
+    echo "[+] Starting auto-sync (every 60s)..."
+    nohup /opt/claude-portable/scripts/state-sync.sh auto 60 &>/dev/null &
+    echo "  Auto-sync PID: $!"
+  fi
+fi
+
 echo ""
 echo "=== Claude Portable Ready ==="
 echo "  Config:    $HOME/.claude/"

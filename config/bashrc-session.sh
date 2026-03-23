@@ -28,13 +28,18 @@ fi
 # Alias claude to the session wrapper
 alias claude='/opt/claude-portable/scripts/claude-session.sh'
 
-# Add sessions manager to PATH
+# Add sessions manager and state-sync to PATH
 alias sessions='/opt/claude-portable/scripts/sessions.sh'
+alias state-sync='/opt/claude-portable/scripts/state-sync.sh'
+
+# Push state to S3 on disconnect
+trap 'state-sync push &>/dev/null || true' EXIT
 
 # Show session info on connect
 echo ""
 echo "=== Claude Portable ==="
 echo "  Session:  $CLAUDE_SESSION_ID"
+echo "  Instance: ${CLAUDE_PORTABLE_ID:-$(hostname)}"
 echo "  Logs:     $SESSION_DIR/$CLAUDE_SESSION_ID/"
-echo "  Commands: claude [-p \"prompt\"] | sessions list | sessions search <pat>"
+echo "  Commands: claude [-p \"prompt\"] | sessions list | state-sync list"
 echo ""
