@@ -211,9 +211,22 @@ def _ensure_instance_profile(role_name, profile_name):
     time.sleep(10)
     return profile_name
 
-def find_ssh_key():
+def find_ssh_key(instance=None):
+    """Find SSH key for an instance. Checks per-instance key first, then shared fallback."""
     home = os.path.expanduser("~")
-    candidates = [
+    candidates = []
+
+    # Per-instance key (preferred)
+    if instance:
+        label = instance.get("label", "")
+        key_name = instance.get("key_name", "")
+        if label:
+            candidates.append(os.path.join(home, ".ssh", "cpp-keys", f"{label}.pem"))
+        if key_name:
+            candidates.append(os.path.join(home, ".ssh", "cpp-keys", f"{key_name.replace('cpp-', '').replace('-key', '')}.pem"))
+
+    # Shared fallback (legacy / CF-launched instances)
+    candidates += [
         os.path.join(home, ".ssh", f"{KEY_NAME}.pem"),
         os.path.join(home, "archive", ".ssh", "claude-portable.pem"),
         os.path.join(home, "archive", ".ssh", f"{KEY_NAME}.pem"),
@@ -241,13 +254,16 @@ def get_instances(name_filter=None):
     for res in result.get("Reservations", []):
         for inst in res.get("Instances", []):
             tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+            raw_name = tags.get("Name", "")
+            label = raw_name.replace("cpp-", "").replace("claude-portable-", "")
             instances.append({
                 "id": inst["InstanceId"],
                 "state": inst["State"]["Name"],
                 "ip": inst.get("PublicIpAddress", ""),
                 "type": inst["InstanceType"],
-                "name": tags.get("Name", ""),
-                "label": tags.get("Name", "").replace("cpp-", ""),
+                "name": raw_name,
+                "label": label,
+                "key_name": inst.get("KeyName", ""),
                 "launched": inst.get("LaunchTime", ""),
             })
     return instances
@@ -353,17 +369,27 @@ def launch_new(name=None):
                 "--group-id", sg_id,
                 "--protocol", "tcp", "--port", str(port), "--cidr", "0.0.0.0/0")
 
-    # Ensure key pair exists
-    if not aws("ec2", "describe-key-pairs", "--key-names", KEY_NAME):
-        print(f"  Creating SSH key pair: {KEY_NAME}")
-        home = os.path.expanduser("~")
-        pem_path = os.path.join(home, ".ssh", f"{KEY_NAME}.pem")
-        os.makedirs(os.path.dirname(pem_path), exist_ok=True)
-        result = aws("ec2", "create-key-pair", "--key-name", KEY_NAME,
+    # Generate a unique SSH key pair for this instance
+    instance_key_name = f"cpp-{label}-key"
+    ssh_dir = os.path.join(os.path.expanduser("~"), ".ssh", "cpp-keys")
+    os.makedirs(ssh_dir, exist_ok=True)
+    instance_key_path = os.path.join(ssh_dir, f"{label}.pem")
+
+    # Check if this instance already has a key (relaunch of same name)
+    existing_key = aws("ec2", "describe-key-pairs", "--key-names", instance_key_name)
+    if existing_key and existing_key.get("KeyPairs") and os.path.isfile(instance_key_path):
+        print(f"  Reusing SSH key: {instance_key_name}")
+    else:
+        # Delete stale AWS key if exists without local .pem
+        if existing_key and existing_key.get("KeyPairs"):
+            aws("ec2", "delete-key-pair", "--key-name", instance_key_name)
+        print(f"  Generating SSH key: {instance_key_name}")
+        result = aws("ec2", "create-key-pair", "--key-name", instance_key_name,
+                      "--key-type", "ed25519",
                       "--query", "KeyMaterial", parse_json=False)
-        with open(pem_path, "w") as f:
+        with open(instance_key_path, "w") as f:
             f.write(result.strip().strip('"').replace("\\n", "\n"))
-        os.chmod(pem_path, 0o600)
+        os.chmod(instance_key_path, 0o600)
 
     # Build user-data script
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -431,7 +457,7 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
     result = aws("ec2", "run-instances",
                  "--image-id", ami_id,
                  "--instance-type", INSTANCE_TYPE,
-                 "--key-name", KEY_NAME,
+                 "--key-name", instance_key_name,
                  "--security-group-ids", sg_id,
                  "--user-data", userdata,
                  "--iam-instance-profile", json.dumps({"Name": profile_name}),
@@ -471,7 +497,7 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
     desc = aws("ec2", "describe-instances", "--instance-ids", instance_id)
     ip = desc["Reservations"][0]["Instances"][0].get("PublicIpAddress", "")
 
-    return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running"}
+    return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running", "ssh_key": instance_key_path}
 
 def _get_aws_credentials():
     """Get AWS credentials content. Tries OS keyring first, then ~/.aws/credentials."""
@@ -644,11 +670,6 @@ def connect(ip, ssh_key, label):
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 def cmd_connect(args):
-    ssh_key = find_ssh_key()
-    if not ssh_key:
-        print("ERROR: No SSH key found. Run setup.sh first.")
-        sys.exit(1)
-
     name = args.name
     print("=" * 45)
     print("  cpp -- Claude Portable")
@@ -657,6 +678,11 @@ def cmd_connect(args):
     if not args.new:
         inst = find_available(name)
         if inst:
+            ssh_key = find_ssh_key(inst)
+            if not ssh_key:
+                print(f"ERROR: No SSH key found for {inst['name']} (key: {inst.get('key_name','')})")
+                sys.exit(1)
+
             if inst["state"] == "stopped":
                 print(f"\n  Found stopped instance: {inst['name']}")
                 ip = start_instance(inst["id"])
@@ -664,7 +690,6 @@ def cmd_connect(args):
                 print(f"  IP: {ip}")
                 print(f"  Waiting for container...", end="", flush=True)
                 if not wait_for_container(ip, ssh_key, timeout=120):
-                    # Container might need restart after stop
                     subprocess.run([
                         "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
                         "-i", ssh_key, f"ubuntu@{ip}",
@@ -675,7 +700,6 @@ def cmd_connect(args):
             else:
                 print(f"\n  Found running instance: {inst['name']} ({inst['ip']})")
 
-            # Push fresh creds and connect
             push_credentials(inst["ip"], ssh_key)
             connect(inst["ip"], ssh_key, inst["label"])
             return
@@ -683,6 +707,10 @@ def cmd_connect(args):
     # Launch new
     print()
     inst = launch_new(name)
+    ssh_key = inst.get("ssh_key") or find_ssh_key(inst)
+    if not ssh_key:
+        print("ERROR: No SSH key found.")
+        sys.exit(1)
     print(f"  Waiting for container (~3-5 min)...", end="", flush=True)
     if not wait_for_container(inst["ip"], ssh_key, timeout=420):
         print(f"\n  Container not ready. Check: ssh -i {ssh_key} ubuntu@{inst['ip']} 'tail /var/log/claude-portable-init.log'")
@@ -763,6 +791,39 @@ def cmd_secure(args):
         print("    pip install keyring")
     print()
 
+def cmd_vnc(args):
+    """Open SSH tunnel for VNC + Chrome DevTools to an instance."""
+    name = args.name
+    inst = find_available(name)
+    if not inst or inst["state"] != "running":
+        print("No running instance found." + (f" ({name})" if name else ""))
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print(f"ERROR: No SSH key for {inst['name']}")
+        return
+
+    ip = inst["ip"]
+    label = inst["label"]
+    print(f"\n  VNC tunnel to {label} ({ip})")
+    print(f"  Tunneling: VNC (5900), DevTools (9222), Filebrowser (8080)")
+    print(f"  Connect RealVNC to: localhost:5900")
+    print(f"  Chrome DevTools: http://localhost:9222")
+    print(f"  File browser: http://localhost:8080")
+    print(f"  Press Ctrl+C to disconnect\n")
+
+    os.execvp("ssh", [
+        "ssh", "-N",
+        "-L", "5900:localhost:5900",
+        "-L", "9222:localhost:9222",
+        "-L", "8080:localhost:8080",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ServerAliveInterval=30",
+        "-i", ssh_key,
+        f"ubuntu@{ip}"
+    ])
+
 def cmd_config(args):
     config_path = CFG.get("_config_path", "not found")
     print(f"\n  Config: {config_path}\n")
@@ -790,6 +851,8 @@ def main():
     p_kill.add_argument("--all", action="store_true", help="Terminate all")
     p_config = sub.add_parser("config", help="Show current config")
     p_secure = sub.add_parser("secure", help="Migrate AWS creds to OS keyring")
+    p_vnc = sub.add_parser("vnc", help="Open VNC tunnel to instance")
+    p_vnc.add_argument("name", nargs="?", help="Instance name")
 
     args = parser.parse_args()
 
@@ -803,6 +866,8 @@ def main():
         cmd_config(args)
     elif args.command == "secure":
         cmd_secure(args)
+    elif args.command == "vnc":
+        cmd_vnc(args)
     else:
         cmd_connect(args)
 
