@@ -81,7 +81,8 @@ push_file() {
   scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -i "$SSH_KEY" \
     "$LOCAL_PATH" ubuntu@$IP:/tmp/_push_$(basename "$FILE")
   ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i "$SSH_KEY" ubuntu@$IP \
-    "docker cp /tmp/_push_$(basename "$FILE") claude-portable:$DEST && \
+    "sed -i 's/\r$//' /tmp/_push_$(basename "$FILE") && \
+     docker cp /tmp/_push_$(basename "$FILE") claude-portable:$DEST && \
      docker exec -u root claude-portable chown claude:claude $DEST && \
      docker exec -u root claude-portable chmod +x $DEST 2>/dev/null; \
      rm /tmp/_push_$(basename "$FILE")"

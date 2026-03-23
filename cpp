@@ -705,6 +705,9 @@ def start_idle_monitor(ip, ssh_key):
 def setup_instance(ip, ssh_key, label):
     """Configure trust, identity, AWS creds on instance."""
     cmds = [
+        # Strip CRLF from all scripts (Windows -> Linux)
+        "docker exec -u root claude-portable find /opt/claude-portable -type f -exec sed -i 's/\\r$//' {} +",
+        "docker exec -u root claude-portable sed -i 's/\\r$//' /home/claude/.bashrc",
         # Trusted directories
         'docker exec -u root claude-portable python3 -c "'
         'import json; p=\\"/home/claude/.claude/settings.local.json\\"; '
@@ -763,7 +766,8 @@ def connect(ip, ssh_key, label):
 def cmd_connect(args):
     name = args.name
     print("=" * 45)
-    print("  cpp -- Claude Portable")
+    alias = CFG.get("alias", "ccp")
+    print(f"  {alias} -- Claude Code Portable")
     print("=" * 45)
 
     if not args.new:
