@@ -41,5 +41,10 @@ echo "=== Claude Portable ==="
 echo "  Session:  $CLAUDE_SESSION_ID"
 echo "  Instance: ${CLAUDE_PORTABLE_ID:-$(hostname)}"
 echo "  Logs:     $SESSION_DIR/$CLAUDE_SESSION_ID/"
-echo "  Commands: claude [-p \"prompt\"] | sessions list | state-sync list"
 echo ""
+
+# Auto-launch Claude on SSH login (interactive shells only)
+if [[ $- == *i* ]] && [ -z "${CLAUDE_AUTOSTART_DONE:-}" ]; then
+  export CLAUDE_AUTOSTART_DONE=1
+  claude
+fi
