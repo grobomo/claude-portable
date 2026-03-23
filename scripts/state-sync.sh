@@ -160,47 +160,119 @@ case "$cmd" in
   list)
     echo "=== Conversations in S3 ==="
     echo ""
-    # List conversation JSONL files
-    CONVOS=$(aws s3 ls "$S3_ROOT/claude-state/projects/" --recursive --region "$REGION" 2>/dev/null | \
-      grep '\.jsonl$' | awk '{print $4}' || true)
-    if [ -z "$CONVOS" ]; then
-      echo "  No conversations found."
-      exit 0
-    fi
 
-    printf "%-40s %-12s %s\n" "SESSION ID" "SIZE" "LAST MODIFIED"
-    printf "%-40s %-12s %s\n" "----------" "----" "-------------"
+    # Download conversation files to temp dir for parsing
+    TMPDIR=$(mktemp -d)
+    aws s3 sync "$S3_ROOT/claude-state/projects/" "$TMPDIR/projects/" \
+      --region "$REGION" --quiet --exclude "*" --include "*.jsonl" 2>/dev/null
 
-    aws s3 ls "$S3_ROOT/claude-state/projects/" --recursive --region "$REGION" 2>/dev/null | \
-      grep '\.jsonl$' | while read -r DATE TIME SIZE KEY; do
-        SESSION=$(basename "$KEY" .jsonl)
-        SIZE_KB=$((SIZE / 1024))
-        printf "%-40s %-12s %s %s\n" "$SESSION" "${SIZE_KB}KB" "$DATE" "$TIME"
-      done
+    # Parse conversations with Python for rich display
+    python3 << 'PYEOF'
+import json, glob, os, sys
+from datetime import datetime
+
+tmpdir = os.environ.get("TMPDIR", "/tmp")
+files = sorted(glob.glob(f"{tmpdir}/projects/*/*.jsonl"))
+if not files:
+    print("  No conversations found.")
+    sys.exit(0)
+
+convos = []
+for f in files:
+    sid = os.path.basename(f).replace(".jsonl", "")
+    size = os.path.getsize(f)
+    lines = open(f).readlines()
+
+    user_msgs = []
+    first_ts = None
+    last_ts = None
+    session_name = None
+    instance = None
+
+    for line in lines:
+        try:
+            d = json.loads(line)
+            ts = d.get("timestamp", "")
+            if ts:
+                if not first_ts: first_ts = ts
+                last_ts = ts
+
+            if d.get("type") == "user":
+                msg = d.get("message", {})
+                content = msg.get("content", "") if isinstance(msg, dict) else ""
+                if isinstance(content, list):
+                    for c in content:
+                        if isinstance(c, dict) and c.get("type") == "text" and c["text"].strip():
+                            user_msgs.append(c["text"].strip()[:100])
+                            break
+                elif isinstance(content, str) and content.strip():
+                    user_msgs.append(content.strip()[:100])
+        except:
+            pass
+
+    convos.append({
+        "id": sid,
+        "short_id": sid[:8],
+        "size_kb": size // 1024,
+        "messages": len(user_msgs),
+        "first_ts": first_ts or "?",
+        "last_ts": last_ts or "?",
+        "topics": user_msgs[:3],
+        "first_msg": user_msgs[0] if user_msgs else "(empty session)",
+    })
+
+# Sort by last timestamp, newest first
+convos.sort(key=lambda c: c["last_ts"], reverse=True)
+
+for i, c in enumerate(convos):
+    ts_display = c["last_ts"][:16].replace("T", " ") if c["last_ts"] != "?" else "?"
+    print(f"  [{i+1}] {c['id']}")
+    print(f"      Last active: {ts_display}  |  {c['messages']} messages  |  {c['size_kb']}KB")
+    for j, topic in enumerate(c["topics"]):
+        prefix = ">" if j == 0 else " "
+        print(f"      {prefix} {topic}")
+    print()
+
+print(f"  Resume: claude --resume <session-id>")
+print(f"  Resume interactive: claude --resume")
+print(f"  Tip: use 'claude -n \"project-name\"' to name sessions for easy identification")
+PYEOF
+
+    rm -rf "$TMPDIR"
 
     echo ""
-    # Show last sync info
     LAST=$(aws s3 cp "$S3_ROOT/claude-state/.last-sync.json" - --region "$REGION" 2>/dev/null || echo "")
     if [ -n "$LAST" ]; then
       INST=$(echo "$LAST" | python3 -c "import json,sys; print(json.load(sys.stdin).get('instance','?'))" 2>/dev/null || echo "?")
       WHEN=$(echo "$LAST" | python3 -c "import json,sys; print(json.load(sys.stdin).get('synced','?'))" 2>/dev/null || echo "?")
       echo "  Last synced by: $INST at $WHEN"
     fi
-    echo ""
-    echo "  To resume: claude --resume  (after pulling state with: state-sync pull)"
     ;;
 
   resume)
     SESSION="${1:-}"
-    if [ -z "$SESSION" ]; then
-      echo "Usage: state-sync resume <session-id>"
-      echo "Run 'state-sync list' to see available sessions."
-      exit 1
-    fi
-    echo "To resume session $SESSION:"
+    # Pull latest state first
+    echo "Pulling latest state from S3..."
+    for P in "${SYNC_PATHS[@]}"; do
+      if aws s3 ls "$S3_ROOT/claude-state/$P/" --region "$REGION" &>/dev/null; then
+        aws s3 sync "$S3_ROOT/claude-state/$P/" "$CLAUDE_DIR/$P/" \
+          --region "$REGION" --quiet --sse AES256
+      fi
+    done
+    [ -f "$CLAUDE_DIR/history.jsonl" ] || \
+      aws s3 cp "$S3_ROOT/claude-state/history.jsonl" "$CLAUDE_DIR/history.jsonl" \
+        --region "$REGION" --quiet --sse AES256 2>/dev/null || true
+    echo "  State pulled."
     echo ""
-    echo "  1. Pull state:  state-sync pull"
-    echo "  2. Resume:      claude --resume $SESSION"
+
+    if [ -z "$SESSION" ]; then
+      # Open interactive resume picker
+      echo "Opening interactive session picker..."
+      exec claude --resume
+    else
+      echo "Resuming session: $SESSION"
+      exec claude --resume "$SESSION"
+    fi
     ;;
 
   auto)
