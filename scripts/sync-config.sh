@@ -187,14 +187,16 @@ if [ $? -ne 0 ]; then
     echo "  Legacy config synced."
   fi
 
-  # Legacy: clone MCP monorepo
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    MCP_DEV_DIR="$CACHE_DIR/joel-ginsberg_tmemu_mcp-dev"
+  # Legacy: clone MCP monorepo (set CLAUDE_PORTABLE_MCP_ORG to your GitHub org)
+  MCP_ORG="${CLAUDE_PORTABLE_MCP_ORG:-}"
+  MCP_REPOS="${CLAUDE_PORTABLE_MCP_REPOS:-}"
+  if [ -n "$MCP_ORG" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+    MCP_DEV_DIR="$CACHE_DIR/${MCP_ORG}_mcp-dev"
     if [ ! -d "$MCP_DEV_DIR/.git" ]; then
-      git clone -q "https://github.com/joel-ginsberg_tmemu/mcp-dev.git" "$MCP_DEV_DIR" 2>/dev/null || true
+      git clone -q "https://github.com/${MCP_ORG}/mcp-dev.git" "$MCP_DEV_DIR" 2>/dev/null || true
     fi
     if [ -d "$MCP_DEV_DIR" ]; then
-      for server in mcp-manager mcp-v1-lite mcp-jira-lite mcp-trend-docs mcp-trendgpt; do
+      for server in $MCP_REPOS; do
         [ -d "$MCP_DEV_DIR/$server" ] && cp -r "$MCP_DEV_DIR/$server" "$MCP_DIR/$server" 2>/dev/null || true
       done
       echo "  Legacy MCP synced."

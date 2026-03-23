@@ -8,8 +8,8 @@ Parameters:
 
   InstanceType:
     Type: String
-    Default: t3.medium
-    AllowedValues: [t3.small, t3.medium, t3.large, t3.xlarge, m5.large]
+    Default: t3.large
+    AllowedValues: [t3.small, t3.medium, t3.large, t3.xlarge, m5.large, m5.xlarge]
 
   GitHubToken:
     Type: String
@@ -36,9 +36,14 @@ Parameters:
     Default: ''
     Description: Git clone URL for claude-portable repo (uses GitHubToken for auth)
 
+  InstanceName:
+    Type: String
+    Default: claude-portable
+    Description: Name tag for the instance (used for multi-instance tracking)
+
   SpotMaxPrice:
     Type: String
-    Default: '0.05'
+    Default: '0.08'
 
 Resources:
   SG:
@@ -56,12 +61,12 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: claude-portable-sg
+          Value: !Sub '${InstanceName}-sg'
 
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: claude-portable-lt
+      LaunchTemplateName: !Sub '${InstanceName}-lt'
       LaunchTemplateData:
         InstanceType: !Ref InstanceType
         ImageId: !FindInMap [RegionAMI, !Ref 'AWS::Region', AMI]
@@ -76,13 +81,15 @@ Resources:
         BlockDeviceMappings:
           - DeviceName: /dev/sda1
             Ebs:
-              VolumeSize: 30
+              VolumeSize: 40
               VolumeType: gp3
               DeleteOnTermination: true
         TagSpecifications:
           - ResourceType: instance
             Tags:
               - Key: Name
+                Value: !Ref InstanceName
+              - Key: Project
                 Value: claude-portable
               - Key: no-delete
                 Value: 'true'
@@ -137,7 +144,7 @@ Resources:
 Mappings:
   RegionAMI:
     us-east-2:
-      AMI: ami-0198cdf7458a7a932
+      AMI: ami-0d6d5a1f326b57cb0
     us-east-1:
       AMI: ami-0c614dee691cbbf37
     us-west-2:

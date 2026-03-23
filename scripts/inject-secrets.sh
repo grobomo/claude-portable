@@ -74,8 +74,8 @@ if [ -n "${CLAUDE_OAUTH_ACCESS_TOKEN:-}" ] && [ -n "${CLAUDE_OAUTH_REFRESH_TOKEN
     "refreshToken": "${CLAUDE_OAUTH_REFRESH_TOKEN}",
     "expiresAt": ${EXPIRES_AT},
     "scopes": ["user:inference", "user:mcp_servers", "user:profile", "user:sessions:claude_code"],
-    "subscriptionType": "enterprise",
-    "rateLimitTier": "enterprise_t3"
+    "subscriptionType": "${CLAUDE_SUBSCRIPTION_TYPE:-individual}",
+    "rateLimitTier": "${CLAUDE_RATE_LIMIT_TIER:-default}"
   }
 }
 CREDEOF

@@ -9,13 +9,13 @@ rewrite_file() {
   local file="$1"
   [ -f "$file" ] || return 0
 
+  # Replace common Windows path patterns with container paths
   sed -i \
-    -e 's|C:/Users/joelg/.claude|'"$HOME"'/.claude|g' \
-    -e 's|C:\\Users\\joelg\\.claude|'"$HOME"'/.claude|g' \
-    -e 's|/c/Users/joelg/.claude|'"$HOME"'/.claude|g' \
-    -e 's|C:/Users/joelg/OneDrive - TrendMicro/Documents/ProjectsCL/MCP|/opt/mcp|g' \
-    -e 's|/c/Users/joelg/OneDrive - TrendMicro/Documents/ProjectsCL/MCP|/opt/mcp|g' \
-    -e 's|ProjectsCL/MCP|/opt/mcp|g' \
+    -e 's|C:/Users/[^/"]*/\.claude|'"$HOME"'/.claude|g' \
+    -e 's|C:\\Users\\[^\\]*\\\\.claude|'"$HOME"'/.claude|g' \
+    -e 's|/c/Users/[^/]*/\.claude|'"$HOME"'/.claude|g' \
+    -e 's|C:/Users/[^/"]*/.*/MCP|/opt/mcp|g' \
+    -e 's|/c/Users/[^/]*/.*/MCP|/opt/mcp|g' \
     "$file" 2>/dev/null || true
 }
 

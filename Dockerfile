@@ -12,6 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 python3-pip python3-venv \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Google Chrome (for Blueprint MCP browser automation)
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+  | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg && \
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+  > /etc/apt/sources.list.d/google-chrome.list && \
+  apt-get update && apt-get install -y --no-install-recommends \
+  google-chrome-stable xvfb fonts-liberation libgbm1 libnss3 libatk-bridge2.0-0 \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Python packages
 RUN python3 -m pip install --break-system-packages keyring keyrings.alt pyyaml
 
@@ -63,6 +72,8 @@ RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp /data/se
 # Copy scripts and config
 COPY --chown=claude:claude scripts/ /opt/claude-portable/scripts/
 COPY --chown=claude:claude config/ /opt/claude-portable/config/
+# Use config/components.yaml if it exists (user override), otherwise root components.yaml
+COPY --chown=claude:claude components.yaml /opt/claude-portable/components-default.yaml
 RUN chmod +x /opt/claude-portable/scripts/*.sh
 
 # Wire session tracking into user's bashrc

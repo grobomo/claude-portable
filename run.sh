@@ -6,14 +6,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Defaults
-STACK_NAME="claude-portable"
+STACK_NAME=""
 AWS_PROFILE="${CLAUDE_PORTABLE_AWS_PROFILE:-default}"
 AWS_REGION="${CLAUDE_PORTABLE_AWS_REGION:-us-east-2}"
-INSTANCE_TYPE="t3.medium"
+INSTANCE_TYPE="t3.large"
 KEY_PAIR="claude-portable-key"
-SPOT_MAX_PRICE="0.05"
+SPOT_MAX_PRICE="0.08"
 REPO_URL=""
-CF_TEMPLATE="$SCRIPT_DIR/cloudformation/claude-portable-spot.yaml"
+# Convert to Windows path if running in Git Bash (AWS CLI needs native paths)
+if command -v cygpath &>/dev/null; then
+  CF_TEMPLATE="$(cygpath -w "$SCRIPT_DIR/cloudformation/claude-portable-spot.yaml")"
+else
+  CF_TEMPLATE="$SCRIPT_DIR/cloudformation/claude-portable-spot.yaml"
+fi
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -23,18 +28,21 @@ while [[ $# -gt 0 ]]; do
     --instance-type) INSTANCE_TYPE="$2"; shift 2 ;;
     --key-pair) KEY_PAIR="$2"; shift 2 ;;
     --repo-url) REPO_URL="$2"; shift 2 ;;
+    --name) STACK_NAME="claude-portable-$2"; shift 2 ;;
     --stack-name) STACK_NAME="$2"; shift 2 ;;
     --help|-h)
       cat <<'USAGE'
 run.sh -- One-click Claude Portable deploy to AWS EC2 spot
 
 OPTIONS:
+  --name LABEL         Short name for this instance (e.g. "dev", "lab1", "recording")
+                       Creates stack "claude-portable-LABEL" (default: random suffix)
   --profile NAME       AWS CLI profile (default: $CLAUDE_PORTABLE_AWS_PROFILE or "default")
   --region REGION      AWS region (default: us-east-2)
-  --instance-type TYPE EC2 instance type (default: t3.medium)
+  --instance-type TYPE EC2 instance type (default: t3.large)
   --key-pair NAME      EC2 key pair name (default: claude-portable-key)
   --repo-url URL       Git clone URL for this repo (required if not set in .env)
-  --stack-name NAME    CloudFormation stack name (default: claude-portable)
+  --stack-name NAME    CloudFormation stack name (overrides --name)
 
 REQUIRED SECRETS (set in .env or environment):
   CLAUDE_OAUTH_ACCESS_TOKEN    Claude OAuth access token
@@ -48,6 +56,11 @@ USAGE
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
+
+# Auto-generate stack name if not specified
+if [ -z "$STACK_NAME" ]; then
+  STACK_NAME="claude-portable-$(date +%m%d-%H%M)"
+fi
 
 # Load .env if present
 [ -f "$SCRIPT_DIR/.env" ] && set -a && source "$SCRIPT_DIR/.env" && set +a
@@ -126,6 +139,7 @@ aws cloudformation create-stack \
     "ParameterKey=SSHPubKey,ParameterValue=${SSH_PUBLIC_KEY:-}" \
     "ParameterKey=RepoUrl,ParameterValue=$REPO_URL" \
     "ParameterKey=SpotMaxPrice,ParameterValue=$SPOT_MAX_PRICE" \
+    "ParameterKey=InstanceName,ParameterValue=$STACK_NAME" \
   --profile "$AWS_PROFILE" --region "$AWS_REGION" \
   --output text > /dev/null
 

@@ -117,6 +117,14 @@ if [ -n "${TRELLO_API_TOKEN:-}" ] && [ -d /opt/mcp/mcp-trello-lite ]; then
   echo "  Wrote mcp-trello-lite/.env"
 fi
 
+# --- Start Xvfb for headless Chrome (Blueprint MCP) ---
+if command -v Xvfb >/dev/null 2>&1; then
+  Xvfb :99 -screen 0 1920x1080x24 &>/dev/null &
+  export DISPLAY=:99
+  echo "DISPLAY=:99" >> "$HOME/.bashrc"
+  echo "  Xvfb running on :99 (headless Chrome support)."
+fi
+
 # --- Ensure session dirs exist on persistent volume ---
 mkdir -p /data/sessions /data/exports
 echo "  Session logs: /data/sessions/"
