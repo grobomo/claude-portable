@@ -1,23 +1,30 @@
 # Claude Portable
 
-Run Claude Code on AWS EC2 spot instances. Docker container with Chrome, headless browser automation, session logging, and inter-instance messaging. ~$0.03/hr.
-
----
+Run Claude Code on AWS EC2 spot instances. ~$0.03/hr.
 
 ## Quickstart
 
-**Tell Claude:** "set up claude portable" or "launch a cloud claude instance"
+**You need:** AWS CLI configured (`aws configure`) and one of:
+- An Anthropic API key (from [console.anthropic.com](https://console.anthropic.com/account/keys)), **or**
+- Claude Code logged in locally (Enterprise/Max -- OAuth tokens auto-detected)
 
-Claude reads this README and does everything below automatically. You should not need to run any commands yourself.
+```bash
+git clone https://github.com/grobomo/claude-portable.git
+cd claude-portable
+./setup.sh --name dev
+```
+
+That's it. `setup.sh` handles everything: SSH keys, auth detection, `.env` config, EC2 launch, container build, credential push, and opens a terminal tab with Claude running.
+
+**If you have the `cloud-claude` skill installed**, just tell Claude: "launch a cloud instance called dev" and it runs setup for you.
 
 ---
 
 ## How It Works
 
-1. Claude clones this repo to your projects directory
-2. Claude detects your auth method (API key or OAuth) and extracts tokens
-3. Claude creates an AWS SSH key pair if you don't have one
-4. Claude writes the `.env` config file
+1. Detects your auth method (API key or OAuth) and extracts tokens
+2. Creates an AWS SSH key pair if you don't have one
+3. Writes the `.env` config file
 5. Claude launches a spot EC2 instance via CloudFormation
 6. Claude waits for the Docker container to finish building
 7. Claude pushes fresh credentials into the container
