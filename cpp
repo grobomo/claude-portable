@@ -75,6 +75,89 @@ def aws(*args, parse_json=True):
         return {} if parse_json else ""
     return json.loads(r.stdout) if parse_json else r.stdout.strip()
 
+def _ensure_instance_profile(role_name, profile_name):
+    """Create IAM role + instance profile for EC2 if they don't exist."""
+    # Check if profile already exists
+    check = aws("iam", "get-instance-profile", "--instance-profile-name", profile_name)
+    if check:
+        return profile_name
+
+    print(f"  Creating IAM role: {role_name}")
+
+    # Trust policy: allow EC2 to assume this role
+    trust_policy = json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "ec2.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+        }]
+    })
+
+    # Create role
+    aws("iam", "create-role",
+        "--role-name", role_name,
+        "--assume-role-policy-document", trust_policy,
+        "--description", "Claude Portable EC2 instance role - S3 state sync + messaging")
+
+    # Attach permissions: S3 access for state-sync and messaging buckets
+    policy = json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket",
+                           "s3:DeleteObject", "s3:GetBucketLocation"],
+                "Resource": [
+                    "arn:aws:s3:::claude-portable-state-*",
+                    "arn:aws:s3:::claude-portable-state-*/*",
+                    "arn:aws:s3:::claude-portable-msg-*",
+                    "arn:aws:s3:::claude-portable-msg-*/*"
+                ]
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["s3:CreateBucket", "s3:PutBucketEncryption",
+                           "s3:PutBucketVersioning", "s3:PutPublicAccessBlock",
+                           "s3:PutLifecycleConfiguration"],
+                "Resource": [
+                    "arn:aws:s3:::claude-portable-state-*",
+                    "arn:aws:s3:::claude-portable-msg-*"
+                ]
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["ec2:StopInstances"],
+                "Resource": "*",
+                "Condition": {
+                    "StringEquals": {"ec2:ResourceTag/Project": "claude-portable"}
+                }
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["sts:GetCallerIdentity"],
+                "Resource": "*"
+            }
+        ]
+    })
+
+    aws("iam", "put-role-policy",
+        "--role-name", role_name,
+        "--policy-name", "claude-portable-s3-access",
+        "--policy-document", policy)
+
+    # Create instance profile and attach role
+    aws("iam", "create-instance-profile",
+        "--instance-profile-name", profile_name)
+    aws("iam", "add-role-to-instance-profile",
+        "--instance-profile-name", profile_name,
+        "--role-name", role_name)
+
+    # IAM is eventually consistent -- wait a few seconds
+    print(f"  Waiting for IAM propagation...")
+    time.sleep(10)
+    return profile_name
+
 def find_ssh_key():
     home = os.path.expanduser("~")
     candidates = [
@@ -197,6 +280,11 @@ def launch_new(name=None):
         ami_id = ami_result.strip().strip('"')
         print(f"  Using base Ubuntu AMI: {ami_id} (run build-ami.sh for faster launches)")
 
+    # Ensure IAM instance profile exists (so EC2 gets AWS access via role, not keys)
+    profile_name = "claude-portable-ec2-profile"
+    role_name = "claude-portable-ec2-role"
+    _ensure_instance_profile(role_name, profile_name)
+
     # Find or create security group
     sg = aws("ec2", "describe-security-groups",
              "--filters", json.dumps([{"Name": "group-name", "Values": ["cpp-sg"]}]))
@@ -286,16 +374,27 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
     import base64
     userdata_b64 = base64.b64encode(userdata.encode()).decode()
 
-    # Launch instance (on-demand, stoppable)
+    # Launch instance (on-demand, stoppable, hardened)
     result = aws("ec2", "run-instances",
                  "--image-id", ami_id,
                  "--instance-type", INSTANCE_TYPE,
                  "--key-name", KEY_NAME,
                  "--security-group-ids", sg_id,
                  "--user-data", userdata,
+                 "--iam-instance-profile", json.dumps({"Name": profile_name}),
+                 "--metadata-options", json.dumps({
+                     "HttpTokens": "required",        # IMDSv2 only (no v1)
+                     "HttpEndpoint": "enabled",
+                     "HttpPutResponseHopLimit": 2      # allow from inside container
+                 }),
                  "--block-device-mappings", json.dumps([{
                      "DeviceName": "/dev/sda1",
-                     "Ebs": {"VolumeSize": CFG.get("disk_size_gb", 40), "VolumeType": "gp3", "DeleteOnTermination": True}
+                     "Ebs": {
+                         "VolumeSize": CFG.get("disk_size_gb", 40),
+                         "VolumeType": "gp3",
+                         "DeleteOnTermination": True,
+                         "Encrypted": True             # EBS encryption at rest
+                     }
                  }]),
                  "--tag-specifications", json.dumps([{
                      "ResourceType": "instance",
@@ -443,17 +542,21 @@ def setup_instance(ip, ssh_key, label):
         # Instance identity
         f"docker exec claude-portable bash -c 'echo export CLAUDE_PORTABLE_ID={label} >> /home/claude/.bashrc'",
     ]
-    # Push AWS config + credentials to container
-    # Source priority: OS keyring > ~/.aws/ files
+    # AWS access: IAM instance profile handles S3/EC2 permissions (no keys needed).
+    # Push ~/.aws/config for region/profile settings (no secrets in this file).
+    # Only push credentials if user has extra profiles beyond what the role covers.
     try:
         aws_config = _get_aws_config()
-        aws_creds = _get_aws_credentials()
         if aws_config:
             subprocess.run([
                 "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
                 "-i", ssh_key, f"ubuntu@{ip}",
                 f"docker exec claude-portable bash -c 'mkdir -p /home/claude/.aws && cat > /home/claude/.aws/config << \"AWSEOF\"\n{aws_config}\nAWSEOF'"
             ], capture_output=True, timeout=15)
+        # The IAM role gives the container S3 + EC2 stop permissions.
+        # Only push explicit credentials if user has additional profiles
+        # they need on the instance (e.g. cross-account access).
+        aws_creds = _get_aws_credentials()
         if aws_creds:
             subprocess.run([
                 "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
