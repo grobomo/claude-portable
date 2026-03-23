@@ -69,11 +69,27 @@ If you're on an enterprise plan or Claude Max and logged into Claude Code locall
 
 **No action needed** -- Claude extracts these automatically from your running Claude Code session.
 
+### Secure Storage (Optional)
+
+If you have the [credential-manager](https://github.com/grobomo/claude-code-skills) skill installed, Claude stores your API key or OAuth tokens in the OS credential store (Windows Credential Manager / macOS Keychain) instead of plaintext `.env` files:
+
+```bash
+# Store API key securely (opens GUI -- paste key, click Store)
+python ~/.claude/skills/credential-manager/store_gui.py anthropic/API_KEY
+```
+
+The `write-env.py` helper auto-pulls from the credential store when generating `.env`:
+
+```bash
+python scripts/write-env.py   # auto-detects keyring > env var > local creds file
+```
+
 ### How Claude Detects Your Auth
 
-1. Check for `ANTHROPIC_API_KEY` environment variable -- if set, use API key mode
-2. Check the Claude config directory for `.credentials.json` -- if present with `claudeAiOauth`, use OAuth mode
-3. If neither found, ask the user which method they want to use
+1. Check OS credential store for `anthropic/API_KEY` -- if found, use API key mode
+2. Check `ANTHROPIC_API_KEY` environment variable -- if set, use API key mode
+3. Check the Claude config directory for `.credentials.json` -- if present with `claudeAiOauth`, use OAuth mode
+4. If neither found, ask the user which method they want to use
 
 ---
 
@@ -118,36 +134,21 @@ fi
 
 ### 4. Write .env
 
-Detect auth method and write the config:
+Auto-detect auth and generate `.env`:
 
-**API Key mode:**
 ```bash
-cat > .env << 'EOF'
-ANTHROPIC_API_KEY=<from-env-or-ask-user>
-REPO_URL=https://github.com/grobomo/claude-portable.git
-EOF
+python3 scripts/write-env.py
 ```
 
-**OAuth mode:**
+This checks (in order): OS credential store, environment variables, local Claude credentials file. It writes the `.env` with the correct auth tokens and repo URL.
+
+To force a specific auth mode:
 ```bash
-# Read from Claude config directory
-CREDS_FILE="$HOME/.claude/.credentials.json"  # Linux/Mac
-# On Windows Git Bash: CREDS_FILE="$APPDATA/../.claude/.credentials.json" or similar
-
-ACCESS_TOKEN=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['accessToken'])")
-REFRESH_TOKEN=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['refreshToken'])")
-EXPIRES_AT=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['expiresAt'])")
-
-cat > .env << EOF
-CLAUDE_OAUTH_ACCESS_TOKEN=$ACCESS_TOKEN
-CLAUDE_OAUTH_REFRESH_TOKEN=$REFRESH_TOKEN
-CLAUDE_OAUTH_EXPIRES_AT=$EXPIRES_AT
-GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "")
-REPO_URL=https://github.com/grobomo/claude-portable.git
-EOF
+python3 scripts/write-env.py --api-key    # use stored API key
+python3 scripts/write-env.py --oauth      # use local OAuth tokens
 ```
 
-> Note: `GITHUB_TOKEN` is only required if the repo is private or if you want private component repos pulled at startup. For the public repo, it can be blank -- but CloudFormation currently validates it. If the user has `gh` CLI, use `gh auth token`. Otherwise set it to any non-empty placeholder for public-only usage.
+> `GITHUB_TOKEN` is auto-detected from `gh auth token`. Only needed for private component repos -- the public repo works without it.
 
 ### 5. Launch
 
