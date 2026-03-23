@@ -173,17 +173,29 @@ def launch_new(name=None):
     instance_name = f"cpp-{label}"
     print(f"  Launching new instance: {instance_name}")
 
-    # Get latest Ubuntu 24.04 AMI
-    ami_result = aws("ec2", "describe-images",
-                     "--owners", "amazon",
-                     "--filters",
-                     json.dumps([
-                         {"Name": "name", "Values": ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]},
-                         {"Name": "architecture", "Values": ["x86_64"]},
-                     ]),
-                     "--query", "Images | sort_by(@, &CreationDate) | [-1].ImageId",
-                     parse_json=False)
-    ami_id = ami_result.strip().strip('"')
+    # Use golden AMI if available, otherwise latest Ubuntu 24.04
+    golden_ami = CFG.get("golden_ami", "")
+    if golden_ami:
+        # Verify it still exists
+        check = aws("ec2", "describe-images", "--image-ids", golden_ami)
+        if check and check.get("Images"):
+            ami_id = golden_ami
+            print(f"  Using golden AMI: {ami_id}")
+        else:
+            golden_ami = ""
+
+    if not golden_ami:
+        ami_result = aws("ec2", "describe-images",
+                         "--owners", "amazon",
+                         "--filters",
+                         json.dumps([
+                             {"Name": "name", "Values": ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]},
+                             {"Name": "architecture", "Values": ["x86_64"]},
+                         ]),
+                         "--query", "Images | sort_by(@, &CreationDate) | [-1].ImageId",
+                         parse_json=False)
+        ami_id = ami_result.strip().strip('"')
+        print(f"  Using base Ubuntu AMI: {ami_id} (run build-ami.sh for faster launches)")
 
     # Find or create security group
     sg = aws("ec2", "describe-security-groups",
@@ -226,7 +238,23 @@ def launch_new(name=None):
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
 
-    userdata = f"""#!/bin/bash -xe
+    if golden_ami:
+        # Golden AMI: Docker + container already built. Just write .env and start.
+        userdata = f"""#!/bin/bash -xe
+exec > /var/log/claude-portable-init.log 2>&1
+
+cd /opt/claude-portable
+cat > .env << 'ENVEOF'
+"""
+        for k, v in env_vars.items():
+            userdata += f"{k}={v}\n"
+        userdata += """ENVEOF
+
+docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+"""
+    else:
+        # Base AMI: full install from scratch
+        userdata = f"""#!/bin/bash -xe
 exec > /var/log/claude-portable-init.log 2>&1
 
 apt-get update -y
@@ -247,9 +275,9 @@ cd claude-portable
 
 cat > .env << 'ENVEOF'
 """
-    for k, v in env_vars.items():
-        userdata += f"{k}={v}\n"
-    userdata += """ENVEOF
+        for k, v in env_vars.items():
+            userdata += f"{k}={v}\n"
+        userdata += """ENVEOF
 
 docker compose -f docker-compose.yml -f docker-compose.remote.yml build
 docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
