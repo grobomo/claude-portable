@@ -5,7 +5,7 @@ SESSION_DIR="/data/sessions"
 
 # Generate session ID if not already set (one per SSH connection)
 if [ -z "${CLAUDE_SESSION_ID:-}" ]; then
-  export CLAUDE_SESSION_ID="$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | xxd -p)"
+  export CLAUDE_SESSION_ID="$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 fi
 
 export SESSION_DIR
@@ -43,8 +43,11 @@ echo "  Instance: ${CLAUDE_PORTABLE_ID:-$(hostname)}"
 echo "  Logs:     $SESSION_DIR/$CLAUDE_SESSION_ID/"
 echo ""
 
+# Ensure claude is in PATH (npm global bin)
+export PATH="$PATH:/usr/local/share/npm-global/bin"
+
 # Auto-launch Claude on SSH login (interactive shells only)
 if [[ $- == *i* ]] && [ -z "${CLAUDE_AUTOSTART_DONE:-}" ]; then
   export CLAUDE_AUTOSTART_DONE=1
-  claude
+  /opt/claude-portable/scripts/claude-session.sh
 fi
