@@ -14,11 +14,93 @@ Manages EC2 instances with stop/start lifecycle:
 import argparse
 import json
 import os
+import platform
+import shutil
 import subprocess
 import sys
 import time
 
 PROJECT_TAG = "claude-portable"
+
+# ── Platform detection ───────────────────────────────────────────────────────
+
+def _detect_platform():
+    """Detect runtime: 'gitbash', 'wsl', 'mac', 'linux'."""
+    if sys.platform == "darwin":
+        return "mac"
+    if sys.platform == "win32" or os.environ.get("MSYSTEM"):
+        return "gitbash"
+    # Check if we're in WSL
+    if "microsoft" in platform.uname().release.lower() or "WSL" in platform.uname().release:
+        return "wsl"
+    return "linux"
+
+PLATFORM = _detect_platform()
+
+def _win_home():
+    """Get the Windows home directory, works from both Git Bash and WSL."""
+    if PLATFORM == "gitbash":
+        return os.environ.get("USERPROFILE", os.path.expanduser("~"))
+    elif PLATFORM == "wsl":
+        # /mnt/c/Users/<name>
+        try:
+            r = subprocess.run(["wslpath", "-u", subprocess.run(
+                ["cmd.exe", "/c", "echo", "%USERPROFILE%"],
+                capture_output=True, text=True).stdout.strip()],
+                capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        except Exception:
+            pass
+        # Fallback: guess from /mnt/c/Users
+        for d in os.listdir("/mnt/c/Users") if os.path.isdir("/mnt/c/Users") else []:
+            if d not in ("Public", "Default", "Default User", "All Users"):
+                return f"/mnt/c/Users/{d}"
+    return os.path.expanduser("~")
+
+def _to_native_path(path):
+    """Convert path for current platform. Git Bash needs cygpath, WSL uses /mnt/c/."""
+    if PLATFORM == "gitbash" and shutil.which("cygpath"):
+        try:
+            r = subprocess.run(["cygpath", "-w", path], capture_output=True, text=True)
+            if r.returncode == 0:
+                return r.stdout.strip()
+        except Exception:
+            pass
+    return path
+
+def _open_terminal_tab(label, ip, ssh_key):
+    """Open a new terminal tab/window with SSH connection."""
+    ssh_cmd = f"ssh -o StrictHostKeyChecking=no -i {ssh_key} ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'"
+
+    if PLATFORM == "gitbash" and shutil.which("wt.exe"):
+        try:
+            subprocess.run(["wt.exe", "-w", "0", "new-tab", "--title", f"{label} ({ip})",
+                            "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
+                            f"ubuntu@{ip}", "-t", "docker exec -it claude-portable bash -l"],
+                           check=True)
+            return True
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+    elif PLATFORM == "wsl" and shutil.which("wt.exe"):
+        # WSL can call wt.exe but needs Windows paths for the tab
+        try:
+            subprocess.run(["wt.exe", "-w", "0", "new-tab", "--title", f"{label} ({ip})",
+                            "wsl", "--", "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
+                            f"ubuntu@{ip}", "-t", "docker exec -it claude-portable bash -l"],
+                           check=True)
+            return True
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+    elif PLATFORM == "mac":
+        try:
+            subprocess.run(["osascript", "-e",
+                            f'tell application "Terminal" to do script "{ssh_cmd}"'],
+                           check=True)
+            return True
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+    return False
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
@@ -214,23 +296,26 @@ def _ensure_instance_profile(role_name, profile_name):
 def find_ssh_key(instance=None):
     """Find SSH key for an instance. Checks per-instance key first, then shared fallback."""
     home = os.path.expanduser("~")
+    win_home = _win_home() if PLATFORM in ("wsl", "gitbash") else home
     candidates = []
 
     # Per-instance key (preferred)
     if instance:
         label = instance.get("label", "")
         key_name = instance.get("key_name", "")
-        if label:
-            candidates.append(os.path.join(home, ".ssh", "cpp-keys", f"{label}.pem"))
-        if key_name:
-            candidates.append(os.path.join(home, ".ssh", "cpp-keys", f"{key_name.replace('cpp-', '').replace('-key', '')}.pem"))
+        for base in set([home, win_home]):
+            if label:
+                candidates.append(os.path.join(base, ".ssh", "cpp-keys", f"{label}.pem"))
+            if key_name:
+                candidates.append(os.path.join(base, ".ssh", "cpp-keys", f"{key_name.replace('cpp-', '').replace('-key', '')}.pem"))
 
     # Shared fallback (legacy / CF-launched instances)
-    candidates += [
-        os.path.join(home, ".ssh", f"{KEY_NAME}.pem"),
-        os.path.join(home, "archive", ".ssh", "claude-portable.pem"),
-        os.path.join(home, "archive", ".ssh", f"{KEY_NAME}.pem"),
-    ]
+    for base in set([home, win_home]):
+        candidates += [
+            os.path.join(base, ".ssh", f"{KEY_NAME}.pem"),
+            os.path.join(base, "archive", ".ssh", "claude-portable.pem"),
+            os.path.join(base, "archive", ".ssh", f"{KEY_NAME}.pem"),
+        ]
     for p in candidates:
         if os.path.isfile(p):
             return p
@@ -389,7 +474,15 @@ def launch_new(name=None):
                       "--query", "KeyMaterial", parse_json=False)
         with open(instance_key_path, "w") as f:
             f.write(result.strip().strip('"').replace("\\n", "\n"))
-        os.chmod(instance_key_path, 0o600)
+        try:
+            os.chmod(instance_key_path, 0o600)
+        except OSError:
+            # Windows Git Bash: chmod may not work, use icacls
+            if PLATFORM == "gitbash":
+                win_path = _to_native_path(instance_key_path)
+                subprocess.run(["icacls", win_path, "/inheritance:r", "/grant:r",
+                                f"{os.environ.get('USERNAME', 'user')}:R"],
+                               capture_output=True)
 
     # Build user-data script
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -651,21 +744,19 @@ def setup_instance(ip, ssh_key, label):
 
 def connect(ip, ssh_key, label):
     """SSH into the instance -- Claude auto-starts via bashrc."""
-    print(f"\n  Connecting to {label} ({ip})...\n")
-    # Try opening in new Windows Terminal tab
-    try:
-        subprocess.run(["wt.exe", "-w", "0", "new-tab", "--title", f"{label} ({ip})",
-                        "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
-                        f"ubuntu@{ip}", "-t",
-                        "docker exec -it claude-portable bash -l"],
-                       check=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        # Fallback: SSH in current terminal
-        os.execvp("ssh", [
-            "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
-            f"ubuntu@{ip}", "-t",
-            "docker exec -it claude-portable bash -l"
-        ])
+    print(f"\n  Connecting to {label} ({ip})...")
+    print(f"  Platform: {PLATFORM}\n")
+
+    # Try opening in a new terminal tab
+    if _open_terminal_tab(label, ip, ssh_key):
+        return
+
+    # Fallback: SSH in current terminal
+    os.execvp("ssh", [
+        "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
+        f"ubuntu@{ip}", "-t",
+        "docker exec -it claude-portable bash -l"
+    ])
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -826,7 +917,8 @@ def cmd_vnc(args):
 
 def cmd_config(args):
     config_path = CFG.get("_config_path", "not found")
-    print(f"\n  Config: {config_path}\n")
+    print(f"\n  Config: {config_path}")
+    print(f"  Platform: {PLATFORM}\n")
     for k, v in sorted(CFG.items()):
         if k.startswith("_"):
             continue
