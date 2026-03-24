@@ -6,7 +6,16 @@ set -euo pipefail
 CLAUDE_DIR="$HOME/.claude"
 MCP_DIR="/opt/mcp"
 CACHE_DIR="/opt/claude-portable/repos"
-MANIFEST="/opt/claude-portable/config/components.yaml"
+# Check user override, then default location
+if [ -f "/opt/claude-portable/config/components.yaml" ]; then
+  MANIFEST="/opt/claude-portable/config/components.yaml"
+elif [ -f "/opt/claude-portable/components.yaml" ]; then
+  MANIFEST="/opt/claude-portable/components.yaml"
+elif [ -f "/opt/claude-portable/components-default.yaml" ]; then
+  MANIFEST="/opt/claude-portable/components-default.yaml"
+else
+  MANIFEST="/opt/claude-portable/config/components.yaml"  # will trigger fallback
+fi
 
 # Configure git auth if token available
 if [ -n "${GITHUB_TOKEN:-}" ]; then

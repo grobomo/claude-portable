@@ -50,7 +50,7 @@ fi
 
 # --- Step 3: Pull config from repos ---
 echo "[3/6] Syncing config from repos..."
-/opt/claude-portable/scripts/sync-config.sh
+/opt/claude-portable/scripts/sync-config.sh || echo "  WARNING: Config sync had errors (non-fatal)."
 
 # Fix .claude.json location: Claude Code needs it at ~/ but hooks expect it at ~/.claude/ too.
 # Canonical location: $HOME/.claude.json. Symlink at $HOME/.claude/.claude.json.
