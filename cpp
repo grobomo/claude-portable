@@ -1027,17 +1027,30 @@ def cmd_vnc(args):
     # Start each component as detached docker processes (browser.sh may not work
     # correctly via non-interactive docker exec due to background process forking)
     # Start all browser components in one detached bash session
-    # (they must share the same process tree to see each other's Xvfb)
     subprocess.run([
         "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
         "-i", ssh_key, f"ubuntu@{ip}",
         "docker exec -d claude-portable bash -c '"
         "export DISPLAY=:99; "
         "pgrep -f \"Xvfb :99\" || Xvfb :99 -screen 0 1920x1080x24 & sleep 2; "
-        "pgrep -f \"x11vnc.*5900\" || x11vnc -display :99 -forever -nopw -rfbport 5900 -shared -q & sleep 1; "
+        "pgrep -f \"x11vnc.*5900\" || x11vnc -display :99 -forever -nopw -rfbport 5900 -shared -q -noxdamage & sleep 1; "
         "pgrep -f \"chrome.*9222\" || google-chrome-stable --no-sandbox --disable-gpu --no-first-run --disable-sync --remote-debugging-port=9222 --window-size=1920,1080 --user-data-dir=/data/chrome-profile & "
         "wait'"
     ], capture_output=True, timeout=15)
+
+    # Install and start filebrowser for drag-and-drop web file upload
+    subprocess.run([
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+        "-i", ssh_key, f"ubuntu@{ip}",
+        "docker exec -d claude-portable bash -c '"
+        "if ! pgrep -f filebrowser; then "
+        "  if ! command -v filebrowser &>/dev/null; then "
+        "    curl -fsSL https://raw.githubusercontent.com/filebrowser/filebrowser/master/install.sh | bash &>/dev/null; "
+        "  fi; "
+        "  filebrowser -r /workspace -p 8080 -a 0.0.0.0 --noauth -d /data/filebrowser.db &>/dev/null & "
+        "fi'"
+    ], capture_output=True, timeout=30)
+
     time.sleep(5)
 
     # Verify
@@ -1077,23 +1090,24 @@ def cmd_vnc(args):
                     break
             except Exception:
                 pass
-        if viewer:
-            import threading
-            def launch_vnc():
-                time.sleep(3)
-                print(f"  $ \"{viewer}\" localhost:{vnc_port}")
+        import threading, webbrowser
+        def launch_apps():
+            time.sleep(3)
+            if viewer:
                 subprocess.Popen([viewer, f"localhost:{vnc_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            threading.Thread(target=launch_vnc, daemon=True).start()
-            print(f"  Auto-launching RealVNC: {viewer}")
-        else:
-            print(f"  RealVNC not found. Connect manually: localhost:5900")
+            time.sleep(1)
+            webbrowser.open(f"http://localhost:{filebrowser_port}")
+        threading.Thread(target=launch_apps, daemon=True).start()
+        print(f"  Auto-opening: RealVNC + file manager (http://localhost:{filebrowser_port})")
     elif PLATFORM == "mac":
-        import threading
-        def launch_vnc():
+        import threading, webbrowser
+        def launch_apps():
             time.sleep(2)
             subprocess.Popen(["open", f"vnc://localhost:{vnc_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        threading.Thread(target=launch_vnc, daemon=True).start()
-        print(f"  Auto-launching Screen Sharing...")
+            time.sleep(1)
+            webbrowser.open(f"http://localhost:{filebrowser_port}")
+        threading.Thread(target=launch_apps, daemon=True).start()
+        print(f"  Auto-opening: Screen Sharing + file manager")
 
     try:
         subprocess.run([
