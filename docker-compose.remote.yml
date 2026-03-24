@@ -12,3 +12,6 @@ services:
     # Container SSH on 2222 (host port 22 is used by host sshd)
     ports:
       - "2222:22"
+      - "127.0.0.1:5900:5900"   # VNC (localhost only -- access via SSH tunnel)
+      - "127.0.0.1:9222:9222"   # Chrome DevTools (localhost only)
+      - "127.0.0.1:8080:8080"   # File browser (localhost only)
