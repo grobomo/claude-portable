@@ -34,8 +34,12 @@ case "$cmd" in
     # Start Xvfb if not running
     if ! pgrep -f "Xvfb :${DISPLAY_NUM}" &>/dev/null; then
       echo "  Starting Xvfb on :${DISPLAY_NUM}..."
-      Xvfb ":${DISPLAY_NUM}" -screen 0 1920x1080x24 &>/dev/null &
-      sleep 1
+      nohup Xvfb ":${DISPLAY_NUM}" -screen 0 1920x1080x24 &>/dev/null &
+      sleep 2
+      if ! pgrep -f "Xvfb :${DISPLAY_NUM}" &>/dev/null; then
+        echo "  ERROR: Xvfb failed to start"
+        return 1
+      fi
     else
       echo "  Xvfb already running on :${DISPLAY_NUM}"
     fi
@@ -43,8 +47,13 @@ case "$cmd" in
     # Start VNC server if not running
     if ! pgrep -f "x11vnc.*${VNC_PORT}" &>/dev/null; then
       echo "  Starting VNC on port ${VNC_PORT}..."
-      x11vnc -display ":${DISPLAY_NUM}" -forever -nopw -rfbport "${VNC_PORT}" \
-        -shared -bg -q 2>/dev/null
+      nohup x11vnc -display ":${DISPLAY_NUM}" -forever -nopw -rfbport "${VNC_PORT}" \
+        -shared -q &>/dev/null &
+      sleep 1
+      if ! pgrep -f "x11vnc.*${VNC_PORT}" &>/dev/null; then
+        echo "  ERROR: VNC failed to start"
+        return 1
+      fi
     else
       echo "  VNC already running on port ${VNC_PORT}"
     fi
@@ -61,14 +70,14 @@ case "$cmd" in
         fi
       fi
 
-      google-chrome-stable \
+      nohup google-chrome-stable \
         --no-sandbox --disable-gpu --no-first-run --disable-sync \
         --disable-background-networking \
         --remote-debugging-port="${CHROME_DEBUG_PORT}" \
         --window-size=1920,1080 \
         --user-data-dir="$CHROME_PROFILE" \
         &>/dev/null &
-      sleep 2
+      sleep 3
       echo "  Chrome running (profile: $CHROME_PROFILE)"
     else
       echo "  Chrome already running"

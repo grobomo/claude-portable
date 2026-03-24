@@ -918,11 +918,32 @@ def cmd_vnc(args):
 
     # Ensure browser session is running in the container
     print(f"\n  Starting browser on {label} ({ip})...")
-    subprocess.run([
-        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
-        "-i", ssh_key, f"ubuntu@{ip}",
-        "docker exec claude-portable /opt/claude-portable/scripts/browser.sh start"
-    ], capture_output=True)
+    # Start each component as detached docker processes (browser.sh may not work
+    # correctly via non-interactive docker exec due to background process forking)
+    for cmd in [
+        "docker exec -d claude-portable bash -c 'pgrep -f \"Xvfb :99\" || Xvfb :99 -screen 0 1920x1080x24'",
+        "sleep 2",
+        "docker exec -d claude-portable bash -c 'pgrep -f \"x11vnc.*5900\" || x11vnc -display :99 -forever -nopw -rfbport 5900 -shared -q'",
+        "sleep 1",
+        "docker exec -d -e DISPLAY=:99 claude-portable bash -c 'pgrep -f \"chrome.*9222\" || google-chrome-stable --no-sandbox --disable-gpu --no-first-run --disable-sync --remote-debugging-port=9222 --window-size=1920,1080 --user-data-dir=/data/chrome-profile'",
+    ]:
+        if cmd.startswith("sleep"):
+            time.sleep(int(cmd.split()[1]))
+        else:
+            subprocess.run(
+                ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+                 "-i", ssh_key, f"ubuntu@{ip}", cmd],
+                capture_output=True, timeout=10)
+
+    # Verify
+    r = subprocess.run(
+        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+         "-i", ssh_key, f"ubuntu@{ip}",
+         "docker exec claude-portable /opt/claude-portable/scripts/browser.sh status"],
+        capture_output=True, text=True, timeout=10)
+    if r.stdout:
+        for line in r.stdout.strip().split("\n"):
+            print(f"  {line.strip()}")
 
     print(f"  SSH tunnel to {label} ({ip})")
     print(f"  ─────────────────────────────────────")
