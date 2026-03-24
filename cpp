@@ -887,6 +887,98 @@ def cmd_kill(args):
         aws("ec2", "terminate-instances", "--instance-ids", inst["id"])
     print("  Done.")
 
+def cmd_scp(args):
+    """Transfer files to/from an instance."""
+    name = args.name
+    paths = args.paths
+
+    if not paths:
+        print("Usage: ccp scp <local-file> [instance:]<remote-path>")
+        print("       ccp scp [instance:]<remote-path> <local-file>")
+        print("       ccp scp -n dev myfile.txt /workspace/")
+        print("       ccp scp -n dev /workspace/report.pdf .")
+        return
+
+    inst = find_available(name)
+    if not inst or inst["state"] != "running":
+        print("No running instance found." + (f" ({name})" if name else ""))
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print(f"ERROR: No SSH key for {inst['name']}")
+        return
+
+    ip = inst["ip"]
+    label = inst["label"]
+
+    if len(paths) == 1:
+        # Single path -- download from instance to current dir
+        remote = paths[0]
+        local = os.path.basename(remote)
+        direction = "download"
+    elif len(paths) == 2:
+        # Determine direction
+        if os.path.exists(paths[0]) or not paths[0].startswith("/"):
+            # First arg is local file (exists or relative), second is remote dest
+            local = paths[0]
+            remote = paths[1]
+            direction = "upload"
+        else:
+            # First is remote, second is local
+            remote = paths[0]
+            local = paths[1]
+            direction = "download"
+    else:
+        print("Too many arguments.")
+        return
+
+    # Container path -- prefix with container name for docker cp
+    if direction == "upload":
+        print(f"  Uploading {local} -> {label}:{remote}")
+        # SCP to host, then docker cp into container
+        tmp_name = f"_ccp_upload_{os.path.basename(local)}"
+        r = subprocess.run([
+            "scp", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, local, f"ubuntu@{ip}:/tmp/{tmp_name}"
+        ])
+        if r.returncode != 0:
+            print("  Upload failed.")
+            return
+        # Determine container dest (default to /workspace/)
+        if not remote.startswith("/"):
+            remote = f"/workspace/{remote}"
+        subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, f"ubuntu@{ip}",
+            f"sed -i 's/\\r$//' /tmp/{tmp_name} 2>/dev/null; "
+            f"docker cp /tmp/{tmp_name} claude-portable:{remote} && "
+            f"docker exec -u root claude-portable chown claude:claude {remote} && "
+            f"rm /tmp/{tmp_name}"
+        ])
+        print(f"  Done.")
+    else:
+        print(f"  Downloading {label}:{remote} -> {local}")
+        # Docker cp out of container, then SCP to local
+        tmp_name = f"_ccp_download_{os.path.basename(remote)}"
+        r = subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, f"ubuntu@{ip}",
+            f"docker cp claude-portable:{remote} /tmp/{tmp_name}"
+        ])
+        if r.returncode != 0:
+            print("  File not found on instance.")
+            return
+        subprocess.run([
+            "scp", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, f"ubuntu@{ip}:/tmp/{tmp_name}", local
+        ])
+        subprocess.run([
+            "ssh", "-o", "LogLevel=ERROR", "-i", ssh_key, f"ubuntu@{ip}",
+            f"rm -f /tmp/{tmp_name}"
+        ], capture_output=True)
+        print(f"  Done.")
+
 def cmd_secure(args):
     """Migrate AWS credentials from plaintext ~/.aws/ into OS keyring."""
     print("\n  Migrating AWS credentials to OS credential store...\n")
@@ -1048,6 +1140,9 @@ def main():
     p_secure = sub.add_parser("secure", help="Migrate AWS creds to OS keyring")
     p_vnc = sub.add_parser("vnc", help="Open VNC tunnel to instance")
     p_vnc.add_argument("name", nargs="?", help="Instance name")
+    p_scp = sub.add_parser("scp", help="Transfer files to/from instance")
+    p_scp.add_argument("-n", "--name", help="Instance name")
+    p_scp.add_argument("paths", nargs="*", help="<local> <remote> or <remote> <local>")
 
     args = parser.parse_args()
 
@@ -1063,6 +1158,8 @@ def main():
         cmd_kill(args)
     elif args.command == "config":
         cmd_config(args)
+    elif args.command == "scp":
+        cmd_scp(args)
     elif args.command == "secure":
         cmd_secure(args)
     elif args.command == "vnc":
