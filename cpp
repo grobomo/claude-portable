@@ -900,6 +900,17 @@ def cmd_secure(args):
         print("    pip install keyring")
     print()
 
+def _get_vnc_local_port(label):
+    """Assign a unique local VNC port per instance. Base 5900 + hash of label."""
+    # Use a simple index based on running instances
+    instances = get_instances()
+    running = sorted([i["label"] for i in instances if i["state"] == "running"])
+    try:
+        idx = running.index(label)
+    except ValueError:
+        idx = 0
+    return 5900 + idx
+
 def cmd_vnc(args):
     """Start browser session on instance + open SSH tunnel for VNC."""
     name = args.name
@@ -915,6 +926,9 @@ def cmd_vnc(args):
 
     ip = inst["ip"]
     label = inst["label"]
+    vnc_port = _get_vnc_local_port(label)
+    devtools_port = 9222 + (vnc_port - 5900)
+    filebrowser_port = 8080 + (vnc_port - 5900)
 
     # Ensure browser session is running in the container
     print(f"\n  Starting browser on {label} ({ip})...")
@@ -946,12 +960,12 @@ def cmd_vnc(args):
 
     print(f"  SSH tunnel to {label} ({ip})")
     print(f"  ─────────────────────────────────────")
-    print(f"  RealVNC:      localhost:5900")
-    print(f"  DevTools:     http://localhost:9222")
-    print(f"  File browser: http://localhost:8080")
+    print(f"  RealVNC:      localhost:{vnc_port}")
+    print(f"  DevTools:     http://localhost:{devtools_port}")
+    print(f"  File browser: http://localhost:{filebrowser_port}")
     print(f"  Press Ctrl+C to disconnect")
     print(f"")
-    print(f"  ssh -N -L 5900:localhost:5900 -L 9222:localhost:9222 -L 8080:localhost:8080 -i {ssh_key} ubuntu@{ip}")
+    print(f"  ssh -N -L {vnc_port}:localhost:5900 -L {devtools_port}:localhost:9222 -L {filebrowser_port}:localhost:8080 -i {ssh_key} ubuntu@{ip}")
     print(f"")
 
     # Try to auto-launch VNC viewer
@@ -975,8 +989,8 @@ def cmd_vnc(args):
             import threading
             def launch_vnc():
                 time.sleep(3)
-                print(f"  $ \"{viewer}\" localhost:5900")
-                subprocess.Popen([viewer, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"  $ \"{viewer}\" localhost:{vnc_port}")
+                subprocess.Popen([viewer, f"localhost:{vnc_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             threading.Thread(target=launch_vnc, daemon=True).start()
             print(f"  Auto-launching RealVNC: {viewer}")
         else:
@@ -985,16 +999,16 @@ def cmd_vnc(args):
         import threading
         def launch_vnc():
             time.sleep(2)
-            subprocess.Popen(["open", "vnc://localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(["open", f"vnc://localhost:{vnc_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         threading.Thread(target=launch_vnc, daemon=True).start()
         print(f"  Auto-launching Screen Sharing...")
 
     try:
         subprocess.run([
             "ssh", "-N",
-            "-L", "5900:localhost:5900",
-            "-L", "9222:localhost:9222",
-            "-L", "8080:localhost:8080",
+            "-L", f"{vnc_port}:localhost:5900",
+            "-L", f"{devtools_port}:localhost:9222",
+            "-L", f"{filebrowser_port}:localhost:8080",
             "-o", "StrictHostKeyChecking=no",
             "-o", "ServerAliveInterval=30",
             "-i", ssh_key,
