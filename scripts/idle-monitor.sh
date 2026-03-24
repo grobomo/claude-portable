@@ -15,15 +15,17 @@ echo "Idle monitor started: will stop instance after ${IDLE_TIMEOUT}min of inact
 echo "  Check interval: ${CHECK_INTERVAL}s, checks needed: ${IDLE_MAX}"
 
 while true; do
-  # Check if any Claude process is running (the CLI, not our scripts)
-  CLAUDE_PROCS=$(pgrep -cf "node.*claude" 2>/dev/null || echo 0)
-  # Also check for active SSH sessions (someone connected)
-  SSH_SESSIONS=$(who 2>/dev/null | wc -l)
-  SSH_SESSIONS=$((SSH_SESSIONS + 0))  # trim whitespace
-  # Check if any interactive bash is running (docker exec)
-  INTERACTIVE=$(pgrep -cf "bash -l" 2>/dev/null || echo 0)
+  # Count active Claude processes, SSH sessions, and interactive shells
+  CLAUDE_PROCS="$(pgrep -c -f 'node.*claude' 2>/dev/null || true)"
+  SSH_SESSIONS="$(who 2>/dev/null | wc -l || true)"
+  INTERACTIVE="$(pgrep -c -f 'bash.*-l' 2>/dev/null || true)"
 
-  ACTIVE=$((CLAUDE_PROCS + SSH_SESSIONS + INTERACTIVE))
+  # Sanitize to plain integers (wc/pgrep may include whitespace or be empty)
+  CLAUDE_PROCS="${CLAUDE_PROCS//[!0-9]/}"
+  SSH_SESSIONS="${SSH_SESSIONS//[!0-9]/}"
+  INTERACTIVE="${INTERACTIVE//[!0-9]/}"
+
+  ACTIVE=$(( ${CLAUDE_PROCS:-0} + ${SSH_SESSIONS:-0} + ${INTERACTIVE:-0} ))
 
   if [ "$ACTIVE" -gt 0 ]; then
     if [ "$IDLE_COUNT" -gt 0 ]; then
