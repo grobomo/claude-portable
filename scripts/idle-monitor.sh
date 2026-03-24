@@ -16,11 +16,12 @@ echo "  Check interval: ${CHECK_INTERVAL}s, checks needed: ${IDLE_MAX}"
 
 while true; do
   # Check if any Claude process is running (the CLI, not our scripts)
-  CLAUDE_PROCS=$(pgrep -f "node.*claude" 2>/dev/null | wc -l || echo "0")
+  CLAUDE_PROCS=$(pgrep -cf "node.*claude" 2>/dev/null || echo 0)
   # Also check for active SSH sessions (someone connected)
-  SSH_SESSIONS=$(who 2>/dev/null | wc -l || echo "0")
+  SSH_SESSIONS=$(who 2>/dev/null | wc -l)
+  SSH_SESSIONS=$((SSH_SESSIONS + 0))  # trim whitespace
   # Check if any interactive bash is running (docker exec)
-  INTERACTIVE=$(pgrep -f "bash -l" 2>/dev/null | grep -v $$ | wc -l || echo "0")
+  INTERACTIVE=$(pgrep -cf "bash -l" 2>/dev/null || echo 0)
 
   ACTIVE=$((CLAUDE_PROCS + SSH_SESSIONS + INTERACTIVE))
 
