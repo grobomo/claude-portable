@@ -936,26 +936,29 @@ def cmd_vnc(args):
 
     # Try to auto-launch VNC viewer
     if PLATFORM == "gitbash":
-        import shutil as _shutil
-        viewer = _shutil.which("vncviewer") or _shutil.which("vncviewer.exe")
-        if not viewer:
-            for p in [
-                os.path.join(os.environ.get("ProgramFiles", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-                os.path.join(os.environ.get("ProgramFiles(x86)", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-                os.path.join(os.environ.get("LOCALAPPDATA", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-            ]:
-                if p and os.path.isfile(p):
-                    viewer = p
+        # Git Bash: env vars return /c/... paths that Python can't use directly
+        # Use cygpath to get native Windows path
+        viewer = None
+        for unix_path in [
+            "/c/Program Files/RealVNC/VNC Viewer/vncviewer.exe",
+            "/c/Program Files (x86)/RealVNC/VNC Viewer/vncviewer.exe",
+        ]:
+            try:
+                r = subprocess.run(["cygpath", "-w", unix_path], capture_output=True, text=True)
+                win_path = r.stdout.strip()
+                if win_path and os.path.isfile(win_path):
+                    viewer = win_path
                     break
+            except Exception:
+                pass
         if viewer:
             import threading
-            viewer_path = _to_native_path(viewer)
             def launch_vnc():
                 time.sleep(3)
-                print(f"  $ \"{viewer_path}\" localhost:5900")
-                subprocess.Popen([viewer_path, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"  $ \"{viewer}\" localhost:5900")
+                subprocess.Popen([viewer, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             threading.Thread(target=launch_vnc, daemon=True).start()
-            print(f"  Auto-launching RealVNC: {viewer_path}")
+            print(f"  Auto-launching RealVNC: {viewer}")
         else:
             print(f"  RealVNC not found. Connect manually: localhost:5900")
     elif PLATFORM == "mac":
