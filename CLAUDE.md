@@ -130,5 +130,5 @@ sessions export <id>       # Export clean text
 - [x] Multi-instance with --name flag
 - [x] list.sh + terminate.sh + push.sh
 - [x] Inter-instance messaging (msg)
-- [ ] Auto-shutdown on idle (cost savings)
-- [ ] S3 backup for session logs
+- [x] Auto-shutdown on idle (cost savings)
+- [x] S3 backup for session logs

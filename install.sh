@@ -1,12 +1,76 @@
 #!/bin/bash
 # Claude Portable installer -- sets up everything from scratch.
-# Usage: bash install.sh
+# Usage: bash install.sh            Install
+#        bash install.sh uninstall   Remove everything (restores backups)
 # Or:    bash <(curl -sL https://raw.githubusercontent.com/grobomo/claude-portable/main/install.sh)
 set -euo pipefail
 
 REPO="https://github.com/grobomo/claude-portable.git"
 INSTALL_DIR="${CLAUDE_PORTABLE_DIR:-$HOME/claude-portable}"
 OS="$(uname -s)"
+BACKUP_DIR="$HOME/.claude-portable-backup"
+
+# ── Uninstall ────────────────────────────────────────────────────────────────
+if [ "${1:-}" = "uninstall" ]; then
+  echo "========================================="
+  echo "  Claude Portable Uninstaller"
+  echo "========================================="
+  echo ""
+
+  # Read alias name from config
+  ALIAS_NAME="cpp"
+  if command -v python3 &>/dev/null && [ -f "$INSTALL_DIR/cpp.config.json" ]; then
+    ALIAS_NAME=$(python3 -c "import json; print(json.load(open('$INSTALL_DIR/cpp.config.json')).get('alias','cpp'))" 2>/dev/null || echo "cpp")
+  fi
+
+  # Remove wrapper script from PATH dirs
+  for D in "$HOME/.local/bin" "$HOME/bin" "$HOME/.bin"; do
+    if [ -f "$D/$ALIAS_NAME" ]; then
+      rm -f "$D/$ALIAS_NAME"
+      echo "  Removed $D/$ALIAS_NAME"
+    fi
+  done
+
+  # Restore shell profile backups (most recent for each file)
+  if [ -d "$BACKUP_DIR" ]; then
+    for BAK in "$BACKUP_DIR"/*.bak.*; do
+      [ -f "$BAK" ] || continue
+      # Extract original filename: .bashrc.bak.20260324... -> .bashrc
+      ORIG_NAME=$(basename "$BAK" | sed 's/\.bak\.[0-9]*//')
+      ORIG_PATH="$HOME/$ORIG_NAME"
+      if [ -f "$ORIG_PATH" ]; then
+        cp "$BAK" "$ORIG_PATH"
+        echo "  Restored $ORIG_NAME from backup"
+      fi
+    done
+  fi
+
+  # Clean Claude Portable lines from profiles that weren't backed up
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [ -f "$RC" ]; then
+      sed -i '/# Claude Portable/d; /alias.*=.*python3.*claude-portable.*cpp/d; /claude-portable PATH/d' "$RC" 2>/dev/null || true
+    fi
+  done
+
+  # Remove PowerShell function
+  if [ -n "${USERPROFILE:-}" ]; then
+    PS_PROFILE="${USERPROFILE}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    if [ -f "$PS_PROFILE" ]; then
+      sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
+      echo "  Cleaned PowerShell profile"
+    fi
+  fi
+
+  # Remove backup dir
+  rm -rf "$BACKUP_DIR"
+
+  echo ""
+  echo "  Uninstalled. Repo left at $INSTALL_DIR (delete manually if wanted)."
+  echo "  Restart your shell to apply changes."
+  exit 0
+fi
+
+# ── Install ──────────────────────────────────────────────────────────────────
 
 echo "========================================="
 echo "  Claude Portable Installer"
@@ -172,53 +236,98 @@ total_steps "Installing Python dependencies..."
 $PY -m pip install keyring --quiet 2>/dev/null || true
 echo "  Done."
 
-# ── 7. Shell alias ──────────────────────────────────────────────────────────
+# ── 7. Add command to PATH ─────────────────────────────────────────────────
 
 ALIAS_NAME=$($PY -c "
 import json, os
 d = os.path.join(os.path.expanduser('~'), 'claude-portable', 'cpp.config.json')
 print(json.load(open(d)).get('alias', 'cpp'))
 " 2>/dev/null || echo "cpp")
-total_steps "Adding '$ALIAS_NAME' to shell..."
+total_steps "Installing '$ALIAS_NAME' command..."
 CPP_PATH="$INSTALL_DIR/cpp"
-ALIAS_LINE="alias $ALIAS_NAME='$PY \"$CPP_PATH\"'"
 
-ADDED=false
-for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
-  if [ -f "$RC" ]; then
-    # Remove any old Claude Portable alias (handles renames like cpp -> ccp)
-    sed -i '/# Claude Portable/d; /alias.*=.*python3.*claude-portable.*cpp/d' "$RC" 2>/dev/null || true
-    if grep -q "alias $ALIAS_NAME=" "$RC" 2>/dev/null; then
-      echo "  Already in $(basename $RC)"
-    else
-      printf '\n# Claude Portable\n%s\n' "$ALIAS_LINE" >> "$RC"
-      echo "  Added to $(basename $RC)"
+mkdir -p "$BACKUP_DIR"
+
+backup_file() {
+  local F="$1"
+  if [ -f "$F" ]; then
+    cp "$F" "$BACKUP_DIR/$(basename "$F").bak.$(date +%Y%m%d%H%M%S)"
+    echo "  Backed up $(basename "$F")"
+  fi
+}
+
+# Find a user-writable bin dir already on PATH (don't assume -- verify)
+BIN_DIR=""
+for D in "$HOME/.local/bin" "$HOME/bin" "$HOME/.bin"; do
+  case ":$PATH:" in
+    *":$D:"*)
+      if [ -d "$D" ] || mkdir -p "$D" 2>/dev/null; then
+        # Verify actually writable
+        if touch "$D/.write-test" 2>/dev/null; then
+          rm -f "$D/.write-test"
+          BIN_DIR="$D"
+          echo "  Using existing PATH dir: $BIN_DIR"
+          break
+        fi
+      fi
+      ;;
+  esac
+done
+
+# No suitable dir found on PATH -- use ~/.local/bin and add to PATH
+if [ -z "$BIN_DIR" ]; then
+  BIN_DIR="$HOME/.local/bin"
+  mkdir -p "$BIN_DIR"
+  echo "  Created $BIN_DIR (not yet on PATH -- will add)"
+
+  PATH_LINE="export PATH=\"$BIN_DIR:\$PATH\""
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [ -f "$RC" ]; then
+      if ! grep -qF "$BIN_DIR" "$RC" 2>/dev/null; then
+        backup_file "$RC"
+        printf '\n# Claude Portable PATH\n%s\n' "$PATH_LINE" >> "$RC"
+        echo "  Added $BIN_DIR to PATH in $(basename "$RC")"
+      fi
     fi
-    ADDED=true
+  done
+  export PATH="$BIN_DIR:$PATH"
+fi
+
+# Create wrapper script (works in non-interactive shells, Claude Code, cron, etc.)
+WRAPPER="$BIN_DIR/$ALIAS_NAME"
+cat > "$WRAPPER" << WRAPEOF
+#!/bin/bash
+exec $PY "$CPP_PATH" "\$@"
+WRAPEOF
+chmod +x "$WRAPPER"
+echo "  Created $WRAPPER"
+
+# Clean up old aliases from shell profiles (migration from alias-based install)
+for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
+  if [ -f "$RC" ] && grep -q 'alias.*=.*python3.*claude-portable.*cpp' "$RC" 2>/dev/null; then
+    backup_file "$RC"
+    sed -i '/# Claude Portable$/d; /^alias.*=.*python3.*claude-portable.*cpp/d' "$RC" 2>/dev/null || true
+    echo "  Removed old alias from $(basename "$RC")"
   fi
 done
 
-# PowerShell profile (Windows)
+# PowerShell: create wrapper function (Windows)
 if [ -n "${USERPROFILE:-}" ]; then
   PS_PROFILE="${USERPROFILE}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
   mkdir -p "$(dirname "$PS_PROFILE")" 2>/dev/null || true
   WIN_PATH="$(cygpath -w "$CPP_PATH" 2>/dev/null || echo "$CPP_PATH")"
   PS_LINE="function $ALIAS_NAME { python3 \"$WIN_PATH\" \$args }"
-  # Remove old Claude Portable function (handles renames)
-  sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
-  if grep -q "function $ALIAS_NAME" "$PS_PROFILE" 2>/dev/null; then
-    echo "  Already in PowerShell profile"
-  else
+  if [ -f "$PS_PROFILE" ]; then
+    backup_file "$PS_PROFILE"
+    sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
+  fi
+  if ! grep -q "function $ALIAS_NAME" "$PS_PROFILE" 2>/dev/null; then
     printf '\n# Claude Portable\n%s\n' "$PS_LINE" >> "$PS_PROFILE"
     echo "  Added to PowerShell profile"
   fi
-  ADDED=true
 fi
 
-if [ "$ADDED" = false ]; then
-  echo "  No shell profile found. Add manually:"
-  echo "    $ALIAS_LINE"
-fi
+echo "  Backups saved to $BACKUP_DIR (for rollback)"
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 
@@ -227,8 +336,7 @@ echo "========================================="
 echo "  Installed!"
 echo "========================================="
 echo ""
-echo "  Restart your shell (or: source ~/.bashrc)"
-echo "  Then run: $ALIAS_NAME"
+echo "  Run: $ALIAS_NAME"
 echo ""
 echo "  First launch takes ~5-7 min (builds container on EC2)."
 echo "  After that, stopped instances resume in ~30 sec."

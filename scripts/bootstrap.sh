@@ -153,12 +153,35 @@ if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; th
   fi
 fi
 
+# --- Start idle monitor (auto-shutdown on inactivity) ---
+if [ "${CLAUDE_PORTABLE_MODE:-}" = "remote" ]; then
+  IDLE_TIMEOUT="${CLAUDE_PORTABLE_IDLE_TIMEOUT:-30}"
+  echo "[+] Starting idle monitor (${IDLE_TIMEOUT}min timeout)..."
+  nohup /opt/claude-portable/scripts/idle-monitor.sh "$IDLE_TIMEOUT" \
+    >> /data/idle-monitor.log 2>&1 &
+  echo "  Idle monitor PID: $!"
+fi
+
+# --- Trap EXIT to push state before container stops ---
+cleanup() {
+  echo "[!] Container stopping -- pushing final state to S3..."
+  /opt/claude-portable/scripts/state-sync.sh push 2>/dev/null || true
+  echo "  Final sync done."
+}
+if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; then
+  trap cleanup EXIT TERM INT
+fi
+
 echo ""
 echo "=== Claude Portable Ready ==="
 echo "  Config:    $HOME/.claude/"
 echo "  Workspace: /workspace/"
 echo "  MCP:       /opt/mcp/"
 echo "  Sessions:  /data/sessions/"
+if [ "${CLAUDE_PORTABLE_MODE:-}" = "remote" ]; then
+  echo "  Idle:      ${CLAUDE_PORTABLE_IDLE_TIMEOUT:-30}min auto-shutdown"
+  echo "  S3 sync:   every 60s (session logs + conversation state)"
+fi
 echo "  Use 'sessions list' to view past conversations."
 echo ""
 

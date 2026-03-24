@@ -23,6 +23,11 @@ services:
       - CLAUDE_PORTABLE_MCP_ORG=${CLAUDE_PORTABLE_MCP_ORG:-}
       - CLAUDE_PORTABLE_MCP_REPOS=${CLAUDE_PORTABLE_MCP_REPOS:-mcp-manager mcp-v1-lite mcp-jira-lite mcp-trend-docs mcp-trendgpt}
       - CLAUDE_PORTABLE_SERVERS=${CLAUDE_PORTABLE_SERVERS:-wiki-lite,v1-lite,jira-lite,trello-lite}
+      - CLAUDE_PORTABLE_IDLE_TIMEOUT=${CLAUDE_PORTABLE_IDLE_TIMEOUT:-30}
+      - CLAUDE_PORTABLE_STATE_BUCKET=${CLAUDE_PORTABLE_STATE_BUCKET:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - NODE_OPTIONS=--max-old-space-size=4096
     ports:
       - "2222:22"
