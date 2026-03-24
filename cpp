@@ -910,7 +910,7 @@ def cmd_vnc(args):
         "docker exec claude-portable /opt/claude-portable/scripts/browser.sh start"
     ], capture_output=True)
 
-    print(f"  VNC tunnel to {label} ({ip})")
+    print(f"  SSH tunnel to {label} ({ip})")
     print(f"  ─────────────────────────────────────")
     print(f"  RealVNC:      localhost:5900")
     print(f"  DevTools:     http://localhost:9222")
