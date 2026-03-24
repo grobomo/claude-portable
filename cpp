@@ -990,16 +990,19 @@ def cmd_vnc(args):
         threading.Thread(target=launch_vnc, daemon=True).start()
         print(f"  Auto-launching Screen Sharing...")
 
-    os.execvp("ssh", [
-        "ssh", "-N",
-        "-L", "5900:localhost:5900",
-        "-L", "9222:localhost:9222",
-        "-L", "8080:localhost:8080",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "ServerAliveInterval=30",
-        "-i", ssh_key,
-        f"ubuntu@{ip}"
-    ])
+    try:
+        subprocess.run([
+            "ssh", "-N",
+            "-L", "5900:localhost:5900",
+            "-L", "9222:localhost:9222",
+            "-L", "8080:localhost:8080",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ServerAliveInterval=30",
+            "-i", ssh_key,
+            f"ubuntu@{ip}"
+        ])
+    except KeyboardInterrupt:
+        print("\n  Tunnel closed.")
 
 def cmd_config(args):
     config_path = CFG.get("_config_path", "not found")
