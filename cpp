@@ -146,8 +146,22 @@ INSTANCE_TYPE = CFG["instance_type"]
 
 # ── AWS helpers ──────────────────────────────────────────────────────────────
 
+VERBOSE = os.environ.get("CCP_VERBOSE", "0") == "1"
+
+def _log_cmd(cmd):
+    """Print command for auditing."""
+    # Redact secrets from output
+    display = " ".join(cmd)
+    for secret in ("ANTHROPIC_API_KEY", "aws_secret_access_key", "OAUTH"):
+        if secret.lower() in display.lower():
+            display = display[:display.lower().index(secret.lower()) + len(secret)] + "=<redacted>..."
+            break
+    print(f"  $ {display}")
+
 def aws(*args, parse_json=True):
     cmd = ["aws"] + list(args) + ["--region", REGION, "--output", "json"]
+    if VERBOSE:
+        _log_cmd(cmd)
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         if parse_json:
@@ -915,23 +929,35 @@ def cmd_vnc(args):
     print(f"  RealVNC:      localhost:5900")
     print(f"  DevTools:     http://localhost:9222")
     print(f"  File browser: http://localhost:8080")
-    print(f"  Press Ctrl+C to disconnect\n")
+    print(f"  Press Ctrl+C to disconnect")
+    print(f"")
+    print(f"  ssh -N -L 5900:localhost:5900 -L 9222:localhost:9222 -L 8080:localhost:8080 -i {ssh_key} ubuntu@{ip}")
+    print(f"")
 
     # Try to auto-launch VNC viewer
     if PLATFORM == "gitbash":
-        for viewer in [
-            os.path.join(os.environ.get("ProgramFiles", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-            os.path.join(os.environ.get("LOCALAPPDATA", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
-        ]:
-            if viewer and os.path.isfile(viewer):
-                import threading
-                def launch_vnc():
-                    time.sleep(2)
-                    subprocess.Popen([viewer, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                threading.Thread(target=launch_vnc, daemon=True).start()
-                print(f"  Auto-launching RealVNC...")
-                break
+        import shutil as _shutil
+        viewer = _shutil.which("vncviewer") or _shutil.which("vncviewer.exe")
+        if not viewer:
+            for p in [
+                os.path.join(os.environ.get("ProgramFiles", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+                os.path.join(os.environ.get("ProgramFiles(x86)", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+            ]:
+                if p and os.path.isfile(p):
+                    viewer = p
+                    break
+        if viewer:
+            import threading
+            viewer_path = _to_native_path(viewer)
+            def launch_vnc():
+                time.sleep(3)
+                print(f"  $ \"{viewer_path}\" localhost:5900")
+                subprocess.Popen([viewer_path, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            threading.Thread(target=launch_vnc, daemon=True).start()
+            print(f"  Auto-launching RealVNC: {viewer_path}")
+        else:
+            print(f"  RealVNC not found. Connect manually: localhost:5900")
     elif PLATFORM == "mac":
         import threading
         def launch_vnc():
@@ -970,6 +996,7 @@ def main():
     # Default: connect
     parser.add_argument("--name", "-n", help="Instance name")
     parser.add_argument("--new", action="store_true", help="Always launch fresh instance")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show all commands")
 
     p_list = sub.add_parser("list", help="List instances")
     p_stop = sub.add_parser("stop", help="Stop instance(s)")
@@ -983,6 +1010,10 @@ def main():
     p_vnc.add_argument("name", nargs="?", help="Instance name")
 
     args = parser.parse_args()
+
+    global VERBOSE
+    if hasattr(args, 'verbose') and args.verbose:
+        VERBOSE = True
 
     if args.command == "list":
         cmd_list(args)
