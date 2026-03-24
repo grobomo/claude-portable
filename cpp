@@ -887,7 +887,7 @@ def cmd_secure(args):
     print()
 
 def cmd_vnc(args):
-    """Open SSH tunnel for VNC + Chrome DevTools to an instance."""
+    """Start browser session on instance + open SSH tunnel for VNC."""
     name = args.name
     inst = find_available(name)
     if not inst or inst["state"] != "running":
@@ -901,12 +901,44 @@ def cmd_vnc(args):
 
     ip = inst["ip"]
     label = inst["label"]
-    print(f"\n  VNC tunnel to {label} ({ip})")
-    print(f"  Tunneling: VNC (5900), DevTools (9222), Filebrowser (8080)")
-    print(f"  Connect RealVNC to: localhost:5900")
-    print(f"  Chrome DevTools: http://localhost:9222")
+
+    # Ensure browser session is running in the container
+    print(f"\n  Starting browser on {label} ({ip})...")
+    subprocess.run([
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+        "-i", ssh_key, f"ubuntu@{ip}",
+        "docker exec claude-portable /opt/claude-portable/scripts/browser.sh start"
+    ], capture_output=True)
+
+    print(f"  VNC tunnel to {label} ({ip})")
+    print(f"  ─────────────────────────────────────")
+    print(f"  RealVNC:      localhost:5900")
+    print(f"  DevTools:     http://localhost:9222")
     print(f"  File browser: http://localhost:8080")
     print(f"  Press Ctrl+C to disconnect\n")
+
+    # Try to auto-launch VNC viewer
+    if PLATFORM == "gitbash":
+        for viewer in [
+            os.path.join(os.environ.get("ProgramFiles", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "RealVNC", "VNC Viewer", "vncviewer.exe"),
+        ]:
+            if viewer and os.path.isfile(viewer):
+                import threading
+                def launch_vnc():
+                    time.sleep(2)
+                    subprocess.Popen([viewer, "localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                threading.Thread(target=launch_vnc, daemon=True).start()
+                print(f"  Auto-launching RealVNC...")
+                break
+    elif PLATFORM == "mac":
+        import threading
+        def launch_vnc():
+            time.sleep(2)
+            subprocess.Popen(["open", "vnc://localhost:5900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=launch_vnc, daemon=True).start()
+        print(f"  Auto-launching Screen Sharing...")
 
     os.execvp("ssh", [
         "ssh", "-N",

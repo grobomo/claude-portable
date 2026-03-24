@@ -18,7 +18,8 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
   echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
   > /etc/apt/sources.list.d/google-chrome.list && \
   apt-get update && apt-get install -y --no-install-recommends \
-  google-chrome-stable xvfb fonts-liberation libgbm1 libnss3 libatk-bridge2.0-0 \
+  google-chrome-stable xvfb x11vnc fonts-liberation libgbm1 libnss3 libatk-bridge2.0-0 \
+  pcmanfm dbus-x11 \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages
@@ -66,7 +67,7 @@ ENV PATH=$PATH:/usr/local/share/npm-global/bin
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Workspace, config, and persistent session dirs
-RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp /data/sessions /data/exports && \
+RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp /data/sessions /data/exports /data/chrome-profile && \
   chown -R claude:claude /workspace /home/claude /opt/mcp /data
 
 # Copy scripts and config

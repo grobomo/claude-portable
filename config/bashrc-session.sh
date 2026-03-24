@@ -28,9 +28,10 @@ fi
 # Alias claude to the session wrapper
 alias claude='/opt/claude-portable/scripts/claude-session.sh'
 
-# Add sessions manager and state-sync to PATH
+# Add sessions manager, state-sync, and browser to PATH
 alias sessions='/opt/claude-portable/scripts/sessions.sh'
 alias state-sync='/opt/claude-portable/scripts/state-sync.sh'
+alias browser='/opt/claude-portable/scripts/browser.sh'
 
 # Push state to S3 on disconnect
 trap 'state-sync push &>/dev/null || true' EXIT
