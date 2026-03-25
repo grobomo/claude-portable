@@ -329,6 +329,91 @@ fi
 
 echo "  Backups saved to $BACKUP_DIR (for rollback)"
 
+# ── 8. Configure .env (interactive) ───────────────────────────────────────
+
+total_steps "Configuring .env..."
+ENV_FILE="$INSTALL_DIR/.env"
+
+# Cross-platform .env writer (avoids sed -i differences between Linux/macOS/Git Bash)
+set_env_var() {
+  local KEY="$1" VAL="$2" FILE="$3"
+  $PY -c "
+import re, sys
+key, val, path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f: text = f.read()
+pattern = rf'^{re.escape(key)}=.*$'
+if re.search(pattern, text, re.MULTILINE):
+    text = re.sub(pattern, f'{key}={val}', text, flags=re.MULTILINE)
+else:
+    text += f'\n{key}={val}\n'
+with open(path, 'w') as f: f.write(text)
+" "$KEY" "$VAL" "$FILE"
+}
+
+if [ -f "$ENV_FILE" ] && grep -q "ANTHROPIC_API_KEY=.\|CLAUDE_OAUTH_ACCESS_TOKEN=." "$ENV_FILE" 2>/dev/null; then
+  echo "  .env already configured."
+else
+  cp "$INSTALL_DIR/.env.example" "$ENV_FILE" 2>/dev/null || true
+  echo ""
+  echo "  Claude Portable needs an API key or OAuth tokens to run."
+  echo ""
+  echo "  Option A: Anthropic API key (from RDSEC portal > Claude API > Generate Key)"
+  echo "  Option B: OAuth tokens (Enterprise/Max -- from local Claude Code session)"
+  echo ""
+  read -p "  Do you have an Anthropic API key? (y/n) " -n 1 -r
+  echo
+
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo ""
+    read -sp "  Anthropic API key: " API_KEY
+    echo
+    if [ -n "$API_KEY" ]; then
+      set_env_var "ANTHROPIC_API_KEY" "$API_KEY" "$ENV_FILE"
+      echo "  API key saved."
+    fi
+  else
+    echo ""
+    echo "  Trying to detect OAuth tokens from local Claude Code..."
+    CREDS_FILE="$HOME/.claude/.credentials.json"
+    if [ -f "$CREDS_FILE" ]; then
+      ACCESS=$($PY -c "import json; d=json.load(open('$CREDS_FILE')); print(d.get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null || echo "")
+      REFRESH=$($PY -c "import json; d=json.load(open('$CREDS_FILE')); print(d.get('claudeAiOauth',{}).get('refreshToken',''))" 2>/dev/null || echo "")
+      if [ -n "$ACCESS" ] && [ -n "$REFRESH" ]; then
+        set_env_var "CLAUDE_OAUTH_ACCESS_TOKEN" "$ACCESS" "$ENV_FILE"
+        set_env_var "CLAUDE_OAUTH_REFRESH_TOKEN" "$REFRESH" "$ENV_FILE"
+        echo "  OAuth tokens detected and saved."
+      else
+        echo "  No OAuth tokens found. Edit $ENV_FILE manually with your API key."
+      fi
+    else
+      echo "  No local Claude credentials found."
+      echo "  Edit $ENV_FILE and set ANTHROPIC_API_KEY before running ccp."
+    fi
+  fi
+
+  # GitHub token
+  echo ""
+  GH_TOKEN=""
+  if command -v gh &>/dev/null; then
+    GH_TOKEN=$(gh auth token 2>/dev/null || echo "")
+  fi
+  if [ -n "$GH_TOKEN" ]; then
+    set_env_var "GITHUB_TOKEN" "$GH_TOKEN" "$ENV_FILE"
+    echo "  GitHub token auto-detected from gh CLI."
+  else
+    read -sp "  GitHub token (from github.com/settings/tokens, or press Enter to skip): " GH_TOKEN
+    echo
+    if [ -n "$GH_TOKEN" ]; then
+      set_env_var "GITHUB_TOKEN" "$GH_TOKEN" "$ENV_FILE"
+      echo "  GitHub token saved."
+    fi
+  fi
+
+  # Ensure repo URL is set
+  set_env_var "REPO_URL" "https://github.com/grobomo/claude-portable.git" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -336,7 +421,8 @@ echo "========================================="
 echo "  Installed!"
 echo "========================================="
 echo ""
-echo "  Run: $ALIAS_NAME"
+echo "  Launch your first instance:"
+echo "    $ALIAS_NAME --name dev"
 echo ""
 echo "  First launch takes ~5-7 min (builds container on EC2)."
 echo "  After that, stopped instances resume in ~30 sec."
