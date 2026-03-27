@@ -176,6 +176,25 @@ if [ "${CLAUDE_PORTABLE_MODE:-}" = "remote" ]; then
   echo "  Idle monitor PID: $!"
 fi
 
+# --- Start continuous-claude runner (autonomous task loop) ---
+if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ] && [ -n "${CONTINUOUS_CLAUDE_REPO:-}" ]; then
+  CC_BRANCH="${CONTINUOUS_CLAUDE_BRANCH:-main}"
+  CC_WORKDIR="/workspace/continuous-claude"
+  CC_SCRIPT="/opt/claude-portable/scripts/continuous-claude.sh"
+
+  if [ -x "$CC_SCRIPT" ]; then
+    echo "[+] Starting continuous-claude runner..."
+    echo "  Repo:   $CONTINUOUS_CLAUDE_REPO"
+    echo "  Branch: $CC_BRANCH"
+    echo "  Log:    /data/continuous-claude.log"
+    nohup "$CC_SCRIPT" "$CONTINUOUS_CLAUDE_REPO" "$CC_BRANCH" "$CC_WORKDIR" \
+      >> /data/continuous-claude.log 2>&1 &
+    echo "  continuous-claude PID: $!"
+  else
+    echo "  WARNING: continuous-claude.sh not found or not executable at $CC_SCRIPT"
+  fi
+fi
+
 # --- Trap EXIT to push state before container stops ---
 cleanup() {
   echo "[!] Container stopping -- pushing final state to S3..."
