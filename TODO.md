@@ -8,7 +8,7 @@
 - [x] Add continuous-claude env vars to docker-compose.yml and .env.example -- CONTINUOUS_CLAUDE_ENABLED, CONTINUOUS_CLAUDE_REPO, CONTINUOUS_CLAUDE_BRANCH. Pass them through to the container.
   - PR title: "feat: add continuous-claude env vars to compose config"
 
-- [ ] Add continuous-claude auto-start to bootstrap.sh -- if CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO is set, clone the repo and start the runner as a background daemon. Log to /data/continuous-claude.log.
+- [x] Add continuous-claude auto-start to bootstrap.sh -- if CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO is set, clone the repo and start the runner as a background daemon. Log to /data/continuous-claude.log.
   - PR title: "feat: auto-start continuous-claude in bootstrap"
 
 - [ ] Add gh CLI auth to bootstrap.sh -- if GITHUB_TOKEN is set, run `gh auth login --with-token` and `gh auth setup-git`. Also set git global user.name="claude-portable" and user.email="noreply@claude-portable".
