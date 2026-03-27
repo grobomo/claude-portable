@@ -15,21 +15,24 @@ echo "Idle monitor started: will stop instance after ${IDLE_TIMEOUT}min of inact
 echo "  Check interval: ${CHECK_INTERVAL}s, checks needed: ${IDLE_MAX}"
 
 while true; do
-  # Count active Claude processes, SSH sessions, and interactive shells
+  # Count active Claude processes, SSH sessions, interactive shells,
+  # and continuous-claude runner
   CLAUDE_PROCS="$(pgrep -c -f 'node.*claude' 2>/dev/null || true)"
   SSH_SESSIONS="$(who 2>/dev/null | wc -l || true)"
   INTERACTIVE="$(pgrep -c -f 'bash.*-l' 2>/dev/null || true)"
+  CONTINUOUS="$(pgrep -c -f 'continuous-claude' 2>/dev/null || true)"
 
   # Sanitize to plain integers (wc/pgrep may include whitespace or be empty)
   CLAUDE_PROCS="${CLAUDE_PROCS//[!0-9]/}"
   SSH_SESSIONS="${SSH_SESSIONS//[!0-9]/}"
   INTERACTIVE="${INTERACTIVE//[!0-9]/}"
+  CONTINUOUS="${CONTINUOUS//[!0-9]/}"
 
-  ACTIVE=$(( ${CLAUDE_PROCS:-0} + ${SSH_SESSIONS:-0} + ${INTERACTIVE:-0} ))
+  ACTIVE=$(( ${CLAUDE_PROCS:-0} + ${SSH_SESSIONS:-0} + ${INTERACTIVE:-0} + ${CONTINUOUS:-0} ))
 
   if [ "$ACTIVE" -gt 0 ]; then
     if [ "$IDLE_COUNT" -gt 0 ]; then
-      echo "  Activity detected (procs=$CLAUDE_PROCS, ssh=$SSH_SESSIONS). Resetting idle counter."
+      echo "  Activity detected (procs=$CLAUDE_PROCS, ssh=$SSH_SESSIONS, continuous=$CONTINUOUS). Resetting idle counter."
     fi
     IDLE_COUNT=0
   else

@@ -14,7 +14,7 @@
 - [x] Add gh CLI auth to bootstrap.sh -- if GITHUB_TOKEN is set, run `gh auth login --with-token` and `gh auth setup-git`. Also set git global user.name="claude-portable" and user.email="noreply@claude-portable".
   - PR title: "feat: authenticate gh CLI and git identity in bootstrap"
 
-- [ ] Fix idle-monitor.sh to detect continuous-claude process -- add pgrep for 'continuous-claude' to the activity check so it doesn't auto-shutdown while tasks are running.
+- [x] Fix idle-monitor.sh to detect continuous-claude process -- add pgrep for 'continuous-claude' to the activity check so it doesn't auto-shutdown while tasks are running.
   - PR title: "fix: idle monitor detects continuous-claude as active"
 
 ## Phase 2: MCP + Browser (out-of-box automation)
