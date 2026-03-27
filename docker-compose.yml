@@ -29,6 +29,10 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - CLAUDE_WEB_TOKEN=${CLAUDE_WEB_TOKEN:-}
+      # Continuous Claude (autonomous task runner)
+      - CONTINUOUS_CLAUDE_ENABLED=${CONTINUOUS_CLAUDE_ENABLED:-false}
+      - CONTINUOUS_CLAUDE_REPO=${CONTINUOUS_CLAUDE_REPO:-}
+      - CONTINUOUS_CLAUDE_BRANCH=${CONTINUOUS_CLAUDE_BRANCH:-main}
       - NODE_OPTIONS=--max-old-space-size=4096
     ports:
       - "2222:22"
