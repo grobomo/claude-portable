@@ -5,7 +5,7 @@
 - [x] Create `scripts/continuous-claude.sh` -- generic runner that clones a repo and loops through TODO.md tasks via PRs. Takes repo URL, branch, and workdir as args. Includes safety net for leftover PRs, MAX_ERRORS=3, and CONTINUOUS_CLAUDE_PROJECT_COMPLETE signal.
   - PR title: "feat: add continuous-claude runner script"
 
-- [ ] Add continuous-claude env vars to docker-compose.yml and .env.example -- CONTINUOUS_CLAUDE_ENABLED, CONTINUOUS_CLAUDE_REPO, CONTINUOUS_CLAUDE_BRANCH. Pass them through to the container.
+- [x] Add continuous-claude env vars to docker-compose.yml and .env.example -- CONTINUOUS_CLAUDE_ENABLED, CONTINUOUS_CLAUDE_REPO, CONTINUOUS_CLAUDE_BRANCH. Pass them through to the container.
   - PR title: "feat: add continuous-claude env vars to compose config"
 
 - [ ] Add continuous-claude auto-start to bootstrap.sh -- if CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO is set, clone the repo and start the runner as a background daemon. Log to /data/continuous-claude.log.
