@@ -11,7 +11,7 @@
 - [x] Add continuous-claude auto-start to bootstrap.sh -- if CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO is set, clone the repo and start the runner as a background daemon. Log to /data/continuous-claude.log.
   - PR title: "feat: auto-start continuous-claude in bootstrap"
 
-- [ ] Add gh CLI auth to bootstrap.sh -- if GITHUB_TOKEN is set, run `gh auth login --with-token` and `gh auth setup-git`. Also set git global user.name="claude-portable" and user.email="noreply@claude-portable".
+- [x] Add gh CLI auth to bootstrap.sh -- if GITHUB_TOKEN is set, run `gh auth login --with-token` and `gh auth setup-git`. Also set git global user.name="claude-portable" and user.email="noreply@claude-portable".
   - PR title: "feat: authenticate gh CLI and git identity in bootstrap"
 
 - [ ] Fix idle-monitor.sh to detect continuous-claude process -- add pgrep for 'continuous-claude' to the activity check so it doesn't auto-shutdown while tasks are running.
