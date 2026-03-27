@@ -22,7 +22,7 @@
 - [x] Populate components.yaml with mcp-manager and blueprint-extra-mcp entries -- both as private repos under grobomo org, type mcp, targets /opt/mcp/mcp-manager and /opt/mcp/blueprint-extra-mcp.
   - PR title: "feat: add mcp-manager and blueprint-extra to components.yaml"
 
-- [ ] Create config/servers.yaml for container -- Linux-native paths, blueprint-extra enabled with auto_start, command=node args=[/opt/mcp/blueprint-extra-mcp/run-server.js]. Copy to /opt/mcp/mcp-manager/servers.yaml during bootstrap.
+- [x] Create config/servers.yaml for container -- Linux-native paths, blueprint-extra enabled with auto_start, command=node args=[/opt/mcp/blueprint-extra-mcp/run-server.js]. Copy to /opt/mcp/mcp-manager/servers.yaml during bootstrap.
   - PR title: "feat: container-native servers.yaml for mcp-manager"
 
 - [ ] Write .mcp.json in bootstrap.sh -- create /home/claude/.mcp.json pointing to mcp-manager (command=node, args=[/opt/mcp/mcp-manager/build/index.js]). Must happen after MCP deps install step.

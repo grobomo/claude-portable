@@ -115,6 +115,12 @@ for dir in /opt/mcp/mcp-*/; do
   fi
 done
 
+# Copy container-native servers.yaml to mcp-manager
+if [ -d /opt/mcp/mcp-manager ] && [ -f /opt/claude-portable/config/servers.yaml ]; then
+  cp /opt/claude-portable/config/servers.yaml /opt/mcp/mcp-manager/servers.yaml
+  echo "  Copied servers.yaml to mcp-manager."
+fi
+
 # Write MCP server .env files from direct env vars
 if [ -n "${V1_API_TOKEN:-}" ] && [ -d /opt/mcp/mcp-v1-lite ]; then
   echo "V1_API_TOKEN=$V1_API_TOKEN" > /opt/mcp/mcp-v1-lite/.env
