@@ -121,6 +121,21 @@ if [ -d /opt/mcp/mcp-manager ] && [ -f /opt/claude-portable/config/servers.yaml 
   echo "  Copied servers.yaml to mcp-manager."
 fi
 
+# Write .mcp.json pointing to mcp-manager (must happen after MCP deps install)
+if [ -d /opt/mcp/mcp-manager ]; then
+  cat > "$HOME/.mcp.json" << 'MCP_JSON_EOF'
+{
+  "mcpServers": {
+    "mcp-manager": {
+      "command": "node",
+      "args": ["/opt/mcp/mcp-manager/build/index.js"]
+    }
+  }
+}
+MCP_JSON_EOF
+  echo "  Wrote $HOME/.mcp.json (mcp-manager entry point)."
+fi
+
 # Write MCP server .env files from direct env vars
 if [ -n "${V1_API_TOKEN:-}" ] && [ -d /opt/mcp/mcp-v1-lite ]; then
   echo "V1_API_TOKEN=$V1_API_TOKEN" > /opt/mcp/mcp-v1-lite/.env
