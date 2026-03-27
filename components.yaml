@@ -37,6 +37,22 @@
 # ===========================================================================
 # MCP SERVERS (add your own MCP servers here)
 # ===========================================================================
+- name: mcp-manager
+  repo: grobomo/mcp-manager
+  type: mcp
+  target: /opt/mcp/mcp-manager
+  enabled: true
+  visibility: private
+  description: "Central MCP server manager -- registers, proxies, and lifecycles all other MCP servers"
+
+- name: blueprint-extra-mcp
+  repo: grobomo/blueprint-extra-mcp
+  type: mcp
+  target: /opt/mcp/blueprint-extra-mcp
+  enabled: true
+  visibility: private
+  description: "Browser automation via headless Chrome with extensions support"
+
 # - name: my-mcp-server
 #   repo: your-org/my-mcp-server
 #   type: mcp
@@ -44,11 +60,3 @@
 #   enabled: false
 #   visibility: public
 #   description: "Your custom MCP server"
-
-# - name: blueprint
-#   repo: anthropics/blueprint
-#   type: mcp
-#   target: /opt/mcp/blueprint
-#   enabled: false
-#   visibility: public
-#   description: "Browser automation via headless Chrome (Blueprint MCP)"
