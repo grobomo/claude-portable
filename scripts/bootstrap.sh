@@ -4,11 +4,11 @@ set -euo pipefail
 echo "=== Claude Portable Bootstrap ==="
 
 # --- Step 1: Inject secrets (BWS or direct env vars) ---
-echo "[1/6] Injecting secrets..."
+echo "[1/7] Injecting secrets..."
 /opt/claude-portable/scripts/inject-secrets.sh
 
 # --- Step 2: Verify Claude auth + skip onboarding ---
-echo "[2/6] Verifying Claude authentication..."
+echo "[2/7] Verifying Claude authentication..."
 CREDS_FILE="$HOME/.claude/.credentials.json"
 if [ -f "$CREDS_FILE" ]; then
   echo "  OAuth credentials present."
@@ -48,8 +48,24 @@ CLAUDE_JSON_EOF
   echo "  Wrote $HOME/.claude.json (onboarding bypass)."
 fi
 
-# --- Step 3: Pull config from repos ---
-echo "[3/6] Syncing config from repos..."
+# --- Step 3: Authenticate gh CLI and configure git identity ---
+echo "[3/7] Setting up gh CLI and git identity..."
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null && \
+    echo "  gh CLI authenticated via GITHUB_TOKEN."
+  gh auth setup-git 2>/dev/null && \
+    echo "  gh auth setup-git complete."
+else
+  echo "  No GITHUB_TOKEN set. gh CLI not authenticated."
+fi
+
+# Set git identity for container commits (safe generic identity)
+git config --global user.name "claude-portable"
+git config --global user.email "noreply@claude-portable"
+echo "  Git identity: claude-portable <noreply@claude-portable>"
+
+# --- Step 4: Pull config from repos ---
+echo "[4/7] Syncing config from repos..."
 /opt/claude-portable/scripts/sync-config.sh || echo "  WARNING: Config sync had errors (non-fatal)."
 
 # Fix .claude.json location: Claude Code needs it at ~/ but hooks expect it at ~/.claude/ too.
@@ -67,12 +83,12 @@ if [ -f "$HOME/.claude.json" ] && [ ! -L "$HOME/.claude/.claude.json" ]; then
   echo "  Symlinked ~/.claude/.claude.json -> ~/.claude.json"
 fi
 
-# --- Step 4: Rewrite paths for container ---
-echo "[4/6] Rewriting paths for container..."
+# --- Step 5: Rewrite paths for container ---
+echo "[5/7] Rewriting paths for container..."
 /opt/claude-portable/scripts/rewrite-paths.sh
 
-# --- Step 5: SSH server for file sync ---
-echo "[5/6] Starting SSH server..."
+# --- Step 6: SSH server for file sync ---
+echo "[6/7] Starting SSH server..."
 if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
   mkdir -p "$HOME/.ssh"
   echo "$SSH_PUBLIC_KEY" >> "$HOME/.ssh/authorized_keys"
@@ -85,8 +101,8 @@ else
   echo "  No SSH key provided. SSH disabled."
 fi
 
-# --- Step 6: Install MCP dependencies + inject tokens ---
-echo "[6/6] Installing MCP server dependencies..."
+# --- Step 7: Install MCP dependencies + inject tokens ---
+echo "[7/7] Installing MCP server dependencies..."
 for dir in /opt/mcp/mcp-*/; do
   [ -d "$dir" ] || continue
   svc=$(basename "$dir")
