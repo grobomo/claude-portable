@@ -132,6 +132,20 @@ fi
 mkdir -p /data/sessions /data/exports
 echo "  Session logs: /data/sessions/"
 
+# --- Start web-chat server (mobile phone access) ---
+if [ -f /opt/claude-portable/scripts/web-chat.js ]; then
+  echo "[+] Starting web-chat server on port ${CLAUDE_WEB_PORT:-8888}..."
+  export NODE_PATH=/opt/claude-portable/node_modules
+  nohup node /opt/claude-portable/scripts/web-chat.js \
+    >> /data/web-chat.log 2>&1 &
+  echo "  web-chat PID: $!"
+  # Wait briefly and show the access token
+  sleep 1
+  if [ -f /data/web-chat-token ]; then
+    echo "  web-chat token: $(cat /data/web-chat-token)"
+  fi
+fi
+
 # --- Pull conversation state from S3 (if bucket exists) ---
 if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; then
   if [ -x /usr/local/bin/state-sync ] || [ -x /opt/claude-portable/scripts/state-sync.sh ]; then

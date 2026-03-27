@@ -5,6 +5,8 @@ workspace/
 *.enc
 *.pem
 session-logs/
+bookmarks.json
+continuous-claude.log
 
 # config/components.yaml is user-customized; components.yaml (root) is the template
 config/components.yaml

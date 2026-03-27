@@ -66,6 +66,12 @@ ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
+# web-chat WebSocket dependency (ws is the only runtime dep)
+RUN cd /tmp && npm init -y > /dev/null 2>&1 && npm install ws && \
+  mkdir -p /opt/claude-portable/node_modules && \
+  cp -r node_modules/ws /opt/claude-portable/node_modules/ && \
+  rm -rf /tmp/package* /tmp/node_modules
+
 # Workspace, config, and persistent session dirs
 RUN mkdir -p /workspace /home/claude/.claude /home/claude/.ssh /opt/mcp /data/sessions /data/exports /data/chrome-profile && \
   chown -R claude:claude /workspace /home/claude /opt/mcp /data

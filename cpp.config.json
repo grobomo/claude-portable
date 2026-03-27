@@ -9,5 +9,6 @@
   "repo_url": "https://github.com/grobomo/claude-portable.git",
   "spot": false,
   "auto_sync_interval_seconds": 60,
-  "auto_stop_on_idle": true
+  "auto_stop_on_idle": true,
+  "web_chat_lambda_url": "https://6c3oot6ity2ochkw5sybyghbdq0ycnaq.lambda-url.us-east-2.on.aws/"
 }

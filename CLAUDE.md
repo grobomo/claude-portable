@@ -50,10 +50,6 @@ claude-portable container (Debian bookworm + Node 20)
 | `components.yaml` | Component manifest -- repos to pull at startup |
 | `install.sh` | One-time installer (prereqs + `ccp` command on PATH) |
 | `test.sh` | E2E test (launch, validate, teardown) |
-| `run.sh` | Legacy CF-based deploy (supports --name) |
-| `list.sh` | List all running instances |
-| `terminate.sh` | Terminate instances by name or --all |
-| `push.sh` | Push file updates to running instances |
 | `.env.example` | Template for secrets |
 | `.env` | Actual secrets (gitignored) |
 
@@ -73,6 +69,11 @@ claude-portable container (Debian bookworm + Node 20)
 | `scripts/msg.sh` | Inter-instance messaging via S3 |
 | `scripts/inject-secrets.sh` | BWS or direct env var injection |
 | `scripts/rewrite-paths.sh` | Fix absolute paths for container |
+| `scripts/web-chat.js` | WebSocket chat server for mobile phone access |
+| `scripts/web-chat.html` | Mobile-first chat UI (served by web-chat.js) |
+| `lambda/web-chat/index.mjs` | Lambda entry point -- discovers EC2, relays prompts |
+| `lambda/web-chat/ui.mjs` | Embedded mobile chat UI (served by Lambda on GET /) |
+| `lambda/web-chat/deploy.sh` | Deploy/update the Lambda + function URL |
 
 ## Auth
 
@@ -183,6 +184,47 @@ msg who
   visibility: public     # public | private (private needs GITHUB_TOKEN)
 ```
 
+## Web Chat (Mobile Access)
+
+Offload conversations to the cloud and continue from your phone.
+
+**Offload from local machine:**
+```bash
+cpp offload "refactor the auth module"          # send prompt, get web URL
+cpp offload -n dev                              # just get the web URL for existing instance
+cpp offload -n dev -w /workspace/my-project     # set working directory
+```
+
+**How it works:**
+1. `cpp offload` ensures an instance is running + web-chat server is up
+2. Prints a URL with embedded auth token -- open on your phone
+3. Mobile chat UI connects via WebSocket, sends prompts to Claude CLI
+4. Claude streams responses back in real-time
+
+**Security:**
+- Token auth (auto-generated or set via `CLAUDE_WEB_TOKEN` env var)
+- WebSocket heartbeat (30s ping, detects dead connections)
+- Rate limiting (20 msgs/min per client)
+- Max 5 concurrent connections
+- Port 8888 open in security group (token required to use)
+
+**Architecture:**
+- `lambda/web-chat/` -- Lambda Function URL (stable HTTPS endpoint, never changes)
+- `scripts/web-chat.js` -- runs on EC2 container, handles Claude CLI interaction
+- Lambda discovers running EC2 instance and relays prompts to it
+- Phone -> Lambda (HTTPS) -> EC2:8888 (HTTP) -> Claude CLI
+
+**Deploy Lambda:** `bash lambda/web-chat/deploy.sh`
+
+**Stable URL:** configured in `cpp.config.json` as `web_chat_lambda_url`
+
+**Env vars:**
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLAUDE_WEB_TOKEN` | auto-generated | Auth token for web chat |
+| `CLAUDE_WEB_PORT` | 8888 | Server port |
+| `CLAUDE_WEB_MAX_CONN` | 5 | Max concurrent WebSocket connections |
+
 ## Session Tracking
 
 Every SSH connection gets a unique session ID. All Claude interactions are logged to `/data/sessions/`.
@@ -213,6 +255,7 @@ S3 state-sync provides durability beyond Docker volumes.
 | 5900 | VNC (Chrome desktop) | localhost only (SSH tunnel) |
 | 9222 | Chrome DevTools | localhost only |
 | 8080 | File browser | localhost only |
+| 8888 | Web chat (phone access) | Public (token-authed) |
 
 ## Testing
 

@@ -28,6 +28,7 @@ services:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-2}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - CLAUDE_WEB_TOKEN=${CLAUDE_WEB_TOKEN:-}
       - NODE_OPTIONS=--max-old-space-size=4096
     ports:
       - "2222:22"

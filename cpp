@@ -22,6 +22,29 @@ import time
 
 PROJECT_TAG = "claude-portable"
 
+# ── QR code in terminal ──────────────────────────────────────────────────────
+
+def _print_qr(url):
+    """Print a scannable QR code to the terminal using ASCII block characters."""
+    try:
+        import qrcode
+    except ImportError:
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "qrcode"],
+                           capture_output=True, timeout=30)
+            import qrcode
+        except Exception:
+            print(f"\n  (Install 'qrcode' for QR: pip install qrcode)\n")
+            return
+
+    import io
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(url)
+    qr.make()
+    buf = io.StringIO()
+    qr.print_ascii(out=buf, invert=True)
+    sys.stdout.buffer.write(buf.getvalue().encode("utf-8"))
+
 # ── Platform detection ───────────────────────────────────────────────────────
 
 def _detect_platform():
@@ -458,12 +481,20 @@ def launch_new(name=None):
              "--filters", json.dumps([{"Name": "group-name", "Values": ["cpp-sg"]}]))
     if sg and sg.get("SecurityGroups"):
         sg_id = sg["SecurityGroups"][0]["GroupId"]
+        # Ensure port 8888 is open (may be missing on older SGs)
+        existing_ports = set()
+        for perm in sg["SecurityGroups"][0].get("IpPermissions", []):
+            existing_ports.add(perm.get("FromPort", 0))
+        if 8888 not in existing_ports:
+            aws("ec2", "authorize-security-group-ingress",
+                "--group-id", sg_id,
+                "--protocol", "tcp", "--port", "8888", "--cidr", "0.0.0.0/0")
     else:
         sg_result = aws("ec2", "create-security-group",
                         "--group-name", "cpp-sg",
                         "--description", "Claude Portable SSH access")
         sg_id = sg_result["GroupId"]
-        for port in [22, 2222]:
+        for port in [22, 2222, 8888]:
             aws("ec2", "authorize-security-group-ingress",
                 "--group-id", sg_id,
                 "--protocol", "tcp", "--port", str(port), "--cidr", "0.0.0.0/0")
@@ -1123,6 +1154,137 @@ def cmd_vnc(args):
     except KeyboardInterrupt:
         print("\n  Tunnel closed.")
 
+def cmd_offload(args):
+    """Offload a prompt to a cloud instance and return the web chat URL."""
+    prompt = " ".join(args.prompt) if args.prompt else None
+    name = args.name
+    project = args.project or "/workspace"
+
+    print("=" * 45)
+    print("  cpp offload -- Send work to the cloud")
+    print("=" * 45)
+
+    # Find or launch instance
+    inst = find_available(name)
+    ssh_key = None
+
+    if inst:
+        ssh_key = find_ssh_key(inst)
+        if inst["state"] == "stopped":
+            print(f"\n  Starting stopped instance: {inst['name']}...")
+            ip = start_instance(inst["id"])
+            inst["ip"] = ip
+            print(f"  Waiting for container...", end="", flush=True)
+            if not wait_for_container(ip, ssh_key, timeout=120):
+                subprocess.run([
+                    "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+                    "-i", ssh_key, f"ubuntu@{ip}",
+                    "cd /opt/claude-portable && docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d"
+                ], capture_output=True)
+                wait_for_container(ip, ssh_key, timeout=180)
+            print(" ready!")
+        else:
+            print(f"\n  Using running instance: {inst['name']} ({inst['ip']})")
+    else:
+        print(f"\n  No existing instance. Launching new...")
+        inst = launch_new(name)
+        ssh_key = inst.get("ssh_key") or find_ssh_key(inst)
+        print(f"  Waiting for container (~3-5 min)...", end="", flush=True)
+        if not wait_for_container(inst["ip"], ssh_key, timeout=420):
+            print(f"\n  Container not ready.")
+            sys.exit(1)
+        print(" ready!")
+        setup_instance(inst["ip"], ssh_key, inst.get("label", name or "offload"))
+
+    if not ssh_key:
+        ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print("ERROR: No SSH key found.")
+        sys.exit(1)
+
+    push_credentials(inst["ip"], ssh_key)
+
+    # Ensure web-chat is running and get the token
+    ip = inst["ip"]
+
+    # Check if web-chat is already running
+    r = subprocess.run([
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+        "-i", ssh_key, f"ubuntu@{ip}",
+        "docker exec claude-portable bash -c 'pgrep -f web-chat.js || true'"
+    ], capture_output=True, text=True, timeout=10)
+
+    if not r.stdout.strip():
+        print("  Starting web-chat server...")
+        subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, f"ubuntu@{ip}",
+            "docker exec -d claude-portable bash -c '"
+            "export NODE_PATH=/opt/claude-portable/node_modules; "
+            "nohup node /opt/claude-portable/scripts/web-chat.js >> /data/web-chat.log 2>&1 &'"
+        ], capture_output=True, timeout=15)
+        time.sleep(2)
+
+    # Get the auth token
+    r = subprocess.run([
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+        "-i", ssh_key, f"ubuntu@{ip}",
+        "docker exec claude-portable cat /data/web-chat-token 2>/dev/null || echo ''"
+    ], capture_output=True, text=True, timeout=10)
+    token = r.stdout.strip()
+
+    direct_url = f"http://{ip}:8888/?token={token}"
+    lambda_url = CFG.get("web_chat_lambda_url", "")
+
+    # If a prompt was given, send it to Claude via SSH
+    if prompt:
+        print(f"\n  Sending prompt to Claude...")
+        print(f"  Prompt: {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
+        escaped_prompt = prompt.replace("'", "'\\''")
+        subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", ssh_key, f"ubuntu@{ip}",
+            f"docker exec -d -w {project} claude-portable bash -c '"
+            f"claude -p '\"'\"'{escaped_prompt}'\"'\"' > /data/sessions/offload-latest.log 2>&1'"
+        ], capture_output=True, timeout=15)
+        print("  Claude is working on it in the background.")
+
+    # Print access info
+    phone_url = lambda_url if lambda_url else direct_url
+    print(f"\n  {'=' * 50}")
+    print(f"  Web Chat (open on phone):")
+    print(f"")
+    if lambda_url:
+        print(f"    {lambda_url}")
+        print(f"")
+        print(f"  Token:     {token}")
+    else:
+        print(f"    {direct_url}")
+    print(f"")
+    print(f"  Instance:  {inst.get('name', 'unknown')} ({ip})")
+    if prompt:
+        print(f"  Status:    Claude is processing your prompt")
+    else:
+        print(f"  Status:    Ready for prompts via web UI")
+    print(f"  {'=' * 50}")
+
+    # Show QR code in terminal for phone scanning
+    sys.stdout.flush()
+    _print_qr(phone_url)
+
+    # Copy URL to clipboard if possible
+    try:
+        if PLATFORM == "gitbash":
+            subprocess.run(["clip"], input=phone_url.encode(), check=True, timeout=5)
+            print(f"  URL copied to clipboard!")
+        elif PLATFORM == "mac":
+            subprocess.run(["pbcopy"], input=phone_url.encode(), check=True, timeout=5)
+            print(f"  URL copied to clipboard!")
+    except Exception:
+        pass
+
+    print()
+
 def cmd_config(args):
     config_path = CFG.get("_config_path", "not found")
     print(f"\n  Config: {config_path}")
@@ -1157,6 +1319,10 @@ def main():
     p_scp = sub.add_parser("scp", help="Transfer files to/from instance")
     p_scp.add_argument("-n", "--name", help="Instance name")
     p_scp.add_argument("paths", nargs="*", help="<local> <remote> or <remote> <local>")
+    p_offload = sub.add_parser("offload", help="Send work to cloud instance, get web URL for phone")
+    p_offload.add_argument("-n", "--name", help="Instance name")
+    p_offload.add_argument("-w", "--project", default="/workspace", help="Working directory on instance")
+    p_offload.add_argument("prompt", nargs="*", help="Prompt to send to Claude (optional)")
 
     args = parser.parse_args()
 
@@ -1178,6 +1344,8 @@ def main():
         cmd_secure(args)
     elif args.command == "vnc":
         cmd_vnc(args)
+    elif args.command == "offload":
+        cmd_offload(args)
     else:
         cmd_connect(args)
 
