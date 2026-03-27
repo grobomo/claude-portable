@@ -2,7 +2,7 @@
 
 ## Phase 1: Core (continuous-claude runner)
 
-- [ ] Create `scripts/continuous-claude.sh` -- generic runner that clones a repo and loops through TODO.md tasks via PRs. Takes repo URL, branch, and workdir as args. Includes safety net for leftover PRs, MAX_ERRORS=3, and CONTINUOUS_CLAUDE_PROJECT_COMPLETE signal.
+- [x] Create `scripts/continuous-claude.sh` -- generic runner that clones a repo and loops through TODO.md tasks via PRs. Takes repo URL, branch, and workdir as args. Includes safety net for leftover PRs, MAX_ERRORS=3, and CONTINUOUS_CLAUDE_PROJECT_COMPLETE signal.
   - PR title: "feat: add continuous-claude runner script"
 
 - [ ] Add continuous-claude env vars to docker-compose.yml and .env.example -- CONTINUOUS_CLAUDE_ENABLED, CONTINUOUS_CLAUDE_REPO, CONTINUOUS_CLAUDE_BRANCH. Pass them through to the container.
