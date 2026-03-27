@@ -1,0 +1,28 @@
+# Container-native servers.yaml for mcp-manager
+# Copied to /opt/mcp/mcp-manager/servers.yaml during bootstrap.
+# All paths are Linux container paths (not Windows).
+
+servers:
+  blueprint-extra:
+    description: Blueprint MCP fork - relay mode, iframe snapshots, incognito tabs
+    command: node
+    args:
+      - /opt/mcp/blueprint-extra-mcp/run-server.js
+    enabled: true
+    auto_start: true
+    idle_timeout: 3600000
+    tags:
+      - browser
+      - automation
+    keywords:
+      - blueprint
+      - browser
+      - screenshot
+      - click
+      - navigate
+      - automation
+
+defaults:
+  timeout: 30000
+  retry_count: 3
+  health_check_interval: 60
