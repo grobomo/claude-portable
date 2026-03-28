@@ -3,19 +3,20 @@
 ccc -- Claude Code Container launcher.
 
 Manages EC2 instances with stop/start lifecycle:
-  ccc                  Connect to a running/stopped instance, or launch new
-  ccc --name dev       Use/create a named instance
-  ccc --new            Always launch a fresh instance
-  ccc --continuous URL Launch with continuous-claude enabled
-  ccc list             List all managed instances
-  ccc stop [name]      Stop an instance (keeps state, no cost)
-  ccc kill [name]      Terminate an instance permanently
-  ccc kill --all       Terminate everything
-  ccc status [name]    Show continuous-claude and daemon status
-  ccc dashboard        Fleet-wide view: all instances, branches, PRs, processes
-  ccc cancel <name>    Kill Claude on an instance (--all kills runner, --cleanup deletes branch)
-  ccc maint <name>     Pause task pickup for troubleshooting (--off to resume)
-  ccc teams <chat_id>  Poll Teams chat for @claude, dispatch to ccc instances
+  ccc                       Connect to a running/stopped instance, or launch new
+  ccc --name dev            Use/create a named instance
+  ccc --new                 Always launch a fresh instance
+  ccc --continuous URL      Launch with continuous-claude enabled
+  ccc --role dispatcher     Launch a dedicated t3.small dispatcher instance
+  ccc list                  List all managed instances
+  ccc stop [name]           Stop an instance (keeps state, no cost)
+  ccc kill [name]           Terminate an instance permanently
+  ccc kill --all            Terminate everything
+  ccc status [name]         Show continuous-claude and daemon status
+  ccc dashboard             Fleet-wide view: all instances, branches, PRs, processes
+  ccc cancel <name>         Kill Claude on an instance (--all kills runner, --cleanup deletes branch)
+  ccc maint <name>          Pause task pickup for troubleshooting (--off to resume)
+  ccc teams <chat_id>       Poll Teams chat for @claude, dispatch to ccc instances
 """
 import argparse
 import json
@@ -394,6 +395,7 @@ def get_instances(name_filter=None):
                 "label": label,
                 "key_name": inst.get("KeyName", ""),
                 "launched": inst.get("LaunchTime", ""),
+                "role": tags.get("Role", "worker"),
             })
     return instances
 
@@ -438,8 +440,14 @@ def wait_for_container(ip, ssh_key, timeout=300):
         time.sleep(5)
     return False
 
-def launch_new(name=None, continuous_repo=None, continuous_branch="main"):
-    """Launch a new on-demand EC2 instance."""
+def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=None):
+    """Launch a new on-demand EC2 instance.
+
+    role: None (default worker) or 'dispatcher' (t3.small, runs dispatcher-daemon.sh,
+          tagged Role=dispatcher, no Chrome/VNC).
+    """
+    is_dispatcher = (role == "dispatcher")
+
     # Enforce max instances
     existing = get_instances()
     active = [i for i in existing if i["state"] in ("running", "stopped", "pending")]
@@ -450,9 +458,9 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main"):
         print(f"  Use: ccc stop <name> or ccc kill <name>")
         sys.exit(1)
 
-    label = name or f"box-{int(time.time()) % 10000}"
+    label = name or ("dispatcher" if is_dispatcher else f"box-{int(time.time()) % 10000}")
     instance_name = f"ccc-{label}"
-    print(f"  Launching new instance: {instance_name}")
+    print(f"  Launching new instance: {instance_name}" + (" (dispatcher)" if is_dispatcher else ""))
 
     # Use golden AMI if available, otherwise latest Ubuntu 24.04
     golden_ami = CFG.get("golden_ami", "")
@@ -553,8 +561,22 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main"):
         env_vars["CONTINUOUS_CLAUDE_REPO"] = continuous_repo
         env_vars["CONTINUOUS_CLAUDE_BRANCH"] = continuous_branch
 
+    # Dispatcher-specific env vars (read from .env if present)
+    if is_dispatcher:
+        for key in ("DISPATCHER_CHAT_ID", "DISPATCHER_TRIGGER", "DISPATCHER_POLL_INTERVAL",
+                    "DISPATCHER_SECRET_NAME", "DISPATCHER_KEY_SYNC_INTERVAL"):
+            if key in env_vars:
+                pass  # already loaded from .env
+        env_vars.setdefault("DISPATCHER_SECRET_NAME", "claude-portable/graph-token")
+
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
+
+    # Compose file list: dispatcher adds docker-compose.dispatcher.yml
+    if is_dispatcher:
+        compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.dispatcher.yml"
+    else:
+        compose_files = "-f docker-compose.yml -f docker-compose.remote.yml"
 
     if golden_ami:
         # Golden AMI: Docker + container already built. Just write .env and start.
@@ -566,9 +588,9 @@ cat > .env << 'ENVEOF'
 """
         for k, v in env_vars.items():
             userdata += f"{k}={v}\n"
-        userdata += """ENVEOF
+        userdata += f"""ENVEOF
 
-docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+docker compose {compose_files} up -d
 """
     else:
         # Base AMI: full install from scratch
@@ -595,10 +617,10 @@ cat > .env << 'ENVEOF'
 """
         for k, v in env_vars.items():
             userdata += f"{k}={v}\n"
-        userdata += """ENVEOF
+        userdata += f"""ENVEOF
 
-docker compose -f docker-compose.yml -f docker-compose.remote.yml build
-docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+docker compose {compose_files} build
+docker compose {compose_files} up -d
 """
 
     import base64
@@ -607,7 +629,7 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
     # Launch instance (on-demand, stoppable, hardened)
     result = aws("ec2", "run-instances",
                  "--image-id", ami_id,
-                 "--instance-type", INSTANCE_TYPE,
+                 "--instance-type", "t3.small" if is_dispatcher else INSTANCE_TYPE,
                  "--key-name", instance_key_name,
                  "--security-group-ids", sg_id,
                  "--user-data", userdata,
@@ -631,7 +653,7 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
                      "Tags": [
                          {"Key": "Name", "Value": instance_name},
                          {"Key": "Project", "Value": PROJECT_TAG},
-                     ]
+                     ] + ([{"Key": "Role", "Value": "dispatcher"}] if is_dispatcher else [])
                  }]),
                  "--instance-initiated-shutdown-behavior", "stop")
 
@@ -648,7 +670,8 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
     desc = aws("ec2", "describe-instances", "--instance-ids", instance_id)
     ip = desc["Reservations"][0]["Instances"][0].get("PublicIpAddress", "")
 
-    return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running", "ssh_key": instance_key_path}
+    return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running",
+            "ssh_key": instance_key_path, "role": role or "worker"}
 
 def _get_aws_credentials():
     """Get AWS credentials content. Tries OS keyring first, then ~/.aws/credentials."""
@@ -855,6 +878,8 @@ def cmd_connect(args):
     name = args.name
     continuous_repo = getattr(args, 'continuous', None)
     continuous_branch = getattr(args, 'branch', 'main') or 'main'
+    role = getattr(args, 'role', None)
+    is_dispatcher = (role == "dispatcher")
 
     print("=" * 45)
     alias = CFG.get("alias", "ccc")
@@ -875,29 +900,39 @@ def cmd_connect(args):
                 inst["ip"] = ip
                 print(f"  IP: {ip}")
                 print(f"  Waiting for container...", end="", flush=True)
+                inst_role = inst.get("role", "worker")
+                if inst_role == "dispatcher":
+                    compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.dispatcher.yml"
+                else:
+                    compose_files = "-f docker-compose.yml -f docker-compose.remote.yml"
                 if not wait_for_container(ip, ssh_key, timeout=120):
                     subprocess.run([
                         "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
                         "-i", ssh_key, f"ubuntu@{ip}",
-                        "cd /opt/claude-portable && docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d"
+                        f"cd /opt/claude-portable && docker compose {compose_files} up -d"
                     ], capture_output=True)
                     wait_for_container(ip, ssh_key, timeout=180)
                 print(" ready!")
             else:
                 print(f"\n  Found running instance: {inst['name']} ({inst['ip']})")
 
-            push_credentials(inst["ip"], ssh_key)
+            if not is_dispatcher:
+                push_credentials(inst["ip"], ssh_key)
 
-            # Inject continuous-claude into existing instance if requested
-            if continuous_repo:
-                _inject_continuous_claude(inst["ip"], ssh_key, continuous_repo, continuous_branch)
+                # Inject continuous-claude into existing instance if requested
+                if continuous_repo:
+                    _inject_continuous_claude(inst["ip"], ssh_key, continuous_repo, continuous_branch)
 
-            connect(inst["ip"], ssh_key, inst["label"])
+                connect(inst["ip"], ssh_key, inst["label"])
+            else:
+                print(f"\n  Dispatcher {inst['label']} is running at {inst['ip']}")
+                print(f"  SSH: ssh -i {ssh_key} ubuntu@{inst['ip']}")
+                print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
             return
 
     # Launch new
     print()
-    inst = launch_new(name, continuous_repo=continuous_repo, continuous_branch=continuous_branch)
+    inst = launch_new(name, continuous_repo=continuous_repo, continuous_branch=continuous_branch, role=role)
     ssh_key = inst.get("ssh_key") or find_ssh_key(inst)
     if not ssh_key:
         print("ERROR: No SSH key found.")
@@ -908,28 +943,33 @@ def cmd_connect(args):
         sys.exit(1)
     print(" ready!")
 
-    setup_instance(inst["ip"], ssh_key, inst["label"])
-    push_credentials(inst["ip"], ssh_key)
-    start_idle_monitor(inst["ip"], ssh_key)
+    if not is_dispatcher:
+        setup_instance(inst["ip"], ssh_key, inst["label"])
+        push_credentials(inst["ip"], ssh_key)
+        start_idle_monitor(inst["ip"], ssh_key)
 
-    if continuous_repo:
-        print(f"\n  Continuous-claude will auto-start via bootstrap.")
-        print(f"  Repo:   {continuous_repo}")
-        print(f"  Branch: {continuous_branch}")
-        print(f"  Monitor: ccc status {name or inst['label']}")
-        print(f"  Logs:    ccc logs -f {name or inst['label']}")
+        if continuous_repo:
+            print(f"\n  Continuous-claude will auto-start via bootstrap.")
+            print(f"  Repo:   {continuous_repo}")
+            print(f"  Branch: {continuous_branch}")
+            print(f"  Monitor: ccc status {name or inst['label']}")
+            print(f"  Logs:    ccc logs -f {name or inst['label']}")
 
-    connect(inst["ip"], ssh_key, inst["label"])
+        connect(inst["ip"], ssh_key, inst["label"])
+    else:
+        print(f"\n  Dispatcher launched: {inst['label']} ({inst['ip']})")
+        print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
+        print(f"  SSH:  ssh -i {ssh_key} ubuntu@{inst['ip']}")
 
 def cmd_list(args):
     instances = get_instances()
     if not instances:
         print("No managed instances.")
         return
-    print(f"\n{'NAME':<20} {'ID':<22} {'STATE':<10} {'IP':<16} {'TYPE':<12}")
-    print(f"{'-'*20} {'-'*22} {'-'*10} {'-'*16} {'-'*12}")
+    print(f"\n{'NAME':<20} {'ID':<22} {'STATE':<10} {'IP':<16} {'TYPE':<12} {'ROLE':<12}")
+    print(f"{'-'*20} {'-'*22} {'-'*10} {'-'*16} {'-'*12} {'-'*12}")
     for i in instances:
-        print(f"{i['label']:<20} {i['id']:<22} {i['state']:<10} {i.get('ip',''):<16} {i['type']:<12}")
+        print(f"{i['label']:<20} {i['id']:<22} {i['state']:<10} {i.get('ip',''):<16} {i['type']:<12} {i.get('role','worker'):<12}")
     print()
 
 def cmd_stop(args):
@@ -1793,6 +1833,8 @@ def main():
                         help="Enable continuous-claude with this repo URL")
     parser.add_argument("--branch", "-b", default="main",
                         help="Branch for continuous-claude (default: main)")
+    parser.add_argument("--role", choices=["dispatcher"],
+                        help="Instance role: 'dispatcher' launches t3.small running dispatcher-daemon.sh")
 
     p_list = sub.add_parser("list", help="List instances")
     p_stop = sub.add_parser("stop", help="Stop instance(s)")
