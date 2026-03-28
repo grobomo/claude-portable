@@ -9,7 +9,7 @@
  *   - Token auth via CLAUDE_WEB_TOKEN (required for non-health endpoints)
  *   - Origin header validation
  *   - WebSocket heartbeat (30s ping/pong, 10s timeout)
- *   - Per-client rate limiting (max 20 messages/minute)
+ *   - Per-user rate limiting (max 20 prompts/hour, set CHATBOT_RATE_LIMIT)
  *   - Max concurrent connections (default 5)
  *   - Auto-generated token if none provided
  *
@@ -27,7 +27,7 @@ const crypto = require("crypto");
 
 const PORT = parseInt(process.env.CLAUDE_WEB_PORT || "8888", 10);
 const MAX_CONNECTIONS = parseInt(process.env.CLAUDE_WEB_MAX_CONN || "10", 10);
-const RATE_LIMIT = 20; // messages per minute per client
+const RATE_LIMIT = parseInt(process.env.CHATBOT_RATE_LIMIT || "20", 10); // prompts per hour per user
 const HEARTBEAT_INTERVAL = 30000; // 30s
 const HEARTBEAT_TIMEOUT = 10000; // 10s grace
 const SESSION_DIR = "/data/sessions";
@@ -43,8 +43,8 @@ const sessions = new Map(); // ws -> session object
 // Track active usernames to prevent duplicate sessions
 const activeUsers = new Map(); // username -> ws
 
-// Per-client rate limiting
-const rateLimits = new Map(); // ws -> { count, resetAt }
+// Per-user rate limiting (keyed by username, persists across reconnects within the hour window)
+const rateLimits = new Map(); // username -> { count, resetAt }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,15 +60,20 @@ function sanitizeUsername(name) {
   return /^[a-zA-Z0-9_-]+$/.test(trimmed) ? trimmed : "";
 }
 
-function isRateLimited(ws) {
+function isRateLimited(username) {
+  if (!username) return false; // not yet identified — allow name message through
   const now = Date.now();
-  let rl = rateLimits.get(ws);
+  let rl = rateLimits.get(username);
   if (!rl || now > rl.resetAt) {
-    rl = { count: 0, resetAt: now + 60000 };
-    rateLimits.set(ws, rl);
+    rl = { count: 0, resetAt: now + 3600000 }; // 1-hour window
+    rateLimits.set(username, rl);
   }
   rl.count++;
-  return rl.count > RATE_LIMIT;
+  if (rl.count > RATE_LIMIT) {
+    const minutesLeft = Math.ceil((rl.resetAt - now) / 60000);
+    return `Rate limit reached (${RATE_LIMIT} prompts/hour). Try again in ${minutesLeft} min.`;
+  }
+  return null;
 }
 
 function safeSend(ws, data) {
@@ -271,10 +276,13 @@ wss.on("connection", (ws, req) => {
 
   // ── Message handler ──
   ws.on("message", (raw) => {
-    // Rate limit
-    if (isRateLimited(ws)) {
-      safeSend(ws, { type: "error", text: "Rate limited. Slow down." });
-      return;
+    // Per-user hourly rate limit (skip check while awaiting name)
+    if (!session.awaitingName) {
+      const limitMsg = isRateLimited(session.user);
+      if (limitMsg) {
+        safeSend(ws, { type: "error", text: limitMsg });
+        return;
+      }
     }
 
     let msg;
@@ -332,7 +340,8 @@ wss.on("connection", (ws, req) => {
       session.proc.kill("SIGTERM");
     }
     sessions.delete(ws);
-    rateLimits.delete(ws);
+    // Note: rateLimits keyed by username — intentionally NOT deleted on disconnect
+    // so the hourly window persists across reconnects.
     if (session.user && activeUsers.get(session.user) === ws) {
       activeUsers.delete(session.user);
     }
@@ -573,6 +582,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`web-chat listening on http://0.0.0.0:${PORT}`);
   console.log(`Auth token: ${TOKEN}`);
   console.log(`Max connections: ${MAX_CONNECTIONS}`);
-  console.log(`Rate limit: ${RATE_LIMIT} msgs/min per client`);
+  console.log(`Rate limit: ${RATE_LIMIT} prompts/hour per user (CHATBOT_RATE_LIMIT)`);
   console.log(`Heartbeat: ${HEARTBEAT_INTERVAL / 1000}s ping, ${HEARTBEAT_TIMEOUT / 1000}s timeout`);
 });
