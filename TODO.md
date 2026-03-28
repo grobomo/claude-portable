@@ -134,7 +134,7 @@ Workers report their own status to the dispatcher. Dispatcher never has to guess
 
 ### Dispatcher scaling logic
 
-- [ ] Scale up: when dispatcher receives an `@claude` request and all workers are busy, it launches a new worker via EC2 API (`ccc --name worker-N --new`). Cap at `max_instances` from ccc.config.json. New worker auto-registers with dispatcher on boot.
+- [x] Scale up: when dispatcher receives an `@claude` request and all workers are busy, it launches a new worker via EC2 API (`ccc --name worker-N --new`). Cap at `max_instances` from ccc.config.json. New worker auto-registers with dispatcher on boot.
   - PR title: "feat: dispatcher auto-scales workers on demand"
 
 - [ ] Scale down: when dispatcher receives idle self-report from a worker, it confirms the worker isn't mid-task (checks for open PRs from that worker), then stops the instance. Logs the scale-down event.
