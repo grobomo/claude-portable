@@ -2,7 +2,7 @@
   "alias": "ccc",
   "region": "us-east-2",
   "instance_type": "t3.large",
-  "max_instances": 3,
+  "max_workers": 10,
   "key_name": "claude-portable-key",
   "idle_timeout_minutes": 30,
   "disk_size_gb": 40,
@@ -10,5 +10,7 @@
   "spot": false,
   "auto_sync_interval_seconds": 60,
   "auto_stop_on_idle": true,
-  "web_chat_lambda_url": "https://6c3oot6ity2ochkw5sybyghbdq0ycnaq.lambda-url.us-east-2.on.aws/"
+  "web_chat_lambda_url": "https://6c3oot6ity2ochkw5sybyghbdq0ycnaq.lambda-url.us-east-2.on.aws/",
+  "min_workers_idle": 2,
+  "dispatcher_chat_id": "19:cf504fc638964747bff028e4ba785869@thread.v2"
 }
