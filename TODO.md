@@ -322,3 +322,11 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - Acceptance: every unchecked task in TODO.md passes the template checker
   - Context: the entire conversation from session 2026-03-28
   - PR title: "chore: retrofit existing tasks with full template context"
+
+- [ ] Chatbot auto-fills task template: when a user requests a feature via Teams or web chat, the chatbot fills in all template fields (What/Why/How/Acceptance/Context) based on the conversation. It shows the filled template to the user and asks "Does this look right?" before committing to TODO.md. User can say "yes" or correct it. This ensures workers get full context without users having to write structured docs.
+  - What: chatbot generates structured task from conversational request
+  - Why: users say "add dark mode" but workers need What/Why/How/Acceptance to build it right. The conversation context that explains WHY is in the chat, not in the user's head.
+  - How: chatbot reads recent conversation history, extracts the motivation and requirements, fills the template, confirms with user, commits to TODO.md
+  - Acceptance: user says "add rolling chat cache", chatbot generates full template with all 6 fields, user confirms, task appears in TODO.md with complete context
+  - Context: from session 2026-03-28 — dispatcher bugs stacked up because tasks were one-liners without context
+  - PR title: "feat: chatbot auto-fills task template from conversation"
