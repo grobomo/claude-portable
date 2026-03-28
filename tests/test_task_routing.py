@@ -77,5 +77,75 @@ class TestPendingTasksIncludeArea(unittest.TestCase):
             self.assertIn("area", task)
 
 
+class TestPickWorkerForArea(unittest.TestCase):
+    def setUp(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    def tearDown(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    def test_affinity_match_preferred(self):
+        """Worker with matching last_area is picked over any idle worker."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w-generic"] = {
+                "status": "idle", "ip": "10.0.1.1", "last_area": None,
+            }
+            gd._fleet_roster["w-dispatcher"] = {
+                "status": "idle", "ip": "10.0.1.2", "last_area": "dispatcher",
+            }
+        name, ip = gd.pick_worker_for_area("dispatcher")
+        self.assertEqual(name, "w-dispatcher")
+        self.assertEqual(ip, "10.0.1.2")
+
+    def test_fallback_to_any_idle(self):
+        """If no affinity match, pick any idle worker."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w-fleet"] = {
+                "status": "idle", "ip": "10.0.1.3", "last_area": "fleet",
+            }
+        name, ip = gd.pick_worker_for_area("dispatcher")
+        self.assertEqual(name, "w-fleet")
+
+    def test_no_idle_workers(self):
+        """No idle workers returns empty strings."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w-busy"] = {
+                "status": "busy", "ip": "10.0.1.4", "last_area": "dispatcher",
+            }
+        name, ip = gd.pick_worker_for_area("dispatcher")
+        self.assertEqual(name, "")
+        self.assertEqual(ip, "")
+
+    def test_none_area_picks_any(self):
+        """None area just picks any idle worker."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "idle", "ip": "10.0.1.5", "last_area": "fleet",
+            }
+        name, ip = gd.pick_worker_for_area(None)
+        self.assertEqual(name, "w1")
+
+    def test_picked_worker_marked_busy(self):
+        """Picked worker is set to busy in the roster."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "idle", "ip": "10.0.1.6", "last_area": None,
+            }
+        gd.pick_worker_for_area(None)
+        with gd._fleet_roster_lock:
+            self.assertEqual(gd._fleet_roster["w1"]["status"], "busy")
+
+    def test_skip_worker_without_ip(self):
+        """Workers with no IP are skipped."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w-noip"] = {
+                "status": "idle", "ip": "", "last_area": "dispatcher",
+            }
+        name, ip = gd.pick_worker_for_area("dispatcher")
+        self.assertEqual(name, "")
+
+
 if __name__ == "__main__":
     unittest.main()

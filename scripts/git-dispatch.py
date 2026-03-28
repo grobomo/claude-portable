@@ -238,6 +238,33 @@ def get_area_context(repo_dir: str, area: str) -> str:
         return ""
 
 
+def pick_worker_for_area(area: str | None) -> tuple[str, str]:
+    """Pick the best idle worker for a task area. Returns (worker_name, worker_ip).
+
+    Prefers workers whose last_area matches the requested area (area affinity).
+    Falls back to any idle worker if no affinity match exists.
+    Returns ("", "") if no idle worker is available.
+    """
+    with _fleet_roster_lock:
+        affinity_match = None
+        any_idle = None
+        for wid, winfo in _fleet_roster.items():
+            if winfo.get("status") != "idle" or not winfo.get("ip"):
+                continue
+            if any_idle is None:
+                any_idle = (wid, winfo)
+            if area and winfo.get("last_area") == area:
+                affinity_match = (wid, winfo)
+                break  # perfect match, stop looking
+
+        chosen = affinity_match or any_idle
+        if chosen:
+            wid, winfo = chosen
+            winfo["status"] = "busy"
+            return (wid, winfo["ip"])
+        return ("", "")
+
+
 def get_active_worker_branches(repo_dir: str) -> list:
     """Return list of active continuous-claude/* remote branches."""
     try:
@@ -922,6 +949,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 })
                 entry["status"] = "idle"
                 entry["last_task"] = task
+                entry["last_area"] = route_task_to_area(task) if task else None
                 entry["last_report"] = now
                 entry["completions"] = entry.get("completions", 0) + 1
 
@@ -1152,16 +1180,9 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     text = request_data.get("text", "")
     context = request_data.get("context", [])
 
-    # Find an idle worker from fleet roster
-    worker_name = ""
-    worker_ip = ""
-    with _fleet_roster_lock:
-        for wid, winfo in _fleet_roster.items():
-            if winfo.get("status") == "idle" and winfo.get("ip"):
-                worker_name = wid
-                worker_ip = winfo["ip"]
-                winfo["status"] = "busy"
-                break
+    # Find an idle worker, preferring area affinity
+    area = route_task_to_area(text) if text else None
+    worker_name, worker_ip = pick_worker_for_area(area)
 
     if not worker_name:
         log.warning("RELAY %s: no idle worker available", request_id)

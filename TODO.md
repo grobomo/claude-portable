@@ -171,7 +171,7 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 - [x] Task routing: dispatcher reads the task description from TODO.md, matches keywords to app areas (e.g. "dispatcher" → areas/dispatcher, "test" → areas/tdd-pipeline), and includes the relevant `CONTEXT.md` in the prompt sent to the worker. Workers read the area context before starting work.
   - PR title: "feat: dispatcher routes tasks to app areas with context"
 
-- [ ] Area-specific workers: when a worker is assigned to an area, it stays on that area until idle. This avoids context-switching overhead. Dispatcher prefers re-assigning a worker to the same area it last worked on.
+- [x] Area-specific workers: when a worker is assigned to an area, it stays on that area until idle. This avoids context-switching overhead. Dispatcher prefers re-assigning a worker to the same area it last worked on.
   - PR title: "feat: area-affinity for worker task assignment"
 
 ## Phase 5: Task dependency tracking
