@@ -2,7 +2,9 @@
 
 RONE and CCC communicate via files in a shared git repo (not HTTP APIs).
 
-Repo: `joel-ginsberg_tmemu/claude-relay` (private, tmemu)
+Repo: `joel-ginsberg_tmemu/claude-relay` (PRIVATE, tmemu)
+Reason: relay files contain Teams chat messages which may have PII/internal content.
+Grobomo repos are public — can't put chat content there.
 
 ```
 requests/
