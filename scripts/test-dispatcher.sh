@@ -181,11 +181,12 @@ sys.exit(0 if tok else 1)
       pass "S3 bucket: $BUCKET exists"
       # Check fleet-keys prefix is accessible
       if aws s3 ls "s3://$BUCKET/fleet-keys/" &>/dev/null; then
-        KEY_COUNT=$(aws s3 ls "s3://$BUCKET/fleet-keys/" 2>/dev/null | grep -c "\.pem$" || echo 0)
+        KEY_COUNT=$(aws s3 ls "s3://$BUCKET/fleet-keys/" 2>/dev/null | grep -c "\.pem" || echo 0)
         if [ "$KEY_COUNT" -gt 0 ]; then
-          pass "fleet-keys: $KEY_COUNT .pem key(s) found (workers have registered)"
+          pass "fleet-keys: $KEY_COUNT .pem private key(s) found (workers have registered)"
         else
           warn "fleet-keys" "no .pem keys in s3://$BUCKET/fleet-keys/ — launch a worker first so dispatcher can SSH to it"
+          echo "         Note: worker launch (ccc --name worker-1) uploads the private key automatically"
         fi
       else
         warn "fleet-keys" "s3://$BUCKET/fleet-keys/ not accessible — dispatcher key sync will warn on boot"

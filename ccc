@@ -367,25 +367,19 @@ def find_ssh_key(instance=None):
     return None
 
 def upload_fleet_key(label, pem_path):
-    """Upload SSH public key to S3 fleet-keys/ so dispatcher can SSH to this worker.
+    """Upload SSH private key to S3 fleet-keys/ so dispatcher can SSH to this worker.
 
-    Derives the public key from the private .pem file, then uploads it to:
-      s3://claude-portable-state-{account}/fleet-keys/{label}.pub
+    Uploads the private .pem file to:
+      s3://claude-portable-state-{account}/fleet-keys/{label}.pem
+
+    The dispatcher syncs fleet-keys/*.pem at boot and every 5 min via dispatcher-daemon.sh,
+    then uses the key to run `ssh -i {label}.pem ubuntu@{ip} docker exec ...`.
 
     Non-fatal: logs a warning if the bucket is missing or upload fails.
     """
     try:
-        # Derive public key from private key
-        result = subprocess.run(
-            ["ssh-keygen", "-y", "-f", pem_path],
-            capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"  WARNING: Could not derive public key from {pem_path}: {result.stderr.strip()}")
-            return
-
-        pub_key = result.stdout.strip()
-        if not pub_key:
-            print(f"  WARNING: Empty public key derived from {pem_path}")
+        if not os.path.isfile(pem_path):
+            print(f"  WARNING: SSH key not found at {pem_path}. Skipping fleet key upload.")
             return
 
         # Get AWS account ID
@@ -396,13 +390,14 @@ def upload_fleet_key(label, pem_path):
         account = account.strip().strip('"')
 
         bucket = f"claude-portable-state-{account}"
-        s3_key = f"fleet-keys/{label}.pub"
+        s3_key = f"fleet-keys/{label}.pem"
 
-        # Upload public key to S3
+        # Upload private key to S3 (bucket is encrypted + IAM-restricted to this account)
         upload = subprocess.run(
-            ["aws", "s3", "cp", "-", f"s3://{bucket}/{s3_key}",
-             "--region", REGION, "--content-type", "text/plain"],
-            input=pub_key, capture_output=True, text=True)
+            ["aws", "s3", "cp", pem_path, f"s3://{bucket}/{s3_key}",
+             "--region", REGION, "--content-type", "application/octet-stream",
+             "--no-progress"],
+            capture_output=True, text=True)
         if upload.returncode != 0:
             print(f"  WARNING: Fleet key upload failed: {upload.stderr.strip()}")
             print(f"  (Run 'state-sync setup' on the instance to create the bucket first)")
