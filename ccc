@@ -366,6 +366,52 @@ def find_ssh_key(instance=None):
             return p
     return None
 
+def upload_fleet_key(label, pem_path):
+    """Upload SSH public key to S3 fleet-keys/ so dispatcher can SSH to this worker.
+
+    Derives the public key from the private .pem file, then uploads it to:
+      s3://claude-portable-state-{account}/fleet-keys/{label}.pub
+
+    Non-fatal: logs a warning if the bucket is missing or upload fails.
+    """
+    try:
+        # Derive public key from private key
+        result = subprocess.run(
+            ["ssh-keygen", "-y", "-f", pem_path],
+            capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  WARNING: Could not derive public key from {pem_path}: {result.stderr.strip()}")
+            return
+
+        pub_key = result.stdout.strip()
+        if not pub_key:
+            print(f"  WARNING: Empty public key derived from {pem_path}")
+            return
+
+        # Get AWS account ID
+        account = aws("sts", "get-caller-identity", "--query", "Account", parse_json=False)
+        if not account:
+            print("  WARNING: Could not get AWS account ID. Skipping fleet key upload.")
+            return
+        account = account.strip().strip('"')
+
+        bucket = f"claude-portable-state-{account}"
+        s3_key = f"fleet-keys/{label}.pub"
+
+        # Upload public key to S3
+        upload = subprocess.run(
+            ["aws", "s3", "cp", "-", f"s3://{bucket}/{s3_key}",
+             "--region", REGION, "--content-type", "text/plain"],
+            input=pub_key, capture_output=True, text=True)
+        if upload.returncode != 0:
+            print(f"  WARNING: Fleet key upload failed: {upload.stderr.strip()}")
+            print(f"  (Run 'state-sync setup' on the instance to create the bucket first)")
+        else:
+            print(f"  Fleet key uploaded: s3://{bucket}/{s3_key}")
+    except Exception as e:
+        print(f"  WARNING: Fleet key upload error: {e}")
+
+
 def get_instances(name_filter=None):
     """Get all claude-portable managed instances."""
     filters = [
@@ -543,6 +589,10 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
                 subprocess.run(["icacls", win_path, "/inheritance:r", "/grant:r",
                                 f"{os.environ.get('USERNAME', 'user')}:R"],
                                capture_output=True)
+
+    # Upload public key to S3 fleet-keys/ (worker instances only, so dispatcher can SSH in)
+    if not is_dispatcher:
+        upload_fleet_key(label, instance_key_path)
 
     # Build user-data script
     script_dir = os.path.dirname(os.path.abspath(__file__))
