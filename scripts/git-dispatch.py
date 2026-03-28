@@ -385,6 +385,55 @@ def launch_worker(region: str, worker_name: str) -> bool:
 
 # ── Dispatch logic ─────────────────────────────────────────────────────────────
 
+def get_open_prs_for_worker(worker_id: str, repo_dir: str) -> list:
+    """Return open PRs on continuous-claude/* branches for the given worker.
+
+    Branch names don't encode worker IDs, so we check the fleet roster to see
+    if this worker's last_task matches an open PR title.  If the roster has no
+    last_task we fall back to returning ALL open continuous-claude/* PRs so we
+    err on the side of caution (don't stop a worker that may still have work).
+    """
+    try:
+        result = subprocess.run(
+            [
+                "gh", "pr", "list", "--state", "open",
+                "--json", "number,title,headRefName",
+            ],
+            capture_output=True, text=True, timeout=30, cwd=repo_dir,
+        )
+        if result.returncode != 0:
+            log.warning("get_open_prs_for_worker: gh pr list failed: %s", result.stderr.strip())
+            return []
+        all_prs = json.loads(result.stdout or "[]")
+        # Only care about worker branches
+        worker_prs = [
+            pr for pr in all_prs
+            if "continuous-claude/" in pr.get("headRefName", "")
+        ]
+        if not worker_prs:
+            return []
+
+        # Try to narrow to PRs belonging to this specific worker via fleet roster
+        with _fleet_roster_lock:
+            entry = _fleet_roster.get(worker_id, {})
+        last_task = entry.get("last_task") or ""
+        if last_task:
+            # Match PRs whose title contains a significant substring of last_task
+            matched = [
+                pr for pr in worker_prs
+                if last_task[:40].lower() in pr.get("title", "").lower()
+                   or pr.get("title", "").lower() in last_task.lower()
+            ]
+            if matched:
+                return matched
+
+        # Can't narrow down -- return all open worker PRs as a safety measure
+        return worker_prs
+    except Exception as e:
+        log.warning("get_open_prs_for_worker error: %s", e)
+        return []
+
+
 def count_unclaimed_tasks(pending_tasks: list, active_branches: list) -> int:
     """Estimate tasks not yet claimed by a worker branch.
 
@@ -558,13 +607,39 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(resp)
                 return
 
-            # No unclaimed tasks -- confirm scale-down and stop the instance.
+            # Confirm the worker isn't mid-task by checking for open PRs it owns.
+            # A worker with an open PR on a continuous-claude/* branch has uncommitted
+            # work -- don't stop it yet.
+            open_prs = get_open_prs_for_worker(worker_id, REPO_DIR)
+            if open_prs:
+                pr_summaries = ", ".join(
+                    f"#{pr['number']} ({pr['headRefName']})" for pr in open_prs
+                )
+                log.info(
+                    "Worker idle report from %s rejected -- %d open PR(s) still pending: %s",
+                    worker_id, len(open_prs), pr_summaries,
+                )
+                resp = json.dumps({
+                    "status": "busy",
+                    "worker_id": worker_id,
+                    "message": f"{len(open_prs)} open PR(s) not yet merged -- stay up",
+                    "open_prs": [pr["number"] for pr in open_prs],
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+
+            # No unclaimed tasks and no open PRs -- safe to scale down.
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             log.info(
-                "Worker idle: worker_id=%s idle_since=%s -- issuing stop-instances",
-                worker_id, idle_since,
+                "SCALE-DOWN: worker_id=%s idle_since=%s unclaimed_tasks=0 open_prs=0"
+                " -- confirming stop-instances at %s",
+                worker_id, idle_since, now,
             )
 
-            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             with _fleet_roster_lock:
                 entry = _fleet_roster.setdefault(worker_id, {
                     "status": "idle",
@@ -575,6 +650,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 entry["status"] = "stopping"
                 entry["last_report"] = now
                 entry["idle_since"] = idle_since
+                entry["scale_down_at"] = now
 
             # Send response before attempting stop so the worker receives it
             resp = json.dumps({
