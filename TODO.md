@@ -126,7 +126,7 @@ The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT le
 
 Workers report their own status to the dispatcher. Dispatcher never has to guess.
 
-- [ ] Worker self-report: when a worker finishes a task (PR merged), it calls the dispatcher's health endpoint with `POST /worker/done {worker_id, task, duration}`. Dispatcher updates its fleet state and decides whether to assign another task or mark worker idle.
+- [x] Worker self-report: when a worker finishes a task (PR merged), it calls the dispatcher's health endpoint with `POST /worker/done {worker_id, task, duration}`. Dispatcher updates its fleet state and decides whether to assign another task or mark worker idle.
   - PR title: "feat: worker self-reports task completion to dispatcher"
 
 - [ ] Worker idle self-report: if a worker has been idle for 30 min with no new task, it calls `POST /worker/idle {worker_id, idle_since}` on the dispatcher. Dispatcher confirms and issues `stop-instances` via EC2 API. Worker waits for the stop — does NOT self-terminate.

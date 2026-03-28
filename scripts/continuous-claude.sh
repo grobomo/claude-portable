@@ -16,6 +16,7 @@
 #   CONTINUOUS_CLAUDE_MAX_ERRORS  Max consecutive errors before stopping (default: 3)
 #   CONTINUOUS_CLAUDE_COOLDOWN    Seconds between iterations (default: 30)
 #   CONTINUOUS_CLAUDE_MAX_RETRIES Max per-stage retries before aborting task (default: 2)
+#   DISPATCHER_URL                Dispatcher health endpoint base URL (optional, e.g. http://10.0.0.1:8080)
 #   GITHUB_TOKEN                  Required for gh CLI auth
 set -euo pipefail
 
@@ -27,6 +28,7 @@ MAX_ERRORS="${CONTINUOUS_CLAUDE_MAX_ERRORS:-3}"
 COOLDOWN="${CONTINUOUS_CLAUDE_COOLDOWN:-30}"
 MAX_RETRIES="${CONTINUOUS_CLAUDE_MAX_RETRIES:-2}"
 INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
+DISPATCHER_URL="${DISPATCHER_URL:-}"
 
 # Redirect all output to log file (and stdout for docker logs)
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -624,6 +626,32 @@ with open(path, 'w') as f:
   return 0
 }
 
+# --- Report task completion to dispatcher ---
+report_task_done() {
+  local task_num="$1"
+  local task_desc="$2"
+  local duration="$3"
+
+  if [ -z "$DISPATCHER_URL" ]; then
+    return 0
+  fi
+
+  local payload
+  payload=$(printf '{"worker_id":"%s","task":"%s","duration":%d}' \
+    "$INSTANCE_ID" "task-${task_num}: ${task_desc}" "$duration")
+
+  if curl -s -f -X POST \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      --connect-timeout 5 \
+      --max-time 10 \
+      "${DISPATCHER_URL}/worker/done" >/dev/null 2>&1; then
+    echo "[+] Reported task #${task_num} done to dispatcher"
+  else
+    echo "[!] Warning: could not reach dispatcher at ${DISPATCHER_URL} (non-fatal)"
+  fi
+}
+
 # --- Maintenance mode ---
 MAINTENANCE_FILE="/data/.maintenance"
 
@@ -681,7 +709,9 @@ while true; do
 
   # Run the TDD pipeline
   PIPELINE_EXIT=0
+  TASK_START=$(date +%s)
   run_pipeline "$NEXT_TASK" "$TASK_DESC" "$TASK_PR_TITLE" || PIPELINE_EXIT=$?
+  TASK_DURATION=$(( $(date +%s) - TASK_START ))
 
   if [ "$PIPELINE_EXIT" -ne 0 ]; then
     ERROR_COUNT=$((ERROR_COUNT + 1))
@@ -698,6 +728,7 @@ while true; do
     fi
   else
     ERROR_COUNT=0
+    report_task_done "$NEXT_TASK" "$TASK_DESC" "$TASK_DURATION"
   fi
 
   # Safety net: merge any leftover PRs
