@@ -2,9 +2,10 @@
 
 RONE and CCC communicate via files in a shared git repo (not HTTP APIs).
 
-Repo: `joel-ginsberg_tmemu/claude-relay` (PRIVATE, tmemu)
-Reason: relay files contain real Teams chat messages (unsanitized) — workers need
-actual context to produce useful responses. Grobomo repos are public, can't use those.
+Repo: `grobomo/claude-relay` (PRIVATE, grobomo)
+Both RONE and CCC environments have grobomo GitHub tokens for push/pull access.
+Relay files contain real Teams chat messages (unsanitized) — workers need
+actual context to produce useful responses.
 
 ## Data flow
 
