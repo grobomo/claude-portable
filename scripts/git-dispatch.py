@@ -540,6 +540,9 @@ def dispatch_loop(region: str):
 
 def _dispatch_tick(region: str):
     """Single dispatch iteration."""
+    if not is_primary():
+        log.debug("Standby mode — skipping dispatch tick")
+        return
     log.info("Polling git state...")
 
     # Pull latest git state
@@ -779,6 +782,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 state["fleet_roster"] = dict(_fleet_roster)
             with _relay_stats_lock:
                 state["relay"] = dict(_relay_stats)
+            with _leader_state_lock:
+                state["leader"] = dict(_leader_state)
             body = json.dumps(state, indent=2).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -1212,6 +1217,8 @@ def relay_poll_loop():
 
 def _relay_poll_tick():
     """Single relay poll iteration."""
+    if not is_primary():
+        return
     if not _relay_git_pull():
         return
 
@@ -1268,6 +1275,235 @@ def start_health_server():
     log.info("Health endpoint listening on port %d", HEALTH_PORT)
 
 
+# ── Leader election (S3-based) ────────────────────────────────────────────────
+#
+# Multiple dispatchers can run. Only the primary actively dispatches tasks and
+# polls the relay repo. Standby instances monitor the primary's heartbeat and
+# promote themselves if it goes stale.
+#
+# Heartbeat file: s3://{bucket}/dispatcher-heartbeat/{instance_name}.json
+# Contains: {instance_name, role, ip, timestamp, region}
+#
+# Election rule: the heartbeat with the most recent timestamp where role=primary
+# wins. If no fresh primary heartbeat exists (>LEADER_STALE_THRESHOLD), any
+# standby may promote itself.
+
+LEADER_HEARTBEAT_INTERVAL = 30  # seconds between heartbeat writes
+LEADER_STALE_THRESHOLD = 5 * 60  # 5 minutes = primary considered dead
+LEADER_CHECK_INTERVAL = 30  # how often standby checks primary's heartbeat
+
+_leader_state_lock = threading.Lock()
+_leader_state = {
+    "role": "standby",  # "primary" or "standby"
+    "promoted_at": None,
+    "demoted_at": None,
+    "primary_instance": None,
+    "last_heartbeat_write": None,
+    "last_heartbeat_check": None,
+}
+
+
+def _get_s3_bucket() -> str:
+    """Derive the S3 state bucket name."""
+    bucket = os.environ.get("CLAUDE_PORTABLE_STATE_BUCKET", "")
+    if bucket:
+        return bucket
+    try:
+        r = subprocess.run(
+            ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return f"claude-portable-state-{r.stdout.strip()}"
+    except Exception:
+        pass
+    return ""
+
+
+def _get_instance_name() -> str:
+    """Get this dispatcher's instance name from env or EC2 tags."""
+    name = os.environ.get("DISPATCHER_NAME", "")
+    if name:
+        return name
+    # Try EC2 Name tag via metadata
+    try:
+        token_r = subprocess.run(
+            ["curl", "-s", "-X", "PUT",
+             "http://169.254.169.254/latest/api/token",
+             "-H", "X-aws-ec2-metadata-token-ttl-seconds: 21600",
+             "--connect-timeout", "2"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if token_r.returncode != 0:
+            return "dispatcher-unknown"
+        token = token_r.stdout.strip()
+        iid_r = subprocess.run(
+            ["curl", "-s", "-H", f"X-aws-ec2-metadata-token: {token}",
+             "http://169.254.169.254/latest/meta-data/instance-id",
+             "--connect-timeout", "2"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return iid_r.stdout.strip() if iid_r.returncode == 0 else "dispatcher-unknown"
+    except Exception:
+        return "dispatcher-unknown"
+
+
+def write_heartbeat(bucket: str, instance_name: str, role: str, ip: str, region: str) -> bool:
+    """Write heartbeat JSON to S3."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    data = json.dumps({
+        "instance_name": instance_name,
+        "role": role,
+        "ip": ip,
+        "timestamp": now,
+        "region": region,
+    })
+    key = f"dispatcher-heartbeat/{instance_name}.json"
+    try:
+        r = subprocess.run(
+            ["aws", "s3", "cp", "-", f"s3://{bucket}/{key}",
+             "--region", region, "--content-type", "application/json"],
+            input=data, capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            with _leader_state_lock:
+                _leader_state["last_heartbeat_write"] = now
+            return True
+        log.warning("Heartbeat write failed: %s", r.stderr.strip())
+        return False
+    except Exception as e:
+        log.warning("Heartbeat write error: %s", e)
+        return False
+
+
+def read_all_heartbeats(bucket: str, region: str) -> list:
+    """Read all dispatcher heartbeat files from S3."""
+    prefix = "dispatcher-heartbeat/"
+    try:
+        r = subprocess.run(
+            ["aws", "s3api", "list-objects-v2",
+             "--bucket", bucket, "--prefix", prefix,
+             "--query", "Contents[].Key", "--output", "json",
+             "--region", region],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        keys = json.loads(r.stdout)
+        if not keys:
+            return []
+
+        heartbeats = []
+        for key in keys:
+            try:
+                gr = subprocess.run(
+                    ["aws", "s3", "cp", f"s3://{bucket}/{key}", "-",
+                     "--region", region],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if gr.returncode == 0 and gr.stdout.strip():
+                    heartbeats.append(json.loads(gr.stdout))
+            except Exception:
+                pass
+        return heartbeats
+    except Exception as e:
+        log.warning("Failed to read heartbeats: %s", e)
+        return []
+
+
+def find_active_primary(heartbeats: list) -> dict | None:
+    """Find a fresh primary heartbeat. Returns None if no active primary."""
+    now = time.time()
+    for hb in heartbeats:
+        if hb.get("role") != "primary":
+            continue
+        ts = _parse_iso_timestamp(hb.get("timestamp", ""))
+        if ts == 0:
+            continue
+        age = now - ts
+        if age < LEADER_STALE_THRESHOLD:
+            return hb
+    return None
+
+
+def is_primary() -> bool:
+    with _leader_state_lock:
+        return _leader_state["role"] == "primary"
+
+
+def promote_to_primary(instance_name: str):
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _leader_state_lock:
+        _leader_state["role"] = "primary"
+        _leader_state["promoted_at"] = now
+        _leader_state["primary_instance"] = instance_name
+    update_state(leader_role="primary")
+    log.info("=== PROMOTED TO PRIMARY ===")
+
+
+def demote_to_standby(primary_name: str):
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _leader_state_lock:
+        _leader_state["role"] = "standby"
+        _leader_state["demoted_at"] = now
+        _leader_state["primary_instance"] = primary_name
+    update_state(leader_role="standby")
+    log.info("=== DEMOTED TO STANDBY (primary: %s) ===", primary_name)
+
+
+def heartbeat_loop(bucket: str, instance_name: str, ip: str, region: str):
+    """Background thread: write heartbeat to S3 every LEADER_HEARTBEAT_INTERVAL seconds."""
+    while True:
+        with _leader_state_lock:
+            role = _leader_state["role"]
+        write_heartbeat(bucket, instance_name, role, ip, region)
+        time.sleep(LEADER_HEARTBEAT_INTERVAL)
+
+
+def standby_monitor_loop(bucket: str, instance_name: str, region: str):
+    """Background thread: when in standby, check if primary is alive.
+
+    If primary heartbeat goes stale, promote self to primary.
+    If we're primary and see a newer primary, demote to standby.
+    """
+    while True:
+        time.sleep(LEADER_CHECK_INTERVAL)
+        try:
+            heartbeats = read_all_heartbeats(bucket, region)
+            active_primary = find_active_primary(heartbeats)
+            now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+            with _leader_state_lock:
+                current_role = _leader_state["role"]
+                _leader_state["last_heartbeat_check"] = now_str
+
+            if current_role == "standby":
+                if active_primary is None:
+                    log.warning("No active primary found — promoting self")
+                    promote_to_primary(instance_name)
+                elif active_primary.get("instance_name") != instance_name:
+                    with _leader_state_lock:
+                        _leader_state["primary_instance"] = active_primary["instance_name"]
+                    log.debug("Primary is %s — staying standby", active_primary["instance_name"])
+
+            elif current_role == "primary":
+                if active_primary and active_primary.get("instance_name") != instance_name:
+                    # Another instance also claims primary with a fresher heartbeat
+                    my_ts = _parse_iso_timestamp(
+                        _leader_state.get("last_heartbeat_write", ""))
+                    their_ts = _parse_iso_timestamp(
+                        active_primary.get("timestamp", ""))
+                    if their_ts > my_ts:
+                        log.warning(
+                            "Newer primary detected: %s — demoting self",
+                            active_primary["instance_name"],
+                        )
+                        demote_to_standby(active_primary["instance_name"])
+
+        except Exception as e:
+            log.error("Standby monitor error: %s", e)
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
@@ -1276,6 +1512,8 @@ def main():
     parser.add_argument("--repo-dir", default=REPO_DIR, help="Path to claude-portable repo")
     parser.add_argument("--interval", type=int, default=POLL_INTERVAL, help="Poll interval in seconds")
     parser.add_argument("--max-workers", type=int, default=MAX_WORKERS, help="Max concurrent workers")
+    parser.add_argument("--standby", action="store_true",
+                        help="Start in standby mode (monitor primary, promote if stale)")
     args = parser.parse_args()
 
     POLL_INTERVAL = args.interval
@@ -1291,8 +1529,6 @@ def main():
     region = get_aws_region()
     log.info("  AWS region:    %s", region)
 
-    # Determine own IP and inject DISPATCHER_URL into .env so workers launched via
-    # ccc will automatically receive it and know where to register on boot.
     own_ip = os.environ.get("DISPATCHER_IP", "") or get_own_private_ip()
     if own_ip:
         dispatcher_url = f"http://{own_ip}:{HEALTH_PORT}"
@@ -1301,6 +1537,52 @@ def main():
     else:
         log.warning("Could not determine own IP -- DISPATCHER_URL not injected into .env")
         log.warning("Workers will not be able to auto-register unless DISPATCHER_URL is set manually")
+
+    # Leader election setup
+    s3_bucket = _get_s3_bucket()
+    instance_name = _get_instance_name()
+    log.info("  Instance name: %s", instance_name)
+    log.info("  S3 bucket:     %s", s3_bucket or "(none)")
+
+    if s3_bucket:
+        # Check if there's already an active primary
+        if args.standby:
+            log.info("  Starting in STANDBY mode (--standby flag)")
+            with _leader_state_lock:
+                _leader_state["role"] = "standby"
+            update_state(leader_role="standby")
+        else:
+            heartbeats = read_all_heartbeats(s3_bucket, region)
+            active_primary = find_active_primary(heartbeats)
+            if active_primary and active_primary.get("instance_name") != instance_name:
+                log.info(
+                    "  Active primary found: %s — starting in STANDBY",
+                    active_primary["instance_name"],
+                )
+                demote_to_standby(active_primary["instance_name"])
+            else:
+                promote_to_primary(instance_name)
+
+        # Start heartbeat writer
+        hb_thread = threading.Thread(
+            target=heartbeat_loop,
+            args=(s3_bucket, instance_name, own_ip or "", region),
+            daemon=True,
+            name="heartbeat-writer",
+        )
+        hb_thread.start()
+
+        # Start standby monitor (checks primary liveness)
+        sm_thread = threading.Thread(
+            target=standby_monitor_loop,
+            args=(s3_bucket, instance_name, region),
+            daemon=True,
+            name="standby-monitor",
+        )
+        sm_thread.start()
+    else:
+        log.warning("No S3 bucket — leader election disabled, running as primary")
+        promote_to_primary(instance_name)
 
     start_health_server()
 
