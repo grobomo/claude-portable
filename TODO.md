@@ -1,43 +1,30 @@
-# Continuous Claude Integration - Task List
+# Teams Integration — Continuous Claude Tasks
 
-## Phase 1: Core (continuous-claude runner)
+## Phase 0: Dedicated Dispatcher Instance
 
-- [x] Create `scripts/continuous-claude.sh` -- generic runner that clones a repo and loops through TODO.md tasks via PRs. Takes repo URL, branch, and workdir as args. Includes safety net for leftover PRs, MAX_ERRORS=3, and CONTINUOUS_CLAUDE_PROJECT_COMPLETE signal.
-  - PR title: "feat: add continuous-claude runner script"
+- [ ] Create `scripts/dispatcher-daemon.sh` — pulls Graph token from Secrets Manager, pulls SSH keys from S3, starts teams-dispatch.py with watchdog loop (auto-restart on crash), streams logs to /data/dispatcher.log
+  - PR title: "feat: add dispatcher daemon script"
 
-- [x] Add continuous-claude env vars to docker-compose.yml and .env.example -- CONTINUOUS_CLAUDE_ENABLED, CONTINUOUS_CLAUDE_REPO, CONTINUOUS_CLAUDE_BRANCH. Pass them through to the container.
-  - PR title: "feat: add continuous-claude env vars to compose config"
+- [ ] Create `cloudformation/dispatcher.yaml` — CF template for dispatcher IAM role: Secrets Manager read, EC2 describe/start/stop, S3 read/write for keys + heartbeat + logs
+  - PR title: "feat: add dispatcher CloudFormation template"
 
-- [x] Add continuous-claude auto-start to bootstrap.sh -- if CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO is set, clone the repo and start the runner as a background daemon. Log to /data/continuous-claude.log.
-  - PR title: "feat: auto-start continuous-claude in bootstrap"
+- [ ] Update `ccc` launcher to support `--role dispatcher` flag — launches t3.small (no Chrome), runs dispatcher-daemon.sh instead of normal bootstrap, tags instance with Role=dispatcher
+  - PR title: "feat: add dispatcher role to ccc launcher"
 
-- [x] Add gh CLI auth to bootstrap.sh -- if GITHUB_TOKEN is set, run `gh auth login --with-token` and `gh auth setup-git`. Also set git global user.name="claude-portable" and user.email="noreply@claude-portable".
-  - PR title: "feat: authenticate gh CLI and git identity in bootstrap"
+- [ ] Create S3 key-sharing: on worker launch, upload SSH public key to `s3://claude-portable-state-{account}/fleet-keys/`. Dispatcher pulls all keys at boot + every 5 min.
+  - PR title: "feat: SSH key sharing via S3 for fleet"
 
-- [x] Fix idle-monitor.sh to detect continuous-claude process -- add pgrep for 'continuous-claude' to the activity check so it doesn't auto-shutdown while tasks are running.
-  - PR title: "fix: idle monitor detects continuous-claude as active"
+- [ ] Update `teams-dispatch.py` to run headless on dispatcher: read Graph token from file (not msgraph-lib), discover workers via EC2 API tags (not ccc list), SSH to workers directly
+  - PR title: "feat: make teams-dispatch cloud-native (no laptop deps)"
 
-## Phase 2: MCP + Browser (out-of-box automation)
+- [ ] Add dispatcher heartbeat: write timestamp to S3 every 60s, create CloudWatch alarm for heartbeat age > 5min, SNS email alert
+  - PR title: "feat: add dispatcher heartbeat + CloudWatch monitoring"
 
-- [x] Populate components.yaml with mcp-manager and blueprint-extra-mcp entries -- both as private repos under grobomo org, type mcp, targets /opt/mcp/mcp-manager and /opt/mcp/blueprint-extra-mcp.
-  - PR title: "feat: add mcp-manager and blueprint-extra to components.yaml"
+- [ ] Create Lambda auto-healer: triggered by SNS alarm, checks dispatcher EC2 state, restarts if stopped, launches new if terminated
+  - PR title: "feat: add Lambda auto-healer for dispatcher"
 
-- [x] Create config/servers.yaml for container -- Linux-native paths, blueprint-extra enabled with auto_start, command=node args=[/opt/mcp/blueprint-extra-mcp/run-server.js]. Copy to /opt/mcp/mcp-manager/servers.yaml during bootstrap.
-  - PR title: "feat: container-native servers.yaml for mcp-manager"
+- [ ] Add health endpoint to dispatcher: HTTP server on port 8080, returns JSON with dispatch loop status, worker reachability, Graph token validity, pending requests, error count
+  - PR title: "feat: add dispatcher health endpoint"
 
-- [x] Write .mcp.json in bootstrap.sh -- create /home/claude/.mcp.json pointing to mcp-manager (command=node, args=[/opt/mcp/mcp-manager/build/index.js]). Must happen after MCP deps install step.
-  - PR title: "feat: auto-configure .mcp.json for mcp-manager in bootstrap"
-
-- [x] Modify browser.sh to load blueprint-extra Chrome extension -- if /opt/mcp/blueprint-extra-mcp/extensions/ exists, add --load-extension flag to Chrome launch command.
-  - PR title: "feat: auto-load blueprint Chrome extension in browser.sh"
-
-## Phase 3: Observability (remote status checking)
-
-- [x] Add `ccc status [name]` command -- SSH to instance, show continuous-claude status (running/stopped/complete, last iteration time, tasks remaining, last PR, error count), daemon status (idle monitor, state sync, web chat), and open PRs.
-  - PR title: "feat: add ccc status command for remote monitoring"
-
-- [x] Add `ccc logs [name]` command -- SSH to instance, tail /data/continuous-claude.log. Support -f flag for follow mode and -n for line count.
-  - PR title: "feat: add ccc logs command to tail continuous-claude"
-
-- [x] Add --continuous flag to ccc launcher -- `ccc --name X --continuous <repo-url>` sets CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO in the instance .env before docker compose up. Optional --branch flag.
-  - PR title: "feat: add --continuous flag to ccc launcher"
+- [ ] End-to-end test: launch dispatcher + 2 workers via ccc, send @claude prompt in Teams, verify ACK + dispatch + result + Teams reply
+  - PR title: "test: end-to-end dispatcher + worker validation"
