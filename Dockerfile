@@ -83,6 +83,12 @@ COPY --chown=claude:claude config/ /opt/claude-portable/config/
 COPY --chown=claude:claude components.yaml /opt/claude-portable/components-default.yaml
 RUN chmod +x /opt/claude-portable/scripts/*.sh
 
+# Fix /opt/claude-portable ownership: node_modules was created as root above,
+# but the container runs as claude. The claude user needs to own this directory
+# so it can create subdirs (e.g. repos/ cache used by sync-config.sh) and
+# run git pull on the scripts directory at startup.
+RUN chown -R claude:claude /opt/claude-portable
+
 # Wire session tracking into user's bashrc
 RUN echo 'source /opt/claude-portable/config/bashrc-session.sh' >> /home/claude/.bashrc
 

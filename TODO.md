@@ -34,7 +34,7 @@
 - [x] Fix dispatcher-daemon.sh: uses /run/dispatcher which is not writable by claude user. Change to /data/dispatcher. Verify the fix is in the Dockerfile COPY or the git source that gets pulled at container build time.
   - PR title: "fix: dispatcher token path uses /data instead of /run"
 
-- [ ] Fix dispatcher container git pull: `/opt/claude-portable` is owned by root but container runs as claude. Either chown during build, or use a separate clone dir. The dispatcher needs to pull latest code at startup.
+- [x] Fix dispatcher container git pull: `/opt/claude-portable` is owned by root but container runs as claude. Either chown during build, or use a separate clone dir. The dispatcher needs to pull latest code at startup.
   - PR title: "fix: dispatcher container file ownership for git pull"
 
 - [ ] Fix dispatcher DISPATCHER_CHAT_ID: the chat ID must be passed via .env file or ccc.config.json, not manually injected. Update ccc launcher --role dispatcher to prompt for or read chat ID from config and pass it to docker compose.
