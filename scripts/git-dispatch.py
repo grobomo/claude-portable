@@ -223,6 +223,68 @@ def get_running_workers(region: str) -> list:
         return []
 
 
+def find_instance_id_by_name(worker_id: str, region: str) -> str | None:
+    """Find EC2 instance ID by Name tag or treat worker_id as instance ID directly."""
+    # If it already looks like an instance ID, use it directly
+    if re.match(r"^i-[0-9a-f]{8,17}$", worker_id):
+        return worker_id
+
+    # Look up by Name tag
+    try:
+        result = subprocess.run(
+            [
+                "aws", "ec2", "describe-instances",
+                "--filters",
+                f"Name=tag:Name,Values={worker_id}",
+                f"Name=tag:{PROJECT_TAG_KEY},Values={PROJECT_TAG_VALUE}",
+                "Name=instance-state-name,Values=running,pending",
+                "--query", "Reservations[0].Instances[0].InstanceId",
+                "--output", "text",
+                "--region", region,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if result.returncode == 0:
+            instance_id = result.stdout.strip()
+            if instance_id and instance_id != "None":
+                return instance_id
+    except Exception as e:
+        log.warning("find_instance_id_by_name error: %s", e)
+    return None
+
+
+def stop_worker_instance(worker_id: str, region: str) -> bool:
+    """Stop an EC2 worker instance. Returns True if stop command succeeded."""
+    instance_id = find_instance_id_by_name(worker_id, region)
+    if not instance_id:
+        log.warning("stop_worker_instance: no instance found for worker_id=%s", worker_id)
+        return False
+
+    log.info("Stopping worker instance: worker_id=%s instance_id=%s", worker_id, instance_id)
+    try:
+        result = subprocess.run(
+            [
+                "aws", "ec2", "stop-instances",
+                "--instance-ids", instance_id,
+                "--region", region,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            log.info("stop-instances succeeded for %s (%s)", worker_id, instance_id)
+            return True
+        else:
+            log.warning("stop-instances failed for %s: %s", worker_id, result.stderr.strip())
+            return False
+    except Exception as e:
+        log.warning("stop_worker_instance error for %s: %s", worker_id, e)
+        return False
+
+
 def launch_worker(region: str, worker_name: str) -> bool:
     """Launch a new worker EC2 instance using ccc launcher."""
     log.info("Launching new worker: %s", worker_name)
@@ -350,16 +412,16 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path == "/worker/done":
-            length = int(self.headers.get("Content-Length", 0))
-            body_bytes = self.rfile.read(length) if length else b"{}"
-            try:
-                payload = json.loads(body_bytes)
-            except json.JSONDecodeError:
-                self.send_response(400)
-                self.end_headers()
-                return
+        length = int(self.headers.get("Content-Length", 0))
+        body_bytes = self.rfile.read(length) if length else b"{}"
+        try:
+            payload = json.loads(body_bytes)
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.end_headers()
+            return
 
+        if self.path == "/worker/done":
             worker_id = str(payload.get("worker_id", "unknown"))
             task = str(payload.get("task", ""))
             duration = payload.get("duration", 0)
@@ -391,6 +453,74 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(resp)))
             self.end_headers()
             self.wfile.write(resp)
+
+        elif self.path == "/worker/idle":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            idle_since = str(payload.get("idle_since", ""))
+
+            # Check whether there are unclaimed tasks before stopping the worker.
+            # If tasks are available the worker should stay up.
+            pending_tasks = get_pending_tasks(REPO_DIR)
+            active_branches = get_active_worker_branches(REPO_DIR)
+            unclaimed = count_unclaimed_tasks(pending_tasks, active_branches)
+
+            if unclaimed > 0:
+                log.info(
+                    "Worker idle report from %s ignored -- %d unclaimed task(s) available",
+                    worker_id, unclaimed,
+                )
+                resp = json.dumps({
+                    "status": "busy",
+                    "worker_id": worker_id,
+                    "message": f"{unclaimed} unclaimed task(s) pending -- stay up",
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+
+            # No unclaimed tasks -- confirm scale-down and stop the instance.
+            log.info(
+                "Worker idle: worker_id=%s idle_since=%s -- issuing stop-instances",
+                worker_id, idle_since,
+            )
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster.setdefault(worker_id, {
+                    "status": "idle",
+                    "last_task": None,
+                    "last_report": None,
+                    "completions": 0,
+                })
+                entry["status"] = "stopping"
+                entry["last_report"] = now
+                entry["idle_since"] = idle_since
+
+            # Send response before attempting stop so the worker receives it
+            resp = json.dumps({
+                "status": "stopping",
+                "worker_id": worker_id,
+                "message": "scale-down confirmed -- awaiting stop-instances",
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+            # Issue stop asynchronously so we don't block the HTTP handler
+            region = get_aws_region()
+            t = threading.Thread(
+                target=stop_worker_instance,
+                args=(worker_id, region),
+                daemon=True,
+                name=f"stop-{worker_id}",
+            )
+            t.start()
+
         else:
             self.send_response(404)
             self.end_headers()

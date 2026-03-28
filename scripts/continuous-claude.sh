@@ -16,6 +16,7 @@
 #   CONTINUOUS_CLAUDE_MAX_ERRORS  Max consecutive errors before stopping (default: 3)
 #   CONTINUOUS_CLAUDE_COOLDOWN    Seconds between iterations (default: 30)
 #   CONTINUOUS_CLAUDE_MAX_RETRIES Max per-stage retries before aborting task (default: 2)
+#   CONTINUOUS_CLAUDE_IDLE_TIMEOUT  Minutes idle before reporting to dispatcher for scale-down (default: 30)
 #   DISPATCHER_URL                Dispatcher health endpoint base URL (optional, e.g. http://10.0.0.1:8080)
 #   GITHUB_TOKEN                  Required for gh CLI auth
 set -euo pipefail
@@ -27,6 +28,7 @@ LOG_FILE="/data/continuous-claude.log"
 MAX_ERRORS="${CONTINUOUS_CLAUDE_MAX_ERRORS:-3}"
 COOLDOWN="${CONTINUOUS_CLAUDE_COOLDOWN:-30}"
 MAX_RETRIES="${CONTINUOUS_CLAUDE_MAX_RETRIES:-2}"
+IDLE_TIMEOUT="${CONTINUOUS_CLAUDE_IDLE_TIMEOUT:-30}"  # minutes
 INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
 DISPATCHER_URL="${DISPATCHER_URL:-}"
 
@@ -652,6 +654,36 @@ report_task_done() {
   fi
 }
 
+# --- Report idle status to dispatcher for scale-down ---
+report_worker_idle() {
+  local idle_since="$1"
+
+  if [ -z "$DISPATCHER_URL" ]; then
+    return 0
+  fi
+
+  local payload
+  payload=$(printf '{"worker_id":"%s","idle_since":"%s"}' "$INSTANCE_ID" "$idle_since")
+
+  local response
+  response=$(curl -s -f -X POST \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      --connect-timeout 5 \
+      --max-time 15 \
+      "${DISPATCHER_URL}/worker/idle" 2>/dev/null || echo "")
+
+  if [ -z "$response" ]; then
+    echo "[!] Warning: could not reach dispatcher at ${DISPATCHER_URL} for idle report (non-fatal)"
+    return 1
+  fi
+
+  local status
+  status=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+  echo "[+] Idle report response from dispatcher: status=${status}"
+  echo "$status"
+}
+
 # --- Maintenance mode ---
 MAINTENANCE_FILE="/data/.maintenance"
 
@@ -665,12 +697,14 @@ check_maintenance() {
 # --- Main loop ---
 ERROR_COUNT=0
 ITERATION=0
+IDLE_START=0  # epoch seconds when worker first went idle (0 = not idle)
 
 merge_leftover_prs
 
 while true; do
   if check_maintenance; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$INSTANCE_ID] Maintenance mode -- paused"
+    IDLE_START=0
     sleep "$COOLDOWN"
     continue
   fi
@@ -695,10 +729,48 @@ while true; do
 
   NEXT_TASK=$(find_next_task)
   if [ -z "$NEXT_TASK" ]; then
-    echo "  All remaining tasks are claimed by other instances. Waiting..."
+    NOW=$(date +%s)
+
+    # Start idle timer on first idle iteration
+    if [ "$IDLE_START" -eq 0 ]; then
+      IDLE_START="$NOW"
+      IDLE_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      echo "  All remaining tasks are claimed by other instances. Idle timer started."
+    fi
+
+    IDLE_SECS=$(( NOW - IDLE_START ))
+    IDLE_TIMEOUT_SECS=$(( IDLE_TIMEOUT * 60 ))
+    echo "  All remaining tasks are claimed. Idle for ${IDLE_SECS}s / ${IDLE_TIMEOUT_SECS}s."
+
+    if [ "$IDLE_SECS" -ge "$IDLE_TIMEOUT_SECS" ]; then
+      echo "[+] Idle timeout reached (${IDLE_TIMEOUT}min). Reporting to dispatcher for scale-down..."
+      IDLE_REPORT_STATUS=$(report_worker_idle "$IDLE_SINCE")
+
+      if [ "$IDLE_REPORT_STATUS" = "stopping" ]; then
+        echo "[+] Dispatcher confirmed scale-down. Waiting for EC2 stop-instances..."
+        # Wait up to 10 minutes for the instance to be stopped externally.
+        # Do NOT self-terminate -- the dispatcher issues stop-instances.
+        for _ in $(seq 1 120); do
+          sleep 5
+        done
+        # If still running after 10 min, reset idle timer and continue
+        echo "[!] Instance not stopped after 10 minutes. Resetting idle timer."
+        IDLE_START=0
+      elif [ "$IDLE_REPORT_STATUS" = "busy" ]; then
+        echo "  Dispatcher says tasks are pending -- resetting idle timer."
+        IDLE_START=0
+      else
+        # No dispatcher or unexpected response -- reset timer and keep polling
+        IDLE_START=0
+      fi
+    fi
+
     sleep "$COOLDOWN"
     continue
   fi
+
+  # A task was found -- reset idle timer
+  IDLE_START=0
   echo "  Claiming task #${NEXT_TASK}"
 
   # Get task details
