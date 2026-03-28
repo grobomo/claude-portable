@@ -6,6 +6,7 @@ Manages EC2 instances with stop/start lifecycle:
   cpp                  Connect to a running/stopped instance, or launch new
   cpp --name dev       Use/create a named instance
   cpp --new            Always launch a fresh instance
+  cpp --continuous URL Launch with continuous-claude enabled
   cpp list             List all managed instances
   cpp stop [name]      Stop an instance (keeps state, no cost)
   cpp kill [name]      Terminate an instance permanently
@@ -432,7 +433,7 @@ def wait_for_container(ip, ssh_key, timeout=300):
         time.sleep(5)
     return False
 
-def launch_new(name=None):
+def launch_new(name=None, continuous_repo=None, continuous_branch="main"):
     """Launch a new on-demand EC2 instance."""
     # Enforce max instances
     existing = get_instances()
@@ -540,6 +541,12 @@ def launch_new(name=None):
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env_vars[k.strip()] = v.strip()
+
+    # Inject continuous-claude env vars if requested
+    if continuous_repo:
+        env_vars["CONTINUOUS_CLAUDE_ENABLED"] = "true"
+        env_vars["CONTINUOUS_CLAUDE_REPO"] = continuous_repo
+        env_vars["CONTINUOUS_CLAUDE_BRANCH"] = continuous_branch
 
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
@@ -809,8 +816,41 @@ def connect(ip, ssh_key, label):
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+def _inject_continuous_claude(ip, ssh_key, repo, branch):
+    """Inject continuous-claude env vars into a running container and start the runner."""
+    print(f"  Enabling continuous-claude: {repo} (branch: {branch})")
+    # Write env vars into container's .env and export to bashrc
+    cmds = [
+        f"echo 'CONTINUOUS_CLAUDE_ENABLED=true' >> /opt/claude-portable/.env",
+        f"echo 'CONTINUOUS_CLAUDE_REPO={repo}' >> /opt/claude-portable/.env",
+        f"echo 'CONTINUOUS_CLAUDE_BRANCH={branch}' >> /opt/claude-portable/.env",
+        f"export CONTINUOUS_CLAUDE_ENABLED=true CONTINUOUS_CLAUDE_REPO={repo} CONTINUOUS_CLAUDE_BRANCH={branch}",
+    ]
+    # Check if runner is already active
+    pid = _ssh_exec(ip, ssh_key, "pgrep -f continuous-claude.sh || true")
+    if pid:
+        print(f"  Continuous-claude already running (PID {pid.splitlines()[0]})")
+        return
+    # Start the runner
+    cmds.append(
+        "nohup bash -c '"
+        f"export CONTINUOUS_CLAUDE_ENABLED=true CONTINUOUS_CLAUDE_REPO={repo} CONTINUOUS_CLAUDE_BRANCH={branch}; "
+        "/opt/claude-portable/scripts/continuous-claude.sh"
+        "' >> /data/continuous-claude.log 2>&1 &"
+    )
+    combined = " && ".join(cmds)
+    subprocess.run([
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+        "-i", ssh_key, f"ubuntu@{ip}",
+        f"docker exec -d claude-portable bash -c '{combined}'"
+    ], capture_output=True, timeout=15)
+    print(f"  Continuous-claude started. Monitor with: cpp logs {'' if not ip else ''}")
+
 def cmd_connect(args):
     name = args.name
+    continuous_repo = getattr(args, 'continuous', None)
+    continuous_branch = getattr(args, 'branch', 'main') or 'main'
+
     print("=" * 45)
     alias = CFG.get("alias", "ccp")
     print(f"  {alias} -- Claude Code Portable")
@@ -842,12 +882,17 @@ def cmd_connect(args):
                 print(f"\n  Found running instance: {inst['name']} ({inst['ip']})")
 
             push_credentials(inst["ip"], ssh_key)
+
+            # Inject continuous-claude into existing instance if requested
+            if continuous_repo:
+                _inject_continuous_claude(inst["ip"], ssh_key, continuous_repo, continuous_branch)
+
             connect(inst["ip"], ssh_key, inst["label"])
             return
 
     # Launch new
     print()
-    inst = launch_new(name)
+    inst = launch_new(name, continuous_repo=continuous_repo, continuous_branch=continuous_branch)
     ssh_key = inst.get("ssh_key") or find_ssh_key(inst)
     if not ssh_key:
         print("ERROR: No SSH key found.")
@@ -861,6 +906,14 @@ def cmd_connect(args):
     setup_instance(inst["ip"], ssh_key, inst["label"])
     push_credentials(inst["ip"], ssh_key)
     start_idle_monitor(inst["ip"], ssh_key)
+
+    if continuous_repo:
+        print(f"\n  Continuous-claude will auto-start via bootstrap.")
+        print(f"  Repo:   {continuous_repo}")
+        print(f"  Branch: {continuous_branch}")
+        print(f"  Monitor: cpp status {name or inst['label']}")
+        print(f"  Logs:    cpp logs -f {name or inst['label']}")
+
     connect(inst["ip"], ssh_key, inst["label"])
 
 def cmd_list(args):
@@ -1471,6 +1524,10 @@ def main():
     parser.add_argument("--name", "-n", help="Instance name")
     parser.add_argument("--new", action="store_true", help="Always launch fresh instance")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show all commands")
+    parser.add_argument("--continuous", "-c", metavar="REPO_URL",
+                        help="Enable continuous-claude with this repo URL")
+    parser.add_argument("--branch", "-b", default="main",
+                        help="Branch for continuous-claude (default: main)")
 
     p_list = sub.add_parser("list", help="List instances")
     p_stop = sub.add_parser("stop", help="Stop instance(s)")
