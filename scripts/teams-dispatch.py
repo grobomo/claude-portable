@@ -20,12 +20,15 @@ import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -374,6 +377,111 @@ def check_result(ip, ssh_key, request_id):
     return result if result else None
 
 
+# ── Health endpoint ─────────────────────────────────────────────────────────
+
+HEALTH_PORT = int(os.environ.get("DISPATCHER_HEALTH_PORT", "8080"))
+
+_health_lock = threading.Lock()
+_health_state = {
+    "status": "starting",
+    "last_poll": None,
+    "graph_token_valid": None,
+    "workers": [],
+    "pending_requests": [],
+    "error_count": 0,
+}
+
+
+def _tcp_reachable(ip, port=22, timeout=3):
+    """Return True if TCP port is open on the host."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        ok = s.connect_ex((ip, port)) == 0
+        s.close()
+        return ok
+    except Exception:
+        return False
+
+
+def _graph_token_valid():
+    """Return True if the Graph token can make a successful /me call."""
+    try:
+        graph_get("/me")
+        return True
+    except Exception:
+        return False
+
+
+def _update_health(state, error_count):
+    """Refresh global health snapshot. Called after each poll iteration."""
+    requests = state.get("requests", {})
+    pending = [
+        {
+            "id": rid,
+            "state": req["state"],
+            "sender": req.get("sender", "?"),
+            "dispatched_at": req.get("dispatched_at", ""),
+            "instance": req.get("instance_name", ""),
+        }
+        for rid, req in requests.items()
+        if req["state"] in (STATE_ACKED, STATE_DISPATCHED, STATE_RUNNING)
+    ]
+
+    workers = get_workers()
+    worker_status = [
+        {"name": w["name"], "ip": w["ip"], "reachable": _tcp_reachable(w["ip"])}
+        for w in workers
+    ]
+
+    token_ok = _graph_token_valid()
+
+    if not token_ok:
+        overall = "degraded"
+    elif not worker_status:
+        overall = "no_workers"
+    else:
+        overall = "ok"
+
+    with _health_lock:
+        _health_state["status"] = overall
+        _health_state["last_poll"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _health_state["graph_token_valid"] = token_ok
+        _health_state["workers"] = worker_status
+        _health_state["pending_requests"] = pending
+        _health_state["error_count"] = error_count
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/health", "/"):
+            with _health_lock:
+                data = dict(_health_state)
+            data["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            body = json.dumps(data, indent=2).encode()
+            http_status = 200 if data["status"] in ("ok", "no_workers") else 503
+            self.send_response(http_status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, fmt, *args):  # suppress default access log noise
+        pass
+
+
+def start_health_server(port=HEALTH_PORT):
+    """Start HTTP health server in a background daemon thread."""
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    t = threading.Thread(target=server.serve_forever, daemon=True, name="health-server")
+    t.start()
+    print(f"  Health: http://0.0.0.0:{port}/health")
+    return server
+
+
 # ── Poll loop ───────────────────────────────────────────────────────────────
 
 def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace"):
@@ -581,19 +689,27 @@ def main():
     print(f"  Loaded state: {len(state.get('processed_msgs', []))} processed, "
           f"{len(state.get('requests', {}))} tracked requests")
     print()
+
+    start_health_server()
     print("[+] Polling...")
 
+    error_count = 0
     while True:
         try:
             new = poll_once(args.chat_id, args.trigger, state, args.instance, args.project)
             if new:
                 print(f"  Processed {new} new request(s)")
+            _update_health(state, error_count)
         except KeyboardInterrupt:
             print("\n  Stopped.")
             save_state(state)
             break
         except Exception as e:
+            error_count += 1
             print(f"  ERROR in poll: {e}")
+            with _health_lock:
+                _health_state["error_count"] = error_count
+                _health_state["status"] = "degraded"
 
         time.sleep(args.interval)
 
