@@ -53,3 +53,23 @@
 
 - [ ] Add `ccc work` command — show what each worker is doing: current branch, PR status (open/merged), task progress, maintenance mode
   - PR title: "feat: add ccc work command for fleet activity view"
+
+## Phase 2: Enforced TDD workflow in continuous-claude
+
+The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT level (not prompts). Each worker takes its time — quality over speed. Scale out workers for parallelism, don't rush individual workers.
+
+- [ ] Rewrite continuous-claude.sh task execution as a multi-stage pipeline. For each task, Claude is invoked SEPARATELY for each stage (not one big prompt). Stages run sequentially with validation gates between them. The stages are:
+  1. RESEARCH: WebSearch for existing solutions, patterns, best practices. Read all relevant existing code in the repo. Output a research summary to `/tmp/task-{N}-research.md`.
+  2. PLAN: Based on research, write a plan: what files to create/modify, what the tests should verify, edge cases. Output to `/tmp/task-{N}-plan.md`.
+  3. TESTS FIRST: Write tests that define the expected behavior. Tests MUST fail at this point (no implementation yet). Run tests, verify they fail. Commit tests to branch.
+  4. IMPLEMENT: Write the minimum code to make tests pass. Run tests after each change. Iterate until ALL tests pass.
+  5. VERIFY: Run full test suite. Run linter/syntax checks. Check for secrets. If anything fails, go back to IMPLEMENT.
+  6. PR: Push, create PR, merge.
+  Each stage is a separate `claude -p` invocation with the previous stage's output as context. If any stage fails, retry that stage (not the whole pipeline).
+  - PR title: "feat: enforce multi-stage TDD pipeline in continuous-claude"
+
+- [ ] Add stage-level logging: each stage writes start/end timestamps and pass/fail to `/data/task-{N}-stages.json`. The `ccc work` command shows which stage each worker is on.
+  - PR title: "feat: add stage-level logging to TDD pipeline"
+
+- [ ] Add test framework auto-detection: before running tests, detect the project's test framework (pytest, jest, go test, bash -n, etc.) from package.json/pyproject.toml/Makefile. If none found, use `bash -n` for shell scripts and basic assertion scripts.
+  - PR title: "feat: auto-detect test framework in TDD pipeline"

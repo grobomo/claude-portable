@@ -313,7 +313,11 @@ done
 
 # PowerShell: create wrapper function (Windows)
 if [ -n "${USERPROFILE:-}" ]; then
-  PS_PROFILE="${USERPROFILE}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+  # Detect actual PowerShell profile path (may be in OneDrive)
+  PS_PROFILE=$(powershell.exe -NoProfile -Command 'Write-Output $PROFILE' 2>/dev/null | tr -d '\r' || echo "")
+  if [ -z "$PS_PROFILE" ] || [ ! -d "$(dirname "$PS_PROFILE")" ]; then
+    PS_PROFILE="${USERPROFILE}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+  fi
   mkdir -p "$(dirname "$PS_PROFILE")" 2>/dev/null || true
   WIN_PATH="$(cygpath -w "$CPP_PATH" 2>/dev/null || echo "$CPP_PATH")"
   PS_LINE="function $ALIAS_NAME { python3 \"$WIN_PATH\" \$args }"
