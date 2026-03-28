@@ -638,6 +638,135 @@ def registration_monitor_loop(region: str):
                 log.warning("Could not terminate unregistered worker %s", worker_name)
 
 
+# ── Fleet monitor (safety net) ────────────────────────────────────────────────
+#
+# Catches workers that stop self-reporting. Primary scale-down is via worker
+# self-report (/worker/idle). This is the backup in case self-reporting fails.
+
+FLEET_MONITOR_INTERVAL = 60  # seconds between checks
+FLEET_MONITOR_STALE_THRESHOLD = 35 * 60  # 35 minutes with no self-report
+
+
+def _parse_iso_timestamp(ts: str) -> float:
+    """Parse ISO 8601 timestamp to epoch seconds. Returns 0 on failure."""
+    if not ts:
+        return 0.0
+    try:
+        # Handle both Z and +00:00 suffixes
+        ts = ts.replace("Z", "+00:00")
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(ts)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+
+def _ssh_check_claude_process(worker_ip: str, worker_name: str) -> bool | None:
+    """SSH to worker, check if a Claude process is running.
+
+    Returns True if active, False if idle, None if SSH failed (unreachable).
+    """
+    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_path = os.path.join(key_dir, f"{worker_name}.pem")
+    if not os.path.isfile(key_path):
+        short_name = worker_name.replace("ccc-", "")
+        key_path = os.path.join(key_dir, f"{short_name}.pem")
+    if not os.path.isfile(key_path):
+        log.debug("Fleet monitor: no SSH key for %s", worker_name)
+        return None
+
+    try:
+        r = subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
+            "-i", key_path, f"ubuntu@{worker_ip}",
+            "docker exec claude-portable pgrep -f 'node.*claude' || echo IDLE",
+        ], capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return None  # SSH failed — unreachable
+        output = r.stdout.strip()
+        return output != "IDLE"
+    except Exception:
+        return None
+
+
+def fleet_monitor_loop(region: str):
+    """Background thread: safety net for workers that stop self-reporting."""
+    log.info(
+        "Fleet monitor started (interval: %ds, stale threshold: %ds)",
+        FLEET_MONITOR_INTERVAL, FLEET_MONITOR_STALE_THRESHOLD,
+    )
+    while True:
+        time.sleep(FLEET_MONITOR_INTERVAL)
+        try:
+            _fleet_monitor_tick(region)
+        except Exception as e:
+            log.error("Fleet monitor tick error: %s", e)
+
+
+def _fleet_monitor_tick(region: str):
+    """Single fleet monitor iteration."""
+    now = time.time()
+
+    with _fleet_roster_lock:
+        roster_snapshot = {k: dict(v) for k, v in _fleet_roster.items()}
+
+    for worker_id, info in roster_snapshot.items():
+        if not info.get("registered"):
+            continue
+        if info.get("status") == "stopping":
+            continue
+
+        last_report_ts = _parse_iso_timestamp(info.get("last_report", ""))
+        if last_report_ts == 0:
+            continue  # never reported — registration monitor handles this
+
+        age = now - last_report_ts
+        if age < FLEET_MONITOR_STALE_THRESHOLD:
+            continue  # still fresh
+
+        worker_ip = info.get("ip", "")
+        if not worker_ip:
+            log.warning(
+                "Fleet monitor: worker %s stale (%ds) but no IP — skipping",
+                worker_id, int(age),
+            )
+            continue
+
+        # Worker hasn't self-reported in 35+ min — SSH check for activity
+        log.info(
+            "Fleet monitor: worker %s stale (%ds since last report) — checking via SSH",
+            worker_id, int(age),
+        )
+        has_process = _ssh_check_claude_process(worker_ip, worker_id)
+
+        if has_process is True:
+            log.info("Fleet monitor: worker %s is busy (active Claude process) — leaving alone", worker_id)
+            continue
+        elif has_process is None:
+            log.warning("Fleet monitor: worker %s unreachable via SSH — will retry next tick", worker_id)
+            continue
+
+        # Worker is idle AND stale — stop it
+        log.warning(
+            "Fleet monitor: worker %s idle + stale (%ds) — issuing stop-instances",
+            worker_id, int(age),
+        )
+        with _fleet_roster_lock:
+            entry = _fleet_roster.get(worker_id)
+            if entry:
+                entry["status"] = "stopping"
+                entry["stopped_by"] = "fleet-monitor"
+
+        t = threading.Thread(
+            target=stop_worker_instance,
+            args=(worker_id, region),
+            daemon=True,
+            name=f"monitor-stop-{worker_id}",
+        )
+        t.start()
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1182,6 +1311,15 @@ def main():
         name="registration-monitor",
     )
     reg_monitor.start()
+
+    # Start fleet monitor (safety net for stale workers)
+    fleet_monitor = threading.Thread(
+        target=fleet_monitor_loop,
+        args=(region,),
+        daemon=True,
+        name="fleet-monitor",
+    )
+    fleet_monitor.start()
 
     # Start git relay poller (RONE ↔ CCC bridge)
     relay_thread = threading.Thread(

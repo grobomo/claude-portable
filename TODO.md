@@ -147,7 +147,7 @@ Workers report their own status to the dispatcher. Dispatcher never has to guess
 
 Monitor runs on the dispatcher as a background thread. Catches cases where self-reporting fails.
 
-- [ ] Fleet monitor daemon: every 60s, iterate all registered workers. SSH health check (is the instance responding?). If a worker hasn't self-reported in 35 min AND has no active Claude process, tell dispatcher to stop it. This is the backup — self-reporting is primary.
+- [x] Fleet monitor daemon: every 60s, iterate all registered workers. SSH health check (is the instance responding?). If a worker hasn't self-reported in 35 min AND has no active Claude process, tell dispatcher to stop it. This is the backup — self-reporting is primary.
   - PR title: "feat: fleet monitor daemon as safety net for scale-down"
 
 - [ ] Fleet monitor tests: test that monitor correctly identifies idle workers, doesn't kill busy workers, handles unreachable workers, respects the 35-min grace period.
