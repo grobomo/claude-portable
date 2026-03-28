@@ -50,5 +50,11 @@ export PATH="$PATH:/usr/local/share/npm-global/bin"
 # Auto-launch Claude on SSH login (interactive shells only)
 if [[ $- == *i* ]] && [ -z "${CLAUDE_AUTOSTART_DONE:-}" ]; then
   export CLAUDE_AUTOSTART_DONE=1
-  /opt/claude-portable/scripts/claude-session.sh
+  if [ "${CHATBOT_MODE:-}" = "true" ]; then
+    # Chatbot: launch in workspace with full permissions so user lands in Claude, not a bare shell
+    cd /workspace/claude-portable 2>/dev/null || true
+    exec /opt/claude-portable/scripts/claude-session.sh --dangerously-skip-permissions
+  else
+    /opt/claude-portable/scripts/claude-session.sh
+  fi
 fi
