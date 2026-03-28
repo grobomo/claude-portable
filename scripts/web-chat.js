@@ -166,6 +166,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Fleet status endpoint -- collects git + dispatcher data and returns JSON
+  if (parsedUrl.pathname === "/fleet-status") {
+    const project = parsedUrl.searchParams.get("project") || "/workspace/claude-portable";
+    getFleetStatus(project).then((status) => {
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(status));
+    }).catch((err) => {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
   // List active sessions
   if (parsedUrl.pathname === "/sessions") {
     const active = [];
@@ -361,6 +377,106 @@ function gitPull(cwd) {
       resolve();
     });
   });
+}
+
+// ── Fleet status ───────────────────────────────────────────────────────────
+
+/**
+ * Collect fleet status from git + optional dispatcher health endpoint.
+ *
+ * Returns a structured object with:
+ *   todo       - { done, pending }
+ *   open_prs   - array of { number, title, branch, author }
+ *   branches   - active worker/chatbot branch names
+ *   commits    - recent git log lines
+ *   dispatcher - health data from DISPATCHER_URL/health, or null
+ */
+async function getFleetStatus(project) {
+  const cwd = project || "/workspace/claude-portable";
+  const run = (cmd, args, opts) =>
+    new Promise((resolve) => {
+      execFile(cmd, args, { cwd, timeout: 30000, ...opts }, (err, stdout, stderr) => {
+        resolve({ ok: !err, stdout: (stdout || "").trim(), stderr: (stderr || "").trim() });
+      });
+    });
+
+  // Pull latest
+  await run("git", ["pull", "--rebase", "--autostash"]);
+
+  const status = {};
+
+  // TODO progress
+  try {
+    const todo = fs.readFileSync(`${cwd}/TODO.md`, "utf8");
+    status.todo = {
+      done: (todo.match(/- \[x\]/g) || []).length,
+      pending: (todo.match(/- \[ \]/g) || []).length,
+    };
+  } catch {
+    status.todo = { done: 0, pending: 0, error: "could not read TODO.md" };
+  }
+
+  // Open PRs
+  const prs = await run("gh", [
+    "pr", "list", "--state", "open", "--limit", "20",
+    "--json", "number,title,headRefName,author",
+  ]);
+  if (prs.ok && prs.stdout) {
+    try {
+      status.open_prs = JSON.parse(prs.stdout).map((p) => ({
+        number: p.number,
+        title: p.title,
+        branch: p.headRefName,
+        author: (p.author || {}).login || "?",
+      }));
+    } catch {
+      status.open_prs = [];
+    }
+  } else {
+    status.open_prs = [];
+  }
+
+  // Active worker/chatbot branches
+  const branches = await run("git", ["branch", "-r"]);
+  if (branches.ok) {
+    status.branches = branches.stdout
+      .split("\n")
+      .filter((b) => b.includes("continuous-claude/") || b.includes("chatbot/"))
+      .map((b) => b.trim().replace(/^origin\//, ""));
+  } else {
+    status.branches = [];
+  }
+
+  // Recent commits
+  const log = await run("git", ["log", "--oneline", "-8"]);
+  status.commits = log.ok ? log.stdout.split("\n").filter(Boolean) : [];
+
+  // Dispatcher health
+  const dispUrl = process.env.DISPATCHER_URL || "";
+  if (dispUrl) {
+    try {
+      const healthUrl = dispUrl.replace(/\/$/, "") + "/health";
+      const data = await new Promise((resolve, reject) => {
+        const mod = healthUrl.startsWith("https") ? require("https") : require("http");
+        const req = mod.get(healthUrl, { timeout: 5000 }, (res2) => {
+          let body = "";
+          res2.on("data", (c) => { body += c; });
+          res2.on("end", () => {
+            try { resolve(JSON.parse(body)); } catch { resolve({ raw: body }); }
+          });
+        });
+        req.on("error", reject);
+        req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+      });
+      status.dispatcher = data;
+    } catch (e) {
+      status.dispatcher = { error: `unreachable: ${e.message}` };
+    }
+  } else {
+    status.dispatcher = null;
+  }
+
+  return status;
 }
 
 // ── Claude CLI interaction ──────────────────────────────────────────────────

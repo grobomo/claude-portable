@@ -86,7 +86,7 @@ Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 - [x] Feature request flow: user says "add dark mode" → chatbot adds `- [ ] Add dark mode` to TODO.md → commits to branch → opens PR → merges → dispatcher sees new unchecked item → assigns worker. User gets PR link.
   - PR title: "feat: chatbot submits feature requests as TODO items"
 
-- [ ] Fleet status: user asks "what are workers doing?" → chatbot reads git (open branches, recent PRs, TODO.md progress), queries dispatcher health endpoint for live instance status.
+- [x] Fleet status: user asks "what are workers doing?" → chatbot reads git (open branches, recent PRs, TODO.md progress), queries dispatcher health endpoint for live instance status.
   - PR title: "feat: chatbot exposes fleet status"
 
 - [ ] SSH auto-starts Claude Code: SSHing into chatbot auto-launches `claude --dangerously-skip-permissions` in the workspace. User lands in a Claude session with full context, not a bare shell.
