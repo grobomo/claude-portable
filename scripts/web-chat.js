@@ -20,7 +20,7 @@
 
 const http = require("http");
 const { WebSocketServer } = require("ws");
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -138,6 +138,8 @@ const server = http.createServer((req, res) => {
         return;
       }
       const cwd = parsed.project || "/workspace";
+      // Pull latest code so Claude sees recent worker commits
+      gitPull(cwd).then(() => {
       const args = ["-p", prompt, "--verbose"];
       const proc = spawn("claude", args, {
         cwd,
@@ -159,6 +161,7 @@ const server = http.createServer((req, res) => {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err.message }));
       });
+      }); // gitPull.then
     });
     return;
   }
@@ -340,6 +343,26 @@ const heartbeat = setInterval(() => {
 
 wss.on("close", () => clearInterval(heartbeat));
 
+// ── Git pull helper ─────────────────────────────────────────────────────────
+
+// Run `git pull --rebase` in cwd. Resolves when done (ignores errors so
+// Claude always gets a response even if pull fails).
+function gitPull(cwd) {
+  return new Promise((resolve) => {
+    execFile("git", ["pull", "--rebase"], { cwd, timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) {
+        console.warn(`[git pull] in ${cwd}: ${err.message}`);
+      } else {
+        const out = (stdout + stderr).trim();
+        if (out && !out.includes("Already up to date")) {
+          console.log(`[git pull] ${cwd}: ${out}`);
+        }
+      }
+      resolve();
+    });
+  });
+}
+
 // ── Claude CLI interaction ──────────────────────────────────────────────────
 
 function handleChat(ws, session, text) {
@@ -353,6 +376,14 @@ function handleChat(ws, session, text) {
   const trimmed = text.length > 100 ? text.substring(0, 100) + "..." : text;
   console.log(`[${session.id}] Prompt: ${trimmed}`);
 
+  // Pull latest code before invoking Claude so it sees worker commits
+  safeSend(ws, { type: "system", text: "Syncing latest code..." });
+  gitPull(session.project).then(() => {
+    launchClaude(ws, session, text);
+  });
+}
+
+function launchClaude(ws, session, text) {
   // Use -p for print mode (each prompt is independent, work tracked via git/PRs)
   const args = ["-p", text, "--verbose"];
 
