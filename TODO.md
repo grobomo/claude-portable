@@ -274,3 +274,9 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 
 - [ ] Worker pushback flow: if a worker is blocked (WHY phase says task is unclear, SCOPE has ambiguity, gate fails repeatedly, or worker needs human input), it sends POST /worker/blocked {worker_id, task, phase, reason, question} to dispatcher. Dispatcher relays the question to Teams chat and/or interactive chatbot session. The task is paused until a human replies. When human replies, dispatcher sends the answer back to the worker via POST /answer on the worker's API. Worker resumes from where it left off with the new context.
   - PR title: "feat: worker pushback flow for blocked tasks with human-in-the-loop"
+
+- [ ] Pipeline task folder: each task gets `/data/pipeline/task-{N}/` with numbered output files per phase (00-why.md, 01-research.md, 02-review.md, 03-scope.md, 04-tests.md, 05-implement.md, 06-verify.md, 07-pr.md, stage-log.json). Each stage's prompt instructs Claude to read ALL prior .md files in the folder before starting. Gate enforcement: script checks the expected output file exists and is >100 chars before allowing next stage. Reviewer Claude reads all files to check cross-phase consistency.
+  - PR title: "feat: structured pipeline task folder with enforced file chain"
+
+- [ ] Reviewer Claude at each gate: after each stage, a SEPARATE claude -p invocation reviews the output. Prompt: "You are a reviewer. You did NOT write this. Read all files in /data/pipeline/task-{N}/. Rate the latest stage output 1-5. If <3, output REJECT with reasons. If >=3, output APPROVE." If rejected, stage retries with the rejection feedback appended. Max 2 rejections before task is marked blocked.
+  - PR title: "feat: separate reviewer Claude at each pipeline gate"
