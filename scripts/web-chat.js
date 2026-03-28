@@ -26,7 +26,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const PORT = parseInt(process.env.CLAUDE_WEB_PORT || "8888", 10);
-const MAX_CONNECTIONS = parseInt(process.env.CLAUDE_WEB_MAX_CONN || "5", 10);
+const MAX_CONNECTIONS = parseInt(process.env.CLAUDE_WEB_MAX_CONN || "10", 10);
 const RATE_LIMIT = 20; // messages per minute per client
 const HEARTBEAT_INTERVAL = 30000; // 30s
 const HEARTBEAT_TIMEOUT = 10000; // 10s grace
@@ -37,8 +37,11 @@ const HTML_PATH = path.join(__dirname, "web-chat.html");
 const TOKEN = process.env.CLAUDE_WEB_TOKEN || crypto.randomBytes(16).toString("hex");
 const TOKEN_FILE = "/data/web-chat-token";
 
-// Active Claude processes keyed by WebSocket
-const sessions = new Map();
+// Active sessions keyed by WebSocket
+const sessions = new Map(); // ws -> session object
+
+// Track active usernames to prevent duplicate sessions
+const activeUsers = new Map(); // username -> ws
 
 // Per-client rate limiting
 const rateLimits = new Map(); // ws -> { count, resetAt }
@@ -47,6 +50,14 @@ const rateLimits = new Map(); // ws -> { count, resetAt }
 
 function checkAuth(tokenCandidate) {
   return tokenCandidate === TOKEN;
+}
+
+// Allow only safe username characters (letters, digits, hyphens, underscores)
+// Returns sanitized name or empty string if invalid
+function sanitizeUsername(name) {
+  if (!name || typeof name !== "string") return "";
+  const trimmed = name.trim().substring(0, 32);
+  return /^[a-zA-Z0-9_-]+$/.test(trimmed) ? trimmed : "";
 }
 
 function isRateLimited(ws) {
@@ -74,7 +85,7 @@ const server = http.createServer((req, res) => {
   // Health check -- no auth needed
   if (parsedUrl.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", sessions: sessions.size }));
+    res.end(JSON.stringify({ status: "ok", sessions: sessions.size, users: activeUsers.size }));
     return;
   }
 
@@ -158,6 +169,7 @@ const server = http.createServer((req, res) => {
     for (const [, sess] of sessions) {
       active.push({
         id: sess.id,
+        user: sess.user,
         started: sess.started,
         project: sess.project || "/workspace",
         alive: sess.proc && !sess.proc.killed,
@@ -191,19 +203,45 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
+  // User identification: ?user=name param or prompt on first message
+  const rawUser = url.searchParams.get("user") || "";
+  const user = sanitizeUsername(rawUser) || null;
+
+  // Reject if username already has an active session
+  if (user && activeUsers.has(user)) {
+    const existingWs = activeUsers.get(user);
+    if (existingWs.readyState === 1 /* OPEN */) {
+      ws.close(4003, `User '${user}' already has an active session`);
+      return;
+    }
+    // Prior connection is gone — clean it up
+    activeUsers.delete(user);
+  }
+
   const sessionId = `web-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
   const session = {
     id: sessionId,
+    user: user,           // null until identified
     started: new Date().toISOString(),
     proc: null,
     project: "/workspace",
     buffer: "",
     lastPong: Date.now(),
+    awaitingName: !user,  // true when we still need the user to provide a name
   };
   sessions.set(ws, session);
 
-  console.log(`[${sessionId}] Connected (total: ${sessions.size})`);
-  safeSend(ws, { type: "system", text: `Connected. Type a message to start.` });
+  if (user) {
+    activeUsers.set(user, ws);
+  }
+
+  console.log(`[${sessionId}] Connected as '${user || "?"}' (total: ${sessions.size})`);
+
+  if (!user) {
+    safeSend(ws, { type: "system", text: "Connected. What is your name? (reply with your name to continue)" });
+  } else {
+    safeSend(ws, { type: "system", text: `Connected as ${user}. Type a message to start.` });
+  }
 
   // ── Heartbeat (ping/pong) ──
   ws.isAlive = true;
@@ -227,6 +265,29 @@ wss.on("connection", (ws, req) => {
       msg = { type: "chat", text: raw.toString() };
     }
 
+    // Handle name identification on first message
+    if (session.awaitingName) {
+      const nameCandidate = sanitizeUsername(msg.text || msg.name || raw.toString());
+      if (!nameCandidate) {
+        safeSend(ws, { type: "system", text: "Please enter a valid name (letters, numbers, hyphens, underscores only)." });
+        return;
+      }
+      if (activeUsers.has(nameCandidate)) {
+        const existingWs = activeUsers.get(nameCandidate);
+        if (existingWs.readyState === 1 /* OPEN */) {
+          safeSend(ws, { type: "error", text: `Name '${nameCandidate}' is already in use. Choose another.` });
+          return;
+        }
+        activeUsers.delete(nameCandidate);
+      }
+      session.user = nameCandidate;
+      session.awaitingName = false;
+      activeUsers.set(nameCandidate, ws);
+      console.log(`[${session.id}] Identified as '${nameCandidate}'`);
+      safeSend(ws, { type: "system", text: `Hello ${nameCandidate}! Type a message to start.` });
+      return;
+    }
+
     if (msg.type === "chat" || msg.type === undefined) {
       handleChat(ws, session, msg.text || msg.prompt || raw.toString());
     } else if (msg.type === "cd") {
@@ -247,12 +308,15 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
-    console.log(`[${sessionId}] Disconnected`);
+    console.log(`[${sessionId}] Disconnected (user: ${session.user || "?"})`);
     if (session.proc && !session.proc.killed) {
       session.proc.kill("SIGTERM");
     }
     sessions.delete(ws);
     rateLimits.delete(ws);
+    if (session.user && activeUsers.get(session.user) === ws) {
+      activeUsers.delete(session.user);
+    }
   });
 
   ws.on("error", (err) => {
@@ -327,9 +391,9 @@ function handleChat(ws, session, text) {
     safeSend(ws, { type: "done", code });
     session.proc = null;
 
-    // Log conversation to session file
+    // Log conversation to per-user session directory
     try {
-      const logDir = path.join(SESSION_DIR, session.id);
+      const logDir = path.join(SESSION_DIR, session.user || session.id);
       fs.mkdirSync(logDir, { recursive: true });
       const ts = new Date().toISOString();
       fs.appendFileSync(
