@@ -17,6 +17,7 @@ Manages EC2 instances with stop/start lifecycle:
   ccc cancel <name>         Kill Claude on an instance (--all kills runner, --cleanup deletes branch)
   ccc maint <name>          Pause task pickup for troubleshooting (--off to resume)
   ccc teams <chat_id>       Poll Teams chat for @claude, dispatch to ccc instances
+  ccc work                  Show what each worker is doing (branch, PR, tasks, maint)
 """
 import argparse
 import json
@@ -367,25 +368,19 @@ def find_ssh_key(instance=None):
     return None
 
 def upload_fleet_key(label, pem_path):
-    """Upload SSH public key to S3 fleet-keys/ so dispatcher can SSH to this worker.
+    """Upload SSH private key to S3 fleet-keys/ so dispatcher can SSH to this worker.
 
-    Derives the public key from the private .pem file, then uploads it to:
-      s3://claude-portable-state-{account}/fleet-keys/{label}.pub
+    Uploads the private .pem file to:
+      s3://claude-portable-state-{account}/fleet-keys/{label}.pem
+
+    The dispatcher syncs fleet-keys/*.pem at boot and every 5 min via dispatcher-daemon.sh,
+    then uses the key to run `ssh -i {label}.pem ubuntu@{ip} docker exec ...`.
 
     Non-fatal: logs a warning if the bucket is missing or upload fails.
     """
     try:
-        # Derive public key from private key
-        result = subprocess.run(
-            ["ssh-keygen", "-y", "-f", pem_path],
-            capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"  WARNING: Could not derive public key from {pem_path}: {result.stderr.strip()}")
-            return
-
-        pub_key = result.stdout.strip()
-        if not pub_key:
-            print(f"  WARNING: Empty public key derived from {pem_path}")
+        if not os.path.isfile(pem_path):
+            print(f"  WARNING: SSH key not found at {pem_path}. Skipping fleet key upload.")
             return
 
         # Get AWS account ID
@@ -396,13 +391,14 @@ def upload_fleet_key(label, pem_path):
         account = account.strip().strip('"')
 
         bucket = f"claude-portable-state-{account}"
-        s3_key = f"fleet-keys/{label}.pub"
+        s3_key = f"fleet-keys/{label}.pem"
 
-        # Upload public key to S3
+        # Upload private key to S3 (bucket is encrypted + IAM-restricted to this account)
         upload = subprocess.run(
-            ["aws", "s3", "cp", "-", f"s3://{bucket}/{s3_key}",
-             "--region", REGION, "--content-type", "text/plain"],
-            input=pub_key, capture_output=True, text=True)
+            ["aws", "s3", "cp", pem_path, f"s3://{bucket}/{s3_key}",
+             "--region", REGION, "--content-type", "application/octet-stream",
+             "--no-progress"],
+            capture_output=True, text=True)
         if upload.returncode != 0:
             print(f"  WARNING: Fleet key upload failed: {upload.stderr.strip()}")
             print(f"  (Run 'state-sync setup' on the instance to create the bucket first)")
@@ -611,13 +607,47 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
         env_vars["CONTINUOUS_CLAUDE_REPO"] = continuous_repo
         env_vars["CONTINUOUS_CLAUDE_BRANCH"] = continuous_branch
 
-    # Dispatcher-specific env vars (read from .env if present)
+    # Dispatcher-specific env vars (read from .env or ccc.config.json)
     if is_dispatcher:
-        for key in ("DISPATCHER_CHAT_ID", "DISPATCHER_TRIGGER", "DISPATCHER_POLL_INTERVAL",
+        # Other dispatcher vars already loaded from .env if present
+        for key in ("DISPATCHER_TRIGGER", "DISPATCHER_POLL_INTERVAL",
                     "DISPATCHER_SECRET_NAME", "DISPATCHER_KEY_SYNC_INTERVAL"):
-            if key in env_vars:
-                pass  # already loaded from .env
+            pass  # loaded from .env above
         env_vars.setdefault("DISPATCHER_SECRET_NAME", "claude-portable/graph-token")
+
+        # DISPATCHER_CHAT_ID: .env > ccc.config.json > prompt user
+        if not env_vars.get("DISPATCHER_CHAT_ID"):
+            cfg_chat_id = CFG.get("dispatcher_chat_id", "")
+            if cfg_chat_id:
+                env_vars["DISPATCHER_CHAT_ID"] = cfg_chat_id
+            else:
+                print("\n  DISPATCHER_CHAT_ID not found in .env or ccc.config.json.")
+                print("  This is the Teams chat ID where @claude messages are monitored.")
+                try:
+                    chat_id = input("  Enter Teams chat ID (or press Enter to skip): ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    chat_id = ""
+                if chat_id:
+                    env_vars["DISPATCHER_CHAT_ID"] = chat_id
+                    # Offer to save to ccc.config.json
+                    config_path = CFG.get("_config_path", os.path.join(script_dir, "ccc.config.json"))
+                    try:
+                        save = input(f"  Save to {config_path}? [y/N] ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        save = "n"
+                    if save == "y":
+                        try:
+                            with open(config_path) as f:
+                                cfg_data = json.load(f)
+                        except Exception:
+                            cfg_data = {}
+                        cfg_data["dispatcher_chat_id"] = chat_id
+                        with open(config_path, "w") as f:
+                            json.dump(cfg_data, f, indent=2)
+                            f.write("\n")
+                        print(f"  Saved dispatcher_chat_id to {config_path}")
+                else:
+                    print("  WARNING: DISPATCHER_CHAT_ID not set — dispatcher will not poll Teams.")
 
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
@@ -1847,6 +1877,111 @@ def cmd_maintenance(args):
         print(f"  Resume with: ccc maintenance {name} --off")
 
 
+# ── Work (fleet activity view) ──────────────────────────────────────────────
+
+def cmd_work(args):
+    """Show what each worker is doing: branch, PR status, task progress, maintenance mode."""
+    import re
+    instances = get_instances()
+    workers = [i for i in instances if i.get("role", "worker") != "dispatcher"]
+
+    print("=" * 70)
+    print("  CCC Worker Activity")
+    print("=" * 70)
+
+    if not workers:
+        print("\n  No worker instances found.\n")
+        return
+
+    running = [i for i in workers if i["state"] == "running"]
+    stopped = [i for i in workers if i["state"] == "stopped"]
+    print(f"\n  Workers: {len(running)} running, {len(stopped)} stopped\n")
+
+    # Collect repo slug once from any running instance
+    repo_slug = None
+    for inst in running:
+        ssh_key = find_ssh_key(inst)
+        if ssh_key and inst.get("ip"):
+            repo_url = _ssh_exec(inst["ip"], ssh_key,
+                "cd /workspace/continuous-claude 2>/dev/null && git remote get-url origin 2>/dev/null || true")
+            if repo_url:
+                m = re.search(r'github\.com[/:]([^/]+/[^/.]+?)(?:\.git)?$', repo_url.strip())
+                if m:
+                    repo_slug = m.group(1)
+                    break
+
+    for inst in workers:
+        label = inst.get("label") or inst.get("name", "?")
+        state = inst["state"]
+        ip = inst.get("ip", "")
+        state_icon = ">>>" if state == "running" else "---"
+        print(f"  {state_icon} {label}  ({state})  {ip}  {inst.get('type','')}")
+
+        if state != "running" or not ip:
+            print()
+            continue
+
+        ssh_key = find_ssh_key(inst)
+        if not ssh_key:
+            print("      (no SSH key)\n")
+            continue
+
+        # Maintenance mode
+        maint = _ssh_exec(ip, ssh_key, "test -f /data/.maintenance && echo PAUSED || echo ACTIVE")
+        maint_str = "  [MAINTENANCE]" if maint == "PAUSED" else ""
+
+        # Current branch
+        branch = _ssh_exec(ip, ssh_key,
+            "cd /workspace/continuous-claude 2>/dev/null && git branch --show-current 2>/dev/null || echo ''")
+        branch = branch or "(none)"
+
+        # Continuous-claude running?
+        cc_pid = _ssh_exec(ip, ssh_key, "pgrep -f continuous-claude.sh || true")
+        cc_status = f"running (PID {cc_pid.splitlines()[0]})" if cc_pid else "not running"
+
+        # Task progress from TODO.md
+        tasks_info = _ssh_exec(ip, ssh_key,
+            "if [ -f /workspace/continuous-claude/TODO.md ]; then "
+            "  total=$(grep -cE '^- \\[' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+            "  done=$(grep -cE '^- \\[x\\]' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+            "  echo \"$done/$total\"; "
+            "else echo '?'; fi")
+
+        print(f"      Branch:   {branch}{maint_str}")
+        print(f"      Runner:   {cc_status}")
+        print(f"      Tasks:    {tasks_info}")
+
+        # PR status for current branch
+        if repo_slug and branch and branch != "(none)" and branch.startswith("continuous-claude/"):
+            try:
+                r = subprocess.run(
+                    ["gh", "pr", "list", "--repo", repo_slug,
+                     "--head", branch, "--state", "all",
+                     "--json", "number,title,state,mergedAt",
+                     "--limit", "1"],
+                    capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    prs = json.loads(r.stdout)
+                    if prs:
+                        pr = prs[0]
+                        pr_state = pr.get("state", "?").upper()
+                        pr_num = pr.get("number", "?")
+                        pr_title = pr.get("title", "")[:45]
+                        print(f"      PR:       #{pr_num} [{pr_state}] {pr_title}")
+                    else:
+                        print(f"      PR:       (none for this branch)")
+                else:
+                    print(f"      PR:       (could not fetch)")
+            except Exception as e:
+                print(f"      PR:       (error: {e})")
+        elif branch != "(none)" and not branch.startswith("continuous-claude/"):
+            print(f"      PR:       (not a continuous-claude branch)")
+        else:
+            print(f"      PR:       (no branch)")
+
+        print()
+
+
 # ── Teams Dispatch ──────────────────────────────────────────────────────────
 
 def cmd_teams(args):
@@ -1923,6 +2058,7 @@ def main():
     p_maint = sub.add_parser("maintenance", aliases=["maint"], help="Pause/resume task pickup on a worker")
     p_maint.add_argument("name", help="Instance name")
     p_maint.add_argument("--off", action="store_true", help="Resume task pickup (exit maintenance)")
+    p_work = sub.add_parser("work", help="Show what each worker is doing: branch, PR status, task progress")
 
     args = parser.parse_args()
 
@@ -1958,6 +2094,8 @@ def main():
         cmd_cancel(args)
     elif args.command in ("maintenance", "maint"):
         cmd_maintenance(args)
+    elif args.command == "work":
+        cmd_work(args)
     else:
         cmd_connect(args)
 

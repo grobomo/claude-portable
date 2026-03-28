@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Teams -> CCC dispatch with request tracking.
 
-Polls a Teams chat for @claude mentions, dispatches to ccc instances,
-tracks each request through its lifecycle, and replies with results.
+Polls a Teams chat for @claude mentions or quoted replies to bot messages,
+dispatches to ccc instances, tracks each request through its lifecycle,
+and replies with results.
 
 Runs on a dedicated dispatcher EC2 instance (cloud-native mode):
   - Graph token read from GRAPH_TOKEN_FILE (written by dispatcher-daemon.sh)
@@ -133,6 +134,51 @@ def graph_post(path, body):
         raise
 
 
+def graph_put_binary(path, data, content_type="application/octet-stream"):
+    """PUT binary data to MS Graph API, return parsed JSON body."""
+    token = _load_graph_token()
+    url = f"{GRAPH_BASE}{path}"
+    req = urllib.request.Request(url, data=data, method="PUT", headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": content_type,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+            return json.loads(raw.decode()) if raw else {}
+    except urllib.error.HTTPError as e:
+        if e.code == 204:
+            return {}
+        raise
+
+
+def upload_pem_to_onedrive(key_path, instance_name):
+    """Upload a .pem key file to OneDrive and return a sharing URL, or None on failure."""
+    try:
+        filename = f"{instance_name}-ssh-key.pem"
+        with open(key_path, "rb") as f:
+            data = f.read()
+        # Upload to OneDrive root (overwrites if exists)
+        item = graph_put_binary(f"/me/drive/root:/{filename}:/content", data)
+        item_id = item.get("id")
+        if not item_id:
+            print(f"  WARNING: OneDrive upload returned no item ID for {filename}")
+            return None
+        # Create an org-scoped view link so the user can download it
+        link_resp = graph_post(f"/me/drive/items/{item_id}/createLink", {
+            "type": "view",
+            "scope": "organization",
+        })
+        url = link_resp.get("link", {}).get("webUrl")
+        if url:
+            print(f"  Uploaded {filename} to OneDrive: {url}")
+        return url
+    except Exception as e:
+        print(f"  WARNING: Failed to upload PEM to OneDrive: {e}")
+        return None
+
+
 # ── Teams helpers ───────────────────────────────────────────────────────────
 
 def reply_in_teams(chat_id, text):
@@ -167,6 +213,34 @@ def extract_trigger(body_html, trigger):
     idx = body_text.lower().index(trigger_lower)
     prompt = body_text[idx + len(trigger):].strip()
     return (prompt, True) if prompt else (None, False)
+
+
+def is_reply_to_bot(m):
+    """Return True if this message is a quoted reply to a [Claude Bot] message.
+
+    Teams encodes quoted replies as attachments with contentType="messageReference".
+    The attachment content JSON includes a messagePreview field with the quoted text.
+    """
+    for att in m.get("attachments", []):
+        if att.get("contentType") != "messageReference":
+            continue
+        try:
+            content = json.loads(att.get("content", "{}"))
+            if BOT_TAG in content.get("messagePreview", ""):
+                return True
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return False
+
+
+def extract_reply_text(body_html):
+    """Extract only the new reply text, stripping any <attachment> quote blocks."""
+    # Remove <attachment ...>...</attachment> elements (the quoted original message)
+    text = re.sub(r"<attachment[^>]*>.*?</attachment>", "", body_html,
+                  flags=re.DOTALL | re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text).strip()
+    return text
 
 
 # ── EC2 worker discovery ─────────────────────────────────────────────────────
@@ -276,6 +350,69 @@ def get_interactive():
                         for p in INTERACTIVE_PATTERNS)), None)
 
 
+def start_stopped_interactive():
+    """Find a stopped interactive instance and start it. Returns instance dict or None."""
+    region = _aws_region()
+    try:
+        r = subprocess.run([
+            "aws", "ec2", "describe-instances",
+            "--region", region,
+            "--filters",
+            "Name=tag:Project,Values=claude-portable",
+            "Name=instance-state-name,Values=stopped",
+            "--query",
+            (
+                "Reservations[].Instances[]"
+                ".{name: Tags[?Key=='Name'].Value|[0],"
+                " id: InstanceId,"
+                " role: Tags[?Key=='Role'].Value|[0]}"
+            ),
+            "--output", "json",
+        ], capture_output=True, text=True, timeout=20)
+
+        if r.returncode != 0:
+            return None
+
+        items = json.loads(r.stdout)
+        # Find the first stopped interactive instance
+        target = next((
+            item for item in items
+            if any((item.get("name") or "").startswith(p) for p in INTERACTIVE_PATTERNS)
+            and (item.get("role") or "").lower() != "dispatcher"
+        ), None)
+        if not target:
+            return None
+
+        instance_id = target["id"]
+        name = target["name"]
+        print(f"  Starting stopped instance {name} ({instance_id})")
+        subprocess.run([
+            "aws", "ec2", "start-instances",
+            "--region", region,
+            "--instance-ids", instance_id,
+        ], capture_output=True, text=True, timeout=20)
+
+        # Wait up to 90s for running + public IP
+        for _ in range(18):
+            time.sleep(5)
+            r2 = subprocess.run([
+                "aws", "ec2", "describe-instances",
+                "--region", region,
+                "--instance-ids", instance_id,
+                "--query", "Reservations[0].Instances[0].{state: State.Name, ip: PublicIpAddress}",
+                "--output", "json",
+            ], capture_output=True, text=True, timeout=20)
+            if r2.returncode == 0:
+                info = json.loads(r2.stdout)
+                if info.get("state") == "running" and info.get("ip"):
+                    return {"name": name, "id": instance_id, "ip": info["ip"], "role": "interactive"}
+        print(f"  WARNING: Instance {name} did not reach running state in time")
+        return None
+    except Exception as e:
+        print(f"  WARNING: start_stopped_interactive error: {e}")
+        return None
+
+
 def pick_worker():
     """Pick a worker instance, round-robin."""
     global _dispatch_counter
@@ -348,27 +485,48 @@ def is_ssh_request(prompt):
 
 
 def handle_ssh_request(chat_id, sender):
-    """Handle SSH session request — report interactive instance details if running."""
+    """Handle SSH session request — start interactive instance if needed and provide access."""
     inst = get_interactive()
 
     if not inst:
+        # Try to start a stopped interactive instance
         reply_in_teams(chat_id,
-            f"No interactive instance is currently running, {sender}. "
-            f"Launch one with: `ccc --name interactive` from your local machine.")
-        return
+            f"No interactive instance running, {sender}. Looking for a stopped one to start...")
+        inst = start_stopped_interactive()
+        if not inst:
+            reply_in_teams(chat_id,
+                f"No interactive instance found (running or stopped). "
+                f"Launch one with: `ccc --name interactive` from your local machine.")
+            return
 
     name = inst["name"]
     ip = inst["ip"]
     ssh_key_path = find_ssh_key(name)
-    key_info = f"~/.ssh/ccc-keys/{name}.pem" if ssh_key_path else "(key not found locally)"
 
-    reply_in_teams(chat_id,
-        f"Here you go, {sender}:\n\n"
-        f"Instance: {name} ({ip})\n"
-        f"SSH: `ssh -i {key_info} ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'`\n"
-        f"Web chat: http://{ip}:8888/\n\n"
-        f"This instance is yours — no automated tasks will run on it."
-    )
+    # Try to upload the .pem key to OneDrive for easy download
+    key_url = None
+    if ssh_key_path:
+        key_url = upload_pem_to_onedrive(ssh_key_path, name)
+
+    ssh_cmd = f"ssh -i {name}.pem ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'"
+
+    lines = [f"Here you go, {sender}:", "", f"Instance: {name} ({ip})"]
+
+    if key_url:
+        lines.append(f"SSH key: {key_url}  (download, then:)")
+        lines.append(f"  `{ssh_cmd}`")
+    elif ssh_key_path:
+        lines.append(f"SSH: `ssh -i {ssh_key_path} ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'`")
+    else:
+        lines.append(f"SSH: `{ssh_cmd}`  (get key via `ccc` on your local machine)")
+
+    lines += [
+        f"Web chat: http://{ip}:8888/  (alternative — no key needed)",
+        "",
+        "This instance is yours — no automated tasks will run on it.",
+    ]
+
+    reply_in_teams(chat_id, "\n".join(lines))
 
 
 def check_result(ip, ssh_key, request_id):
@@ -500,6 +658,12 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
 
         body_html = m.get("body", {}).get("content", "")
         prompt, is_trigger = extract_trigger(body_html, trigger)
+
+        # If no @claude trigger, check for a quoted reply to a bot message
+        if not is_trigger and is_reply_to_bot(m):
+            reply_text = extract_reply_text(body_html)
+            if reply_text:
+                prompt, is_trigger = reply_text, True
 
         # Mark as processed regardless
         processed.add(mid)
