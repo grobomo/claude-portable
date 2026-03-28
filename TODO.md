@@ -33,11 +33,11 @@
 
 ## Phase 3: Observability (remote status checking)
 
-- [x] Add `cpp status [name]` command -- SSH to instance, show continuous-claude status (running/stopped/complete, last iteration time, tasks remaining, last PR, error count), daemon status (idle monitor, state sync, web chat), and open PRs.
-  - PR title: "feat: add cpp status command for remote monitoring"
+- [x] Add `ccc status [name]` command -- SSH to instance, show continuous-claude status (running/stopped/complete, last iteration time, tasks remaining, last PR, error count), daemon status (idle monitor, state sync, web chat), and open PRs.
+  - PR title: "feat: add ccc status command for remote monitoring"
 
-- [x] Add `cpp logs [name]` command -- SSH to instance, tail /data/continuous-claude.log. Support -f flag for follow mode and -n for line count.
-  - PR title: "feat: add cpp logs command to tail continuous-claude"
+- [x] Add `ccc logs [name]` command -- SSH to instance, tail /data/continuous-claude.log. Support -f flag for follow mode and -n for line count.
+  - PR title: "feat: add ccc logs command to tail continuous-claude"
 
-- [x] Add --continuous flag to cpp launcher -- `cpp --name X --continuous <repo-url>` sets CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO in the instance .env before docker compose up. Optional --branch flag.
-  - PR title: "feat: add --continuous flag to cpp launcher"
+- [x] Add --continuous flag to ccc launcher -- `ccc --name X --continuous <repo-url>` sets CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO in the instance .env before docker compose up. Optional --branch flag.
+  - PR title: "feat: add --continuous flag to ccc launcher"

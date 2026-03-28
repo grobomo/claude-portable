@@ -104,7 +104,7 @@ case "$cmd" in
 
     echo ""
     echo "  Connect via SSH tunnel from local machine:"
-    echo "    ccp vnc"
+    echo "    ccc vnc"
     echo "  Then open RealVNC -> localhost:${VNC_PORT}"
     echo "  Chrome DevTools -> http://localhost:${CHROME_DEBUG_PORT}"
     ;;
@@ -195,7 +195,7 @@ Profile persistence:
   Cookies, bookmarks, extensions, logins all persist
 
 Connect:
-  From local: ccp vnc
+  From local: ccc vnc
   RealVNC -> localhost:5900
   Chrome DevTools -> http://localhost:9222
 EOF

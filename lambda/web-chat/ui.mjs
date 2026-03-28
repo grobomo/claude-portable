@@ -157,7 +157,7 @@ async function discover() {
       addMsg('system', 'Connected to ' + data.instance.name);
     } else {
       setStatus('err', 'No running instance');
-      addMsg('system', 'No running instance found. Start one with: cpp offload');
+      addMsg('system', 'No running instance found. Start one with: ccc offload');
     }
   } catch(e) {
     setStatus('err', 'Connection failed');

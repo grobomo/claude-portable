@@ -5,7 +5,7 @@
 #
 # Usage: cred-refresh.sh [check_interval_minutes]
 #
-# Paired with local-side: cpp uploads fresh tokens to S3 periodically.
+# Paired with local-side: ccc uploads fresh tokens to S3 periodically.
 set -euo pipefail
 
 INTERVAL="${1:-15}"  # check every 15 minutes
@@ -55,7 +55,7 @@ except:
   fi
 
   echo "  WARNING: Self-refresh failed. Token expires in ${REMAINING}h."
-  echo "  Reconnect with 'cpp' to push fresh credentials."
+  echo "  Reconnect with 'ccc' to push fresh credentials."
 }
 
 # Main loop

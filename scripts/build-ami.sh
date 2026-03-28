@@ -51,7 +51,7 @@ echo "  Base AMI: $BASE_AMI"
 
 # Find security group
 SG_ID=$(aws ec2 describe-security-groups \
-  --filters "Name=group-name,Values=cpp-sg" \
+  --filters "Name=group-name,Values=ccc-sg" \
   --query 'SecurityGroups[0].GroupId' --output text --region "$REGION" 2>/dev/null || echo "")
 
 if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
@@ -62,7 +62,7 @@ if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
 fi
 
 if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
-  echo "ERROR: No security group with SSH access found. Run 'cpp' first to create one."
+  echo "ERROR: No security group with SSH access found. Run 'ccc' first to create one."
   exit 1
 fi
 
@@ -266,7 +266,7 @@ echo "  Terminating build instance..."
 aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" --region "$REGION" > /dev/null
 
 # Update config with new AMI
-CONFIG_FILE="$SCRIPT_DIR/cpp.config.json"
+CONFIG_FILE="$SCRIPT_DIR/ccc.config.json"
 if [ -f "$CONFIG_FILE" ]; then
   python3 -c "
 import json
@@ -274,7 +274,7 @@ with open('$CONFIG_FILE') as f: cfg = json.load(f)
 cfg['golden_ami'] = '$AMI_ID'
 cfg['golden_ami_built'] = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
 with open('$CONFIG_FILE', 'w') as f: json.dump(cfg, f, indent=2)
-print('  Updated cpp.config.json with golden_ami=$AMI_ID')
+print('  Updated ccc.config.json with golden_ami=$AMI_ID')
 "
 fi
 
@@ -283,7 +283,7 @@ echo ""
 echo "[8/8] Committing manifest to git..."
 cd "$SCRIPT_DIR"
 if [ -d .git ]; then
-  git add ami-manifests/ cpp.config.json 2>/dev/null || true
+  git add ami-manifests/ ccc.config.json 2>/dev/null || true
   git commit -m "ami: $AMI_NAME ($AMI_ID)
 
 Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -310,4 +310,4 @@ echo "    - AWS CLI v2 + GitHub CLI + Bitwarden CLI"
 echo ""
 echo "  Launch time: ~1-2 min (vs ~7 min from scratch)"
 echo ""
-echo "  Use: cpp will auto-detect the golden AMI from cpp.config.json"
+echo "  Use: ccc will auto-detect the golden AMI from ccc.config.json"

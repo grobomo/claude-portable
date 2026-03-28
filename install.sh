@@ -18,9 +18,9 @@ if [ "${1:-}" = "uninstall" ]; then
   echo ""
 
   # Read alias name from config
-  ALIAS_NAME="cpp"
-  if command -v python3 &>/dev/null && [ -f "$INSTALL_DIR/cpp.config.json" ]; then
-    ALIAS_NAME=$(python3 -c "import json; print(json.load(open('$INSTALL_DIR/cpp.config.json')).get('alias','cpp'))" 2>/dev/null || echo "cpp")
+  ALIAS_NAME="ccc"
+  if command -v python3 &>/dev/null && [ -f "$INSTALL_DIR/ccc.config.json" ]; then
+    ALIAS_NAME=$(python3 -c "import json; print(json.load(open('$INSTALL_DIR/ccc.config.json')).get('alias','ccc'))" 2>/dev/null || echo "ccc")
   fi
 
   # Remove wrapper script from PATH dirs
@@ -48,7 +48,7 @@ if [ "${1:-}" = "uninstall" ]; then
   # Clean Claude Portable lines from profiles that weren't backed up
   for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     if [ -f "$RC" ]; then
-      sed -i '/# Claude Portable/d; /alias.*=.*python3.*claude-portable.*cpp/d; /claude-portable PATH/d' "$RC" 2>/dev/null || true
+      sed -i '/# Claude Portable/d; /alias.*=.*python3.*claude-portable.*ccc/d; /claude-portable PATH/d' "$RC" 2>/dev/null || true
     fi
   done
 
@@ -56,7 +56,7 @@ if [ "${1:-}" = "uninstall" ]; then
   if [ -n "${USERPROFILE:-}" ]; then
     PS_PROFILE="${USERPROFILE}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
     if [ -f "$PS_PROFILE" ]; then
-      sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
+      sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*ccc/d' "$PS_PROFILE" 2>/dev/null || true
       echo "  Cleaned PowerShell profile"
     fi
   fi
@@ -240,11 +240,11 @@ echo "  Done."
 
 ALIAS_NAME=$($PY -c "
 import json, os
-d = os.path.join(os.path.expanduser('~'), 'claude-portable', 'cpp.config.json')
-print(json.load(open(d)).get('alias', 'cpp'))
-" 2>/dev/null || echo "cpp")
+d = os.path.join(os.path.expanduser('~'), 'claude-portable', 'ccc.config.json')
+print(json.load(open(d)).get('alias', 'ccc'))
+" 2>/dev/null || echo "ccc")
 total_steps "Installing '$ALIAS_NAME' command..."
-CPP_PATH="$INSTALL_DIR/cpp"
+CPP_PATH="$INSTALL_DIR/ccc"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -304,9 +304,9 @@ echo "  Created $WRAPPER"
 
 # Clean up old aliases from shell profiles (migration from alias-based install)
 for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
-  if [ -f "$RC" ] && grep -q 'alias.*=.*python3.*claude-portable.*cpp' "$RC" 2>/dev/null; then
+  if [ -f "$RC" ] && grep -q 'alias.*=.*python3.*claude-portable.*ccc' "$RC" 2>/dev/null; then
     backup_file "$RC"
-    sed -i '/# Claude Portable$/d; /^alias.*=.*python3.*claude-portable.*cpp/d' "$RC" 2>/dev/null || true
+    sed -i '/# Claude Portable$/d; /^alias.*=.*python3.*claude-portable.*ccc/d' "$RC" 2>/dev/null || true
     echo "  Removed old alias from $(basename "$RC")"
   fi
 done
@@ -319,7 +319,7 @@ if [ -n "${USERPROFILE:-}" ]; then
   PS_LINE="function $ALIAS_NAME { python3 \"$WIN_PATH\" \$args }"
   if [ -f "$PS_PROFILE" ]; then
     backup_file "$PS_PROFILE"
-    sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*cpp/d' "$PS_PROFILE" 2>/dev/null || true
+    sed -i '/# Claude Portable/d; /function.*python3.*claude-portable.*ccc/d' "$PS_PROFILE" 2>/dev/null || true
   fi
   if ! grep -q "function $ALIAS_NAME" "$PS_PROFILE" 2>/dev/null; then
     printf '\n# Claude Portable\n%s\n' "$PS_LINE" >> "$PS_PROFILE"
@@ -387,7 +387,7 @@ else
       fi
     else
       echo "  No local Claude credentials found."
-      echo "  Edit $ENV_FILE and set ANTHROPIC_API_KEY before running ccp."
+      echo "  Edit $ENV_FILE and set ANTHROPIC_API_KEY before running ccc."
     fi
   fi
 

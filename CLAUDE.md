@@ -8,9 +8,9 @@ Dockerized Claude Code environment on AWS EC2. Chrome, MCP servers, skills, sess
 
 **NEVER build or run this container on the local machine.** Always deploy to AWS EC2.
 
-- Use `ccp` (Python launcher) to manage instances
+- Use `ccc` (Python launcher) to manage instances
 - Build and run the container ON the EC2 instance
-- Connect via `ccp --name <name>` or SSH directly
+- Connect via `ccc --name <name>` or SSH directly
 
 ---
 
@@ -19,7 +19,7 @@ Dockerized Claude Code environment on AWS EC2. Chrome, MCP servers, skills, sess
 ```
 Local machine
   |
-  | ccp --name dev (Python launcher)
+  | ccc --name dev (Python launcher)
   v
 EC2 Instance (t3.large, Ubuntu 24.04)
   |
@@ -41,14 +41,14 @@ claude-portable container (Debian bookworm + Node 20)
 
 | File | Purpose |
 |------|---------|
-| `cpp` | Python launcher -- manages EC2 lifecycle, SSH, VNC, SCP |
-| `cpp.config.json` | Launcher config (alias, region, instance type, idle timeout) |
+| `ccc` | Python launcher -- manages EC2 lifecycle, SSH, VNC, SCP |
+| `ccc.config.json` | Launcher config (alias, region, instance type, idle timeout) |
 | `Dockerfile` | Container image -- Node 20, Claude CLI, Chrome, AWS/gh/Python, SSH |
 | `docker-compose.yml` | Base compose config |
 | `docker-compose.remote.yml` | EC2 compose override (adds VNC/DevTools/filebrowser ports) |
 | `cloudformation/claude-portable-spot.yaml` | CF template (spot instance + IAM role) |
 | `components.yaml` | Component manifest -- repos to pull at startup |
-| `install.sh` | One-time installer (prereqs + `ccp` command on PATH) |
+| `install.sh` | One-time installer (prereqs + `ccc` command on PATH) |
 | `test.sh` | E2E test (launch, validate, teardown) |
 | `.env.example` | Template for secrets |
 | `.env` | Actual secrets (gitignored) |
@@ -115,7 +115,7 @@ If idle for `CLAUDE_PORTABLE_IDLE_TIMEOUT` minutes (default 30):
 3. Calls `aws ec2 stop-instances`
 4. Fallback: `sudo shutdown -h now`
 
-Configure via env var or `cpp.config.json`:
+Configure via env var or `ccc.config.json`:
 ```bash
 CLAUDE_PORTABLE_IDLE_TIMEOUT=30
 ```
@@ -190,13 +190,13 @@ Offload conversations to the cloud and continue from your phone.
 
 **Offload from local machine:**
 ```bash
-cpp offload "refactor the auth module"          # send prompt, get web URL
-cpp offload -n dev                              # just get the web URL for existing instance
-cpp offload -n dev -w /workspace/my-project     # set working directory
+ccc offload "refactor the auth module"          # send prompt, get web URL
+ccc offload -n dev                              # just get the web URL for existing instance
+ccc offload -n dev -w /workspace/my-project     # set working directory
 ```
 
 **How it works:**
-1. `cpp offload` ensures an instance is running + web-chat server is up
+1. `ccc offload` ensures an instance is running + web-chat server is up
 2. Prints a URL with embedded auth token -- open on your phone
 3. Mobile chat UI connects via WebSocket, sends prompts to Claude CLI
 4. Claude streams responses back in real-time
@@ -216,7 +216,7 @@ cpp offload -n dev -w /workspace/my-project     # set working directory
 
 **Deploy Lambda:** `bash lambda/web-chat/deploy.sh`
 
-**Stable URL:** configured in `cpp.config.json` as `web_chat_lambda_url`
+**Stable URL:** configured in `ccc.config.json` as `web_chat_lambda_url`
 
 **Env vars:**
 | Variable | Default | Purpose |
@@ -272,6 +272,6 @@ Tests: script syntax, bootstrap completion, auth, idle monitor, S3 sync, cred re
 |---------|-----|
 | "OAuth token has expired" | Push fresh tokens or restart local Claude |
 | Container crash-looping | `ssh ubuntu@<IP> 'docker logs claude-portable'` |
-| Spot interrupted | Relaunch: `ccp --name <name>` |
-| `ccp` not found after reboot | `bash install.sh` (re-creates wrapper) |
+| Spot interrupted | Relaunch: `ccc --name <name>` |
+| `ccc` not found after reboot | `bash install.sh` (re-creates wrapper) |
 | S3 sync fails | Run `state-sync setup` on instance first |

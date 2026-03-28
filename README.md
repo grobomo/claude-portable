@@ -14,7 +14,7 @@ The installer walks you through everything:
 3. Clones the repo
 4. Prompts for your **Anthropic API key** (from RDSEC portal) or auto-detects **OAuth tokens** from local Claude Code
 5. Auto-detects **GitHub token** from `gh` CLI (or prompts)
-6. Adds the `ccp` command to your PATH
+6. Adds the `ccc` command to your PATH
 
 **Have everything ready?** The whole thing takes ~2 minutes.
 
@@ -29,7 +29,7 @@ The installer walks you through everything:
 ## Launch
 
 ```bash
-ccp --name dev
+ccc --name dev
 ```
 
 First launch: ~5-7 min (builds Docker on EC2). After that, stopped instances resume in ~30 sec.
@@ -37,12 +37,12 @@ First launch: ~5-7 min (builds Docker on EC2). After that, stopped instances res
 ## Usage
 
 ```bash
-ccp --name dev         # Connect (starts if stopped)
-ccp list               # List instances
-ccp vnc                # Open Chrome via VNC
-ccp scp file.txt       # Copy file to instance
-ccp stop dev           # Stop ($0/hr while stopped)
-ccp kill dev           # Destroy permanently
+ccc --name dev         # Connect (starts if stopped)
+ccc list               # List instances
+ccc vnc                # Open Chrome via VNC
+ccc scp file.txt       # Copy file to instance
+ccc stop dev           # Stop ($0/hr while stopped)
+ccc kill dev           # Destroy permanently
 ```
 
 ## What's included

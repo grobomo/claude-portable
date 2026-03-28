@@ -27,12 +27,12 @@ docker_exec() {
 cleanup() {
   if [ "$KEEP" = "--keep" ]; then
     echo ""
-    echo "  --keep: Instance left running. Clean up with: ccp kill $INSTANCE_NAME"
+    echo "  --keep: Instance left running. Clean up with: ccc kill $INSTANCE_NAME"
     return
   fi
   echo ""
   echo "=== Teardown ==="
-  ccp kill "$INSTANCE_NAME" 2>/dev/null || true
+  ccc kill "$INSTANCE_NAME" 2>/dev/null || true
 }
 
 # ── Pre-flight ───────────────────────────────────────────────────────────────
@@ -44,11 +44,11 @@ echo ""
 
 # Check prerequisites
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CCP="$SCRIPT_DIR/cpp"
+CCP="$SCRIPT_DIR/ccc"
 PY="python3"
 
 if ! $PY "$CCP" list &>/dev/null; then
-  echo "ERROR: ccp not working. Check .env and AWS credentials."
+  echo "ERROR: ccc not working. Check .env and AWS credentials."
   exit 1
 fi
 
@@ -67,14 +67,14 @@ echo ""
 
 echo "=== Launch instance ==="
 # Kill any existing test instance
-ccp kill "$INSTANCE_NAME" 2>/dev/null || true
+ccc kill "$INSTANCE_NAME" 2>/dev/null || true
 
 OUTPUT=$($PY "$CCP" --name "$INSTANCE_NAME" 2>&1 || true)
 echo "$OUTPUT"
 
-# Extract IP from ccp output or from list
+# Extract IP from ccc output or from list
 IP=$($PY "$CCP" list 2>/dev/null | grep "$INSTANCE_NAME" | awk '{print $4}')
-KEY_PATH="$HOME/.ssh/cpp-keys/${INSTANCE_NAME}.pem"
+KEY_PATH="$HOME/.ssh/ccc-keys/${INSTANCE_NAME}.pem"
 
 if [ -z "$IP" ]; then
   fail "launch" "No IP found for $INSTANCE_NAME"

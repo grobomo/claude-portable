@@ -14,11 +14,11 @@ Spin up a claude-portable EC2 instance that:
 
 | Capability | Status | Where |
 |---|---|---|
-| EC2 lifecycle (launch/stop/kill) | Done | `cpp` launcher |
+| EC2 lifecycle (launch/stop/kill) | Done | `ccc` launcher |
 | Docker container with Claude CLI | Done | `Dockerfile` |
-| SSH into container TUI | Done | `cpp --name X` -> `docker exec -it` |
+| SSH into container TUI | Done | `ccc --name X` -> `docker exec -it` |
 | Chrome + Xvfb + VNC | Done | `Dockerfile` + `scripts/browser.sh` |
-| OAuth/API key auth | Done | `push_credentials()` in `cpp` |
+| OAuth/API key auth | Done | `push_credentials()` in `ccc` |
 | S3 state sync | Done | `scripts/state-sync.sh` |
 | Idle monitor (auto-shutdown) | Done | `scripts/idle-monitor.sh` |
 | Component system (pull repos at boot) | Done | `components.yaml` + `scripts/sync-config.sh` |
@@ -249,7 +249,7 @@ ACTIVE=$(( ${CLAUDE_PROCS:-0} + ${SSH_SESSIONS:-0} + ${INTERACTIVE:-0} + ${CC_PR
 
 **Problem:** No way to check continuous-claude progress from the local machine without SSH-ing in.
 
-**Fix:** Add `cpp status [name]` command that:
+**Fix:** Add `ccc status [name]` command that:
 
 1. SSHes to the instance
 2. Reads `/data/continuous-claude.log` tail
@@ -258,9 +258,9 @@ ACTIVE=$(( ${CLAUDE_PROCS:-0} + ${SSH_SESSIONS:-0} + ${INTERACTIVE:-0} + ${CC_PR
 5. Shows running processes
 
 ```
-$ cpp status dev
+$ ccc status dev
 
-  Instance: cpp-dev (i-0abc123) - running
+  Instance: ccc-dev (i-0abc123) - running
   IP: 3.14.159.26
   Uptime: 2h 15m
 
@@ -281,24 +281,24 @@ $ cpp status dev
     Web chat: active (port 8888)
 ```
 
-**Also add:** `cpp logs [name]` to tail the continuous-claude log:
+**Also add:** `ccc logs [name]` to tail the continuous-claude log:
 ```
-$ cpp logs dev          # tail -50 continuous-claude.log
-$ cpp logs dev -f       # follow mode
+$ ccc logs dev          # tail -50 continuous-claude.log
+$ ccc logs dev -f       # follow mode
 ```
 
 ---
 
-### Gap 9: No way to configure continuous-claude per-instance via cpp
+### Gap 9: No way to configure continuous-claude per-instance via ccc
 
-**Problem:** Currently `cpp --name dev` launches and connects. Need a way to say "launch this instance with continuous-claude pointed at repo X".
+**Problem:** Currently `ccc --name dev` launches and connects. Need a way to say "launch this instance with continuous-claude pointed at repo X".
 
-**Fix:** Extend `cpp` launcher:
+**Fix:** Extend `ccc` launcher:
 
 ```bash
 # New flags
-cpp --name worker1 --continuous https://github.com/org/project.git
-cpp --name worker1 --continuous https://github.com/org/project.git --branch feature-x
+ccc --name worker1 --continuous https://github.com/org/project.git
+ccc --name worker1 --continuous https://github.com/org/project.git --branch feature-x
 
 # Under the hood: sets env vars in the instance's .env before docker compose up
 CONTINUOUS_CLAUDE_ENABLED=true
@@ -314,7 +314,7 @@ CONTINUOUS_CLAUDE_BRANCH=main
 
 **Mitigation options:**
 1. **API key mode** (recommended for continuous-claude): No session limits, just cost. Set `ANTHROPIC_API_KEY` in `.env`.
-2. **OAuth mode**: Works but only one Claude process can be active at a time. The interactive TUI session and continuous-claude will conflict. Solution: don't SSH in while continuous-claude is running, use `cpp status` and `cpp logs` instead.
+2. **OAuth mode**: Works but only one Claude process can be active at a time. The interactive TUI session and continuous-claude will conflict. Solution: don't SSH in while continuous-claude is running, use `ccc status` and `ccc logs` instead.
 3. **Separate API key for continuous-claude**: Add `CONTINUOUS_CLAUDE_API_KEY` env var. The `continuous-claude.sh` script exports it as `ANTHROPIC_API_KEY` before running `claude -p`.
 
 **Recommendation:** Use API key mode for cloud instances. OAuth is better for interactive use from your laptop.
@@ -331,12 +331,12 @@ CONTINUOUS_CLAUDE_BRANCH=main
 
 **How auth gets into the container (current flow, keep it):**
 
-1. `cpp` reads `.env` from the project directory
+1. `ccc` reads `.env` from the project directory
 2. `.env` values go into EC2 user-data script
 3. User-data writes `.env` on EC2 host
 4. `docker-compose.yml` passes env vars from `.env` into container
 5. `bootstrap.sh` -> `inject-secrets.sh` writes credential files
-6. `cpp` also pushes fresh OAuth creds via SSH after container starts (`push_credentials()`)
+6. `ccc` also pushes fresh OAuth creds via SSH after container starts (`push_credentials()`)
 
 No changes needed to auth flow. Just add the new env vars to `docker-compose.yml`.
 
@@ -360,9 +360,9 @@ No changes needed to auth flow. Just add the new env vars to `docker-compose.yml
 - [ ] Ensure `rewrite-paths.sh` handles servers.yaml
 
 ### Phase 3: Observability (check status remotely)
-- [ ] Add `cpp status [name]` command
-- [ ] Add `cpp logs [name]` command
-- [ ] Add `--continuous <repo-url>` flag to `cpp` launcher
+- [ ] Add `ccc status [name]` command
+- [ ] Add `ccc logs [name]` command
+- [ ] Add `--continuous <repo-url>` flag to `ccc` launcher
 
 ### Phase 4: Polish
 - [ ] Update `CLAUDE.md` with continuous-claude docs
@@ -377,10 +377,10 @@ No changes needed to auth flow. Just add the new env vars to `docker-compose.yml
 ```
 Local Machine (Windows)
   |
-  | cpp --name worker1 --continuous https://github.com/org/project.git
-  | cpp status worker1        (check progress)
-  | cpp logs worker1           (tail log)
-  | cpp --name worker1         (SSH TUI when needed)
+  | ccc --name worker1 --continuous https://github.com/org/project.git
+  | ccc status worker1        (check progress)
+  | ccc logs worker1           (tail log)
+  | ccc --name worker1         (SSH TUI when needed)
   v
 EC2 Instance (t3.large)
   |
@@ -427,7 +427,7 @@ claude-portable container
 
 5. **OAuth token expiry during long runs**: OAuth access tokens expire. The container has `cred-refresh.sh` running every 15min, but if the refresh token itself expires (rare), continuous-claude will start failing. API key mode doesn't have this problem.
 
-6. **Concurrent writes to TODO.md**: If you SSH in and manually edit TODO.md while continuous-claude is running, you'll get merge conflicts. Use `cpp logs` to monitor, don't touch the repo while CC is active.
+6. **Concurrent writes to TODO.md**: If you SSH in and manually edit TODO.md while continuous-claude is running, you'll get merge conflicts. Use `ccc logs` to monitor, don't touch the repo while CC is active.
 
 7. **mcp-manager build step**: mcp-manager has TypeScript (`npm run build`). The bootstrap MCP install loop already handles `npm install` + `npm run build` for packages with a `build` script. Should work.
 

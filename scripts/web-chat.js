@@ -388,7 +388,7 @@ function handleResume(ws, session) {
 
 // ── Start ───────────────────────────────────────────────────────────────────
 
-// Write token to file so cpp offload can retrieve it
+// Write token to file so ccc offload can retrieve it
 try {
   fs.writeFileSync(TOKEN_FILE, TOKEN, { mode: 0o600 });
 } catch (e) {
