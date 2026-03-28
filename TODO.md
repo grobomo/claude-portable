@@ -330,3 +330,13 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - Acceptance: user says "add rolling chat cache", chatbot generates full template with all 6 fields, user confirms, task appears in TODO.md with complete context
   - Context: from session 2026-03-28 — dispatcher bugs stacked up because tasks were one-liners without context
   - PR title: "feat: chatbot auto-fills task template from conversation"
+
+## CRITICAL: Worker zero-touch boot
+
+- [ ] Workers must be fully autonomous from boot. bootstrap.sh must: (1) clone the repo from ccc.config.json repo_url, (2) start continuous-claude.sh as a daemon, (3) register with dispatcher, (4) upload SSH key to S3 fleet-keys bucket. NO manual SSH, NO manual git clone, NO manual process startup. The `ccc --name worker-N --new` command should result in a worker that is picking up tasks within 5 minutes with zero human intervention. Test by launching a fresh worker and verifying it picks up a task and creates a PR without any manual steps.
+  - What: workers auto-start continuous-claude and register with dispatcher on boot
+  - Why: currently every new worker requires manual SSH to clone repo, set git config, start continuous-claude, upload keys. This is unacceptable — the whole point of the fleet is autonomous operation.
+  - How: update bootstrap.sh to detect worker role, clone repo, inject GITHUB_TOKEN, start continuous-claude daemon, call dispatcher registration endpoint, upload SSH public key to S3
+  - Acceptance: `ccc --name worker-test --new` → wait 5 min → worker has an open PR on the repo. Zero manual steps.
+  - Context: session 2026-03-28 — every worker launch required manual intervention to start working
+  - PR title: "fix: worker zero-touch boot with auto-start continuous-claude"

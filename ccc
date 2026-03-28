@@ -612,11 +612,17 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
                 k, v = line.split("=", 1)
                 env_vars[k.strip()] = v.strip()
 
-    # Inject continuous-claude env vars if requested
+    # Inject continuous-claude env vars
+    # Workers auto-enable continuous-claude using repo_url from config
     if continuous_repo:
         env_vars["CONTINUOUS_CLAUDE_ENABLED"] = "true"
         env_vars["CONTINUOUS_CLAUDE_REPO"] = continuous_repo
         env_vars["CONTINUOUS_CLAUDE_BRANCH"] = continuous_branch
+    elif not is_dispatcher and not is_chatbot:
+        # Default: workers auto-enable continuous-claude from config
+        env_vars.setdefault("CONTINUOUS_CLAUDE_ENABLED", "true")
+        env_vars.setdefault("CONTINUOUS_CLAUDE_REPO", CFG.get("repo_url", ""))
+        env_vars.setdefault("CONTINUOUS_CLAUDE_BRANCH", "main")
 
     # Dispatcher-specific env vars (read from .env or ccc.config.json)
     # Dispatcher watches git (TODO.md) and manages EC2 fleet -- no Teams polling.
