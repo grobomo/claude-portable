@@ -173,3 +173,11 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 
 - [ ] Area-specific workers: when a worker is assigned to an area, it stays on that area until idle. This avoids context-switching overhead. Dispatcher prefers re-assigning a worker to the same area it last worked on.
   - PR title: "feat: area-affinity for worker task assignment"
+
+## Phase 5: Task dependency tracking
+
+- [ ] Add dependency syntax to TODO.md: tasks can declare `depends-on: task-N` to indicate they can't start until task N is complete. The continuous-claude runner checks dependencies before claiming a task — if any dependency is unchecked, skip it and try the next task.
+  - PR title: "feat: task dependency tracking in continuous-claude"
+
+- [ ] Dependency visualization: `ccc work` shows a task graph with arrows between dependent tasks. Blocked tasks show as "waiting on #N".
+  - PR title: "feat: dependency visualization in ccc work"
