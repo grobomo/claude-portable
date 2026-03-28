@@ -17,6 +17,7 @@ Manages EC2 instances with stop/start lifecycle:
   ccc cancel <name>         Kill Claude on an instance (--all kills runner, --cleanup deletes branch)
   ccc maint <name>          Pause task pickup for troubleshooting (--off to resume)
   ccc teams <chat_id>       Poll Teams chat for @claude, dispatch to ccc instances
+  ccc work                  Show what each worker is doing (branch, PR, tasks, maint)
 """
 import argparse
 import json
@@ -1876,6 +1877,111 @@ def cmd_maintenance(args):
         print(f"  Resume with: ccc maintenance {name} --off")
 
 
+# ── Work (fleet activity view) ──────────────────────────────────────────────
+
+def cmd_work(args):
+    """Show what each worker is doing: branch, PR status, task progress, maintenance mode."""
+    import re
+    instances = get_instances()
+    workers = [i for i in instances if i.get("role", "worker") != "dispatcher"]
+
+    print("=" * 70)
+    print("  CCC Worker Activity")
+    print("=" * 70)
+
+    if not workers:
+        print("\n  No worker instances found.\n")
+        return
+
+    running = [i for i in workers if i["state"] == "running"]
+    stopped = [i for i in workers if i["state"] == "stopped"]
+    print(f"\n  Workers: {len(running)} running, {len(stopped)} stopped\n")
+
+    # Collect repo slug once from any running instance
+    repo_slug = None
+    for inst in running:
+        ssh_key = find_ssh_key(inst)
+        if ssh_key and inst.get("ip"):
+            repo_url = _ssh_exec(inst["ip"], ssh_key,
+                "cd /workspace/continuous-claude 2>/dev/null && git remote get-url origin 2>/dev/null || true")
+            if repo_url:
+                m = re.search(r'github\.com[/:]([^/]+/[^/.]+?)(?:\.git)?$', repo_url.strip())
+                if m:
+                    repo_slug = m.group(1)
+                    break
+
+    for inst in workers:
+        label = inst.get("label") or inst.get("name", "?")
+        state = inst["state"]
+        ip = inst.get("ip", "")
+        state_icon = ">>>" if state == "running" else "---"
+        print(f"  {state_icon} {label}  ({state})  {ip}  {inst.get('type','')}")
+
+        if state != "running" or not ip:
+            print()
+            continue
+
+        ssh_key = find_ssh_key(inst)
+        if not ssh_key:
+            print("      (no SSH key)\n")
+            continue
+
+        # Maintenance mode
+        maint = _ssh_exec(ip, ssh_key, "test -f /data/.maintenance && echo PAUSED || echo ACTIVE")
+        maint_str = "  [MAINTENANCE]" if maint == "PAUSED" else ""
+
+        # Current branch
+        branch = _ssh_exec(ip, ssh_key,
+            "cd /workspace/continuous-claude 2>/dev/null && git branch --show-current 2>/dev/null || echo ''")
+        branch = branch or "(none)"
+
+        # Continuous-claude running?
+        cc_pid = _ssh_exec(ip, ssh_key, "pgrep -f continuous-claude.sh || true")
+        cc_status = f"running (PID {cc_pid.splitlines()[0]})" if cc_pid else "not running"
+
+        # Task progress from TODO.md
+        tasks_info = _ssh_exec(ip, ssh_key,
+            "if [ -f /workspace/continuous-claude/TODO.md ]; then "
+            "  total=$(grep -cE '^- \\[' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+            "  done=$(grep -cE '^- \\[x\\]' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+            "  echo \"$done/$total\"; "
+            "else echo '?'; fi")
+
+        print(f"      Branch:   {branch}{maint_str}")
+        print(f"      Runner:   {cc_status}")
+        print(f"      Tasks:    {tasks_info}")
+
+        # PR status for current branch
+        if repo_slug and branch and branch != "(none)" and branch.startswith("continuous-claude/"):
+            try:
+                r = subprocess.run(
+                    ["gh", "pr", "list", "--repo", repo_slug,
+                     "--head", branch, "--state", "all",
+                     "--json", "number,title,state,mergedAt",
+                     "--limit", "1"],
+                    capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    prs = json.loads(r.stdout)
+                    if prs:
+                        pr = prs[0]
+                        pr_state = pr.get("state", "?").upper()
+                        pr_num = pr.get("number", "?")
+                        pr_title = pr.get("title", "")[:45]
+                        print(f"      PR:       #{pr_num} [{pr_state}] {pr_title}")
+                    else:
+                        print(f"      PR:       (none for this branch)")
+                else:
+                    print(f"      PR:       (could not fetch)")
+            except Exception as e:
+                print(f"      PR:       (error: {e})")
+        elif branch != "(none)" and not branch.startswith("continuous-claude/"):
+            print(f"      PR:       (not a continuous-claude branch)")
+        else:
+            print(f"      PR:       (no branch)")
+
+        print()
+
+
 # ── Teams Dispatch ──────────────────────────────────────────────────────────
 
 def cmd_teams(args):
@@ -1952,6 +2058,7 @@ def main():
     p_maint = sub.add_parser("maintenance", aliases=["maint"], help="Pause/resume task pickup on a worker")
     p_maint.add_argument("name", help="Instance name")
     p_maint.add_argument("--off", action="store_true", help="Resume task pickup (exit maintenance)")
+    p_work = sub.add_parser("work", help="Show what each worker is doing: branch, PR status, task progress")
 
     args = parser.parse_args()
 
@@ -1987,6 +2094,8 @@ def main():
         cmd_cancel(args)
     elif args.command in ("maintenance", "maint"):
         cmd_maintenance(args)
+    elif args.command == "work":
+        cmd_work(args)
     else:
         cmd_connect(args)
 
