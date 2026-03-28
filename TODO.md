@@ -165,7 +165,7 @@ Monitor runs on the dispatcher as a background thread. Catches cases where self-
 
 Dispatcher assigns tasks to the right worker based on which area of the app the task relates to. Each area has its own folder with context notes for workers.
 
-- [ ] Create app area folders in the repo: `areas/dispatcher/`, `areas/fleet/`, `areas/teams-integration/`, `areas/tdd-pipeline/`, `areas/infrastructure/`. Each folder has a `CONTEXT.md` with architecture notes, key files, gotchas, and design decisions for that area.
+- [x] Create app area folders in the repo: `areas/dispatcher/`, `areas/fleet/`, `areas/teams-integration/`, `areas/tdd-pipeline/`, `areas/infrastructure/`. Each folder has a `CONTEXT.md` with architecture notes, key files, gotchas, and design decisions for that area.
   - PR title: "feat: create app area folders with context docs"
 
 - [ ] Task routing: dispatcher reads the task description from TODO.md, matches keywords to app areas (e.g. "dispatcher" → areas/dispatcher, "test" → areas/tdd-pipeline), and includes the relevant `CONTEXT.md` in the prompt sent to the worker. Workers read the area context before starting work.
