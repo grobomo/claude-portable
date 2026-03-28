@@ -52,10 +52,15 @@ _state = {
     "active_workers": 0,
     "active_branches": 0,
     "total_dispatches": 0,
+    "total_completions": 0,
     "last_error": None,
     "errors": 0,
     "uptime_start": time.time(),
 }
+
+# worker_id -> {status, last_task, last_report, completions}
+_fleet_roster: dict = {}
+_fleet_roster_lock = threading.Lock()
 
 
 def update_state(**kwargs):
@@ -332,12 +337,60 @@ class HealthHandler(BaseHTTPRequestHandler):
             state = get_state()
             uptime_start = state.pop("uptime_start", time.time())
             state["uptime_seconds"] = int(time.time() - uptime_start)
+            with _fleet_roster_lock:
+                state["fleet_roster"] = dict(_fleet_roster)
             body = json.dumps(state, indent=2).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == "/worker/done":
+            length = int(self.headers.get("Content-Length", 0))
+            body_bytes = self.rfile.read(length) if length else b"{}"
+            try:
+                payload = json.loads(body_bytes)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            worker_id = str(payload.get("worker_id", "unknown"))
+            task = str(payload.get("task", ""))
+            duration = payload.get("duration", 0)
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster.setdefault(worker_id, {
+                    "status": "idle",
+                    "last_task": None,
+                    "last_report": None,
+                    "completions": 0,
+                })
+                entry["status"] = "idle"
+                entry["last_task"] = task
+                entry["last_report"] = now
+                entry["completions"] = entry.get("completions", 0) + 1
+
+            with _state_lock:
+                _state["total_completions"] = _state.get("total_completions", 0) + 1
+
+            log.info(
+                "Worker done: worker_id=%s task=%s duration=%ss (total completions: %d)",
+                worker_id, task, duration, _state["total_completions"],
+            )
+
+            resp = json.dumps({"status": "ok", "worker_id": worker_id}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
         else:
             self.send_response(404)
             self.end_headers()
