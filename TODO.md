@@ -37,7 +37,7 @@
 - [x] Fix dispatcher container git pull: `/opt/claude-portable` is owned by root but container runs as claude. Either chown during build, or use a separate clone dir. The dispatcher needs to pull latest code at startup.
   - PR title: "fix: dispatcher container file ownership for git pull"
 
-- [ ] Fix dispatcher DISPATCHER_CHAT_ID: the chat ID must be passed via .env file or ccc.config.json, not manually injected. Update ccc launcher --role dispatcher to prompt for or read chat ID from config and pass it to docker compose.
+- [x] Fix dispatcher DISPATCHER_CHAT_ID: the chat ID must be passed via .env file or ccc.config.json, not manually injected. Update ccc launcher --role dispatcher to prompt for or read chat ID from config and pass it to docker compose.
   - PR title: "fix: dispatcher reads chat ID from ccc config"
 
 - [ ] Verify dispatcher boots clean from `ccc --name dispatcher --role dispatcher` with zero manual intervention. It must: pull graph token from Secrets Manager, start dispatch loop, discover workers, poll Teams, ACK + dispatch + post results. Test by launching fresh and sending @claude in Teams.
