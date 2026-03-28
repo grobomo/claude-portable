@@ -1,0 +1,255 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Claude Portable Dispatcher -- IAM role + EC2 for dedicated Teams dispatch instance
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: claude-portable-key
+
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.micro, t3.small, t3.medium]
+    Description: Dispatcher is lightweight -- t3.small is sufficient
+
+  InstanceName:
+    Type: String
+    Default: claude-dispatcher
+    Description: Name tag for the dispatcher instance
+
+  SpotMaxPrice:
+    Type: String
+    Default: '0.02'
+    Description: Max spot price per hour (t3.small on-demand ~$0.0208)
+
+  GraphTokenSecretName:
+    Type: String
+    Default: claude-portable/graph-token
+    Description: Secrets Manager secret name for the Microsoft Graph OAuth token
+
+  SSHPubKey:
+    Type: String
+    Default: ''
+    Description: SSH public key for direct access to the dispatcher instance
+
+  RepoUrl:
+    Type: String
+    Default: ''
+    Description: Git clone URL for claude-portable repo
+
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: GitHub PAT for private repo access
+
+Resources:
+
+  # ── IAM Role ──────────────────────────────────────────────────────────────────
+
+  DispatcherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${InstanceName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+
+        # Read Graph OAuth token from Secrets Manager
+        - PolicyName: secrets-manager-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GraphTokenSecretName}*'
+
+        # Describe, start, and stop worker EC2 instances tagged Project=claude-portable
+        - PolicyName: ec2-fleet-management
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeTags
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/Project': claude-portable
+
+        # S3 access: fleet-keys (SSH pub keys), heartbeat, dispatcher logs
+        - PolicyName: s3-dispatcher
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}'
+                  - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}/fleet-keys/*'
+                  - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}/dispatcher/*'
+
+        # Allow caller identity lookup (needed by dispatcher scripts)
+        - PolicyName: sts-identity
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sts:GetCallerIdentity
+                Resource: '*'
+
+  DispatcherInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${InstanceName}-profile'
+      Roles:
+        - !Ref DispatcherRole
+
+  # ── Security Group ────────────────────────────────────────────────────────────
+
+  DispatcherSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: claude-dispatcher SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${InstanceName}-sg'
+
+  # ── Launch Template ───────────────────────────────────────────────────────────
+
+  DispatcherLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${InstanceName}-lt'
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: !FindInMap [RegionAMI, !Ref 'AWS::Region', AMI]
+        KeyName: !Ref KeyPairName
+        IamInstanceProfile:
+          Arn: !GetAtt DispatcherInstanceProfile.Arn
+        SecurityGroupIds:
+          - !GetAtt DispatcherSG.GroupId
+        InstanceMarketOptions:
+          MarketType: spot
+          SpotOptions:
+            MaxPrice: !Ref SpotMaxPrice
+            SpotInstanceType: one-time
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              DeleteOnTermination: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Ref InstanceName
+              - Key: Project
+                Value: claude-portable
+              - Key: Role
+                Value: dispatcher
+        UserData:
+          Fn::Base64:
+            Fn::Sub: |
+              #!/bin/bash -xe
+              exec > /var/log/claude-dispatcher-init.log 2>&1
+
+              # Install Docker on Ubuntu 24.04
+              apt-get update -y
+              apt-get install -y ca-certificates curl git
+              install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+              apt-get update -y
+              apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+              systemctl enable --now docker
+              usermod -aG docker ubuntu
+
+              # Clone the repo
+              export HOME=/root
+              git config --global credential.helper store
+              printf 'https://x-access-token:%s@github.com\n' '${GitHubToken}' > /root/.git-credentials
+
+              cd /opt
+              git clone ${RepoUrl} claude-portable
+              cd claude-portable
+
+              # Write minimal .env for dispatcher role (no Claude auth needed)
+              printf 'GITHUB_TOKEN=%s\n' '${GitHubToken}' > .env
+              printf 'CLAUDE_PORTABLE_ROLE=dispatcher\n' >> .env
+              if [ -n '${SSHPubKey}' ]; then
+                printf 'SSH_PUBLIC_KEY=%s\n' '${SSHPubKey}' >> .env
+              fi
+
+              # Build and start container in dispatcher mode
+              docker compose -f docker-compose.yml -f docker-compose.remote.yml build
+              CLAUDE_PORTABLE_ROLE=dispatcher \
+                docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+
+              # Clean up credentials
+              rm -f /root/.git-credentials
+              git config --global --unset credential.helper || true
+
+  # ── EC2 Instance ──────────────────────────────────────────────────────────────
+
+  DispatcherInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref DispatcherLaunchTemplate
+        Version: !GetAtt DispatcherLaunchTemplate.LatestVersionNumber
+
+Mappings:
+  RegionAMI:
+    us-east-2:
+      AMI: ami-0d6d5a1f326b57cb0
+    us-east-1:
+      AMI: ami-0c614dee691cbbf37
+    us-west-2:
+      AMI: ami-093467ec28ae4fe03
+
+Outputs:
+  InstanceId:
+    Value: !Ref DispatcherInstance
+  PublicIP:
+    Value: !GetAtt DispatcherInstance.PublicIp
+  SSHCommand:
+    Value: !Sub 'ssh -i ~/.ssh/claude-portable.pem ubuntu@${DispatcherInstance.PublicIp}'
+  RoleArn:
+    Value: !GetAtt DispatcherRole.Arn
+    Description: IAM role ARN for the dispatcher instance
+  DeployCommand:
+    Description: Deploy this stack
+    Value: !Sub >-
+      aws cloudformation deploy
+      --template-file cloudformation/dispatcher.yaml
+      --stack-name claude-dispatcher
+      --capabilities CAPABILITY_NAMED_IAM
+      --parameter-overrides KeyPairName=claude-portable-key RepoUrl=<repo-url> GitHubToken=<token>
