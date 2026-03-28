@@ -68,7 +68,7 @@ Architecture:
 
 Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 
-- [ ] Create `chatbot` role in ccc launcher: launches t3.large, clones repo, starts web-chat.js + Teams polling, exposes via Lambda URL. Does NOT run continuous-claude (it's not a worker).
+- [x] Create `chatbot` role in ccc launcher: launches t3.large, clones repo, starts web-chat.js + Teams polling, exposes via Lambda URL. Does NOT run continuous-claude (it's not a worker).
   - PR title: "feat: add chatbot role to ccc launcher"
 
 - [ ] Move Teams polling from dispatcher to chatbot: chatbot runs teams-dispatch.py (renamed to teams-chat-bridge.py). When it detects @claude, it processes the message itself via Claude (not fire-and-forget to a worker). If work is needed, chatbot adds a TODO item and pushes to git.
