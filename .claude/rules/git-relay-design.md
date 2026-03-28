@@ -2,8 +2,8 @@
 
 RONE and CCC communicate via files in a shared git repo (not HTTP APIs).
 
-Repo: `grobomo/claude-relay` (PRIVATE, grobomo)
-Both RONE and CCC environments have grobomo GitHub tokens for push/pull access.
+Repo: `joel-ginsberg_tmemu/ccc-rone-bridge` (PRIVATE, tmemu)
+Both RONE and CCC environments have tmemu GitHub tokens for push/pull access.
 Relay files contain real Teams chat messages (unsanitized) — workers need
 actual context to produce useful responses.
 
@@ -38,7 +38,7 @@ requests/
 
 ## Security
 
-- Relay repo is tmemu PRIVATE (only joel-ginsberg_tmemu has access)
+- Relay repo: joel-ginsberg_tmemu/ccc-rone-bridge (PRIVATE)
 - In transit: HTTPS (git push/pull)
 - At rest: GitHub's default encryption
 - Messages are NOT sanitized — workers see real chat for context
