@@ -10,6 +10,7 @@ Manages EC2 instances with stop/start lifecycle:
   cpp stop [name]      Stop an instance (keeps state, no cost)
   cpp kill [name]      Terminate an instance permanently
   cpp kill --all       Terminate everything
+  cpp status [name]    Show continuous-claude and daemon status
 """
 import argparse
 import json
@@ -1295,6 +1296,130 @@ def cmd_config(args):
         print(f"  {k:<35} {json.dumps(v)}")
     print()
 
+def _ssh_exec(ip, ssh_key, cmd, timeout=15):
+    """Run a command on the container via SSH, return stdout or empty string."""
+    try:
+        r = subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+            "-o", "LogLevel=ERROR", "-i", ssh_key, f"ubuntu@{ip}",
+            f"docker exec claude-portable bash -c '{cmd}'"
+        ], capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, Exception):
+        return ""
+
+def cmd_status(args):
+    """Show status of continuous-claude, daemons, and open PRs on an instance."""
+    name = args.name
+    inst = find_available(name)
+    if not inst:
+        print("No instance found." + (f" ({name})" if name else ""))
+        return
+    if inst["state"] != "running":
+        print(f"\n  Instance {inst['label']} is {inst['state']} (not running).")
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print(f"ERROR: No SSH key for {inst['name']}")
+        return
+
+    ip = inst["ip"]
+    label = inst["label"]
+    print(f"\n  Instance: {label} ({ip})")
+    print(f"  State:    {inst['state']}")
+    print(f"  Type:     {inst['type']}")
+    print()
+
+    # ── Continuous Claude status ────────────────────────────────────────────
+    print("  === Continuous Claude ===")
+    cc_pid = _ssh_exec(ip, ssh_key, "pgrep -f continuous-claude.sh || true")
+    if cc_pid:
+        print(f"  Status:     RUNNING (PID {cc_pid.splitlines()[0]})")
+    else:
+        # Check if it completed or just isn't running
+        complete = _ssh_exec(ip, ssh_key,
+            "grep -c CONTINUOUS_CLAUDE_PROJECT_COMPLETE /data/continuous-claude.log 2>/dev/null || echo 0")
+        if complete and complete != "0":
+            print("  Status:     COMPLETE")
+        else:
+            print("  Status:     STOPPED")
+
+    # Last iteration timestamp
+    last_iter = _ssh_exec(ip, ssh_key,
+        "grep -E '=== Iteration [0-9]+' /data/continuous-claude.log 2>/dev/null | tail -1 || true")
+    if last_iter:
+        print(f"  Last iter:  {last_iter}")
+
+    # Tasks remaining (count unchecked items in TODO.md)
+    tasks_info = _ssh_exec(ip, ssh_key,
+        "if [ -f /workspace/continuous-claude/TODO.md ]; then "
+        "  total=$(grep -cE '^- \\[' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+        "  done=$(grep -cE '^- \\[x\\]' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+        "  echo \"$done/$total\"; "
+        "else echo 'no TODO.md'; fi")
+    if tasks_info:
+        print(f"  Tasks:      {tasks_info}")
+
+    # Error count from log
+    errors = _ssh_exec(ip, ssh_key,
+        "grep -c 'ERROR:.*exited with code' /data/continuous-claude.log 2>/dev/null || echo 0")
+    print(f"  Errors:     {errors}")
+
+    # Last PR
+    last_pr = _ssh_exec(ip, ssh_key,
+        "grep -oE 'https://github.com/[^ ]+/pull/[0-9]+' /data/continuous-claude.log 2>/dev/null | tail -1 || true")
+    if last_pr:
+        print(f"  Last PR:    {last_pr}")
+
+    print()
+
+    # ── Daemon status ───────────────────────────────────────────────────────
+    print("  === Daemons ===")
+    daemons = {
+        "idle-monitor":  "idle-monitor.sh",
+        "state-sync":    "state-sync.sh auto",
+        "cred-refresh":  "cred-refresh.sh",
+        "web-chat":      "web-chat.js",
+    }
+    for display_name, grep_pattern in daemons.items():
+        pid = _ssh_exec(ip, ssh_key, f"pgrep -f '{grep_pattern}' | head -1 || true")
+        status = f"running (PID {pid})" if pid else "stopped"
+        print(f"  {display_name:<16} {status}")
+
+    print()
+
+    # ── Open PRs ────────────────────────────────────────────────────────────
+    print("  === Open PRs ===")
+    # Get repo URL from the instance's continuous-claude config
+    repo_url = _ssh_exec(ip, ssh_key,
+        "grep -oE 'https://github.com/[^/]+/[^ .]+' /data/continuous-claude.log 2>/dev/null | head -1 || true")
+    if repo_url:
+        repo_url = repo_url.rstrip(".git")
+        # Extract owner/repo from URL
+        parts = repo_url.replace("https://github.com/", "").split("/")
+        if len(parts) >= 2:
+            repo_slug = f"{parts[0]}/{parts[1]}"
+            try:
+                r = subprocess.run(["gh", "pr", "list", "--repo", repo_slug, "--state", "open",
+                                     "--json", "number,title,url", "--limit", "10"],
+                                    capture_output=True, text=True, timeout=15)
+                if r.returncode == 0 and r.stdout.strip():
+                    prs = json.loads(r.stdout)
+                    if prs:
+                        for pr in prs:
+                            print(f"  #{pr['number']:<6} {pr['title']}")
+                    else:
+                        print("  (none)")
+                else:
+                    print("  (could not fetch)")
+            except Exception:
+                print("  (could not fetch)")
+    else:
+        print("  (no repo detected)")
+
+    print()
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1323,6 +1448,8 @@ def main():
     p_offload.add_argument("-n", "--name", help="Instance name")
     p_offload.add_argument("-w", "--project", default="/workspace", help="Working directory on instance")
     p_offload.add_argument("prompt", nargs="*", help="Prompt to send to Claude (optional)")
+    p_status = sub.add_parser("status", help="Show continuous-claude and daemon status")
+    p_status.add_argument("name", nargs="?", help="Instance name")
 
     args = parser.parse_args()
 
@@ -1346,6 +1473,8 @@ def main():
         cmd_vnc(args)
     elif args.command == "offload":
         cmd_offload(args)
+    elif args.command == "status":
+        cmd_status(args)
     else:
         cmd_connect(args)
 
