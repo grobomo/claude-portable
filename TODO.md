@@ -28,7 +28,7 @@
 - [x] Write .mcp.json in bootstrap.sh -- create /home/claude/.mcp.json pointing to mcp-manager (command=node, args=[/opt/mcp/mcp-manager/build/index.js]). Must happen after MCP deps install step.
   - PR title: "feat: auto-configure .mcp.json for mcp-manager in bootstrap"
 
-- [ ] Modify browser.sh to load blueprint-extra Chrome extension -- if /opt/mcp/blueprint-extra-mcp/extensions/ exists, add --load-extension flag to Chrome launch command.
+- [x] Modify browser.sh to load blueprint-extra Chrome extension -- if /opt/mcp/blueprint-extra-mcp/extensions/ exists, add --load-extension flag to Chrome launch command.
   - PR title: "feat: auto-load blueprint Chrome extension in browser.sh"
 
 ## Phase 3: Observability (remote status checking)
