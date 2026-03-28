@@ -280,3 +280,6 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 
 - [ ] Reviewer Claude at each gate: after each stage, a SEPARATE claude -p invocation reviews the output. Prompt: "You are a reviewer. You did NOT write this. Read all files in /data/pipeline/task-{N}/. Rate the latest stage output 1-5. If <3, output REJECT with reasons. If >=3, output APPROVE." If rejected, stage retries with the rejection feedback appended. Max 2 rejections before task is marked blocked.
   - PR title: "feat: separate reviewer Claude at each pipeline gate"
+
+- [ ] Commit pipeline folder to PR branch: the task folder `/data/pipeline/task-{N}/` is copied into the repo at `.pipeline/task-{N}/` and committed to the branch before PR creation. All phase outputs (why, research, review, scope, tests, implement, verify), stage-log.json, and reviewer feedback are included in the PR. This provides a full audit trail of how the task was completed. Reviewers can see the thinking process, not just the final code.
+  - PR title: "feat: include pipeline audit trail in PR commits"
