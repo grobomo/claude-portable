@@ -27,6 +27,11 @@ Parameters:
     Default: claude-portable/graph-token
     Description: Secrets Manager secret name for the Microsoft Graph OAuth token
 
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email address to receive dispatcher heartbeat alerts (leave blank to skip SNS subscription)
+
   SSHPubKey:
     Type: String
     Default: ''
@@ -108,6 +113,19 @@ Resources:
                   - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}'
                   - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}/fleet-keys/*'
                   - !Sub 'arn:aws:s3:::claude-portable-state-${AWS::AccountId}/dispatcher/*'
+
+        # Publish custom CloudWatch metrics (heartbeat)
+        - PolicyName: cloudwatch-metrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'cloudwatch:namespace': ClaudePortable/Dispatcher
 
         # Allow caller identity lookup (needed by dispatcher scripts)
         - PolicyName: sts-identity
@@ -226,6 +244,46 @@ Resources:
         LaunchTemplateId: !Ref DispatcherLaunchTemplate
         Version: !GetAtt DispatcherLaunchTemplate.LatestVersionNumber
 
+  # ── Heartbeat monitoring ───────────────────────────────────────────────────
+  # Dispatcher writes Heartbeat=1 to CloudWatch every 60s.
+  # Alarm fires when no data received for 5+ consecutive minutes.
+
+  HeartbeatAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${InstanceName}-heartbeat-alerts'
+      Subscription: !If
+        - HasAlertEmail
+        - - Protocol: email
+            Endpoint: !Ref AlertEmail
+        - !Ref AWS::NoValue
+
+  DispatcherHeartbeatAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${InstanceName}-heartbeat-missing'
+      AlarmDescription: >-
+        Dispatcher has not written a heartbeat for more than 5 minutes.
+        The process may have crashed or the spot instance was interrupted.
+      Namespace: ClaudePortable/Dispatcher
+      MetricName: Heartbeat
+      Dimensions:
+        - Name: InstanceName
+          Value: !Ref InstanceName
+      Statistic: Sum
+      Period: 60           # 1-minute buckets
+      EvaluationPeriods: 5 # alert after 5 consecutive missing periods (5 min)
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref HeartbeatAlertTopic
+      OKActions:
+        - !Ref HeartbeatAlertTopic
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
 Mappings:
   RegionAMI:
     us-east-2:
@@ -245,6 +303,12 @@ Outputs:
   RoleArn:
     Value: !GetAtt DispatcherRole.Arn
     Description: IAM role ARN for the dispatcher instance
+  HeartbeatAlertTopicArn:
+    Value: !Ref HeartbeatAlertTopic
+    Description: SNS topic ARN for dispatcher heartbeat alerts
+  HeartbeatAlarmName:
+    Value: !Ref DispatcherHeartbeatAlarm
+    Description: CloudWatch alarm name for dispatcher heartbeat
   DeployCommand:
     Description: Deploy this stack
     Value: !Sub >-
@@ -252,4 +316,4 @@ Outputs:
       --template-file cloudformation/dispatcher.yaml
       --stack-name claude-dispatcher
       --capabilities CAPABILITY_NAMED_IAM
-      --parameter-overrides KeyPairName=claude-portable-key RepoUrl=<repo-url> GitHubToken=<token>
+      --parameter-overrides KeyPairName=claude-portable-key RepoUrl=<repo-url> GitHubToken=<token> AlertEmail=you@example.com

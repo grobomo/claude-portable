@@ -150,6 +150,62 @@ start_key_sync_daemon() {
   echo "  Key sync daemon started (PID $!, interval: ${KEY_SYNC_INTERVAL}s)"
 }
 
+# ── Dispatcher heartbeat ──────────────────────────────────────────────────────
+# Writes a timestamp to S3 and publishes a CloudWatch custom metric every 60s.
+# CloudWatch alarm fires if no heartbeat is received for >5 minutes.
+
+HEARTBEAT_INTERVAL="${DISPATCHER_HEARTBEAT_INTERVAL:-60}"
+HEARTBEAT_METRIC_NS="ClaudePortable/Dispatcher"
+HEARTBEAT_METRIC_NAME="Heartbeat"
+
+write_heartbeat() {
+  local account
+  account="$(get_aws_account)"
+  if [ -z "$account" ]; then
+    echo "  [heartbeat] WARNING: Could not determine AWS account ID. Skipping."
+    return 0
+  fi
+
+  local bucket="claude-portable-state-${account}"
+  local instance_name="${DISPATCHER_INSTANCE_NAME:-claude-dispatcher}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Write heartbeat JSON to S3
+  local payload="{\"timestamp\":\"${ts}\",\"instance\":\"${instance_name}\",\"pid\":$$}"
+  if echo "$payload" | aws s3 cp - \
+      "s3://${bucket}/dispatcher/heartbeat.json" \
+      --region "$REGION" \
+      --content-type "application/json" 2>/dev/null; then
+    : # success
+  else
+    echo "  [heartbeat] WARNING: S3 write failed"
+  fi
+
+  # Publish custom CloudWatch metric (value=1 = alive)
+  if aws cloudwatch put-metric-data \
+      --namespace "$HEARTBEAT_METRIC_NS" \
+      --metric-name "$HEARTBEAT_METRIC_NAME" \
+      --value 1 \
+      --unit Count \
+      --dimensions "Name=InstanceName,Value=${instance_name}" \
+      --region "$REGION" 2>/dev/null; then
+    : # success
+  else
+    echo "  [heartbeat] WARNING: CloudWatch metric publish failed"
+  fi
+}
+
+start_heartbeat_daemon() {
+  (
+    while true; do
+      write_heartbeat 2>&1 || true
+      sleep "$HEARTBEAT_INTERVAL"
+    done
+  ) &
+  echo "  Heartbeat daemon started (PID $!, interval: ${HEARTBEAT_INTERVAL}s)"
+}
+
 # ── Main watchdog loop ────────────────────────────────────────────────────────
 
 run_dispatch() {
@@ -178,6 +234,10 @@ sync_fleet_keys || true
 
 # Periodic key sync in background
 start_key_sync_daemon
+
+# Heartbeat to S3 + CloudWatch (every 60s)
+write_heartbeat || true   # write immediately on start
+start_heartbeat_daemon
 
 # ── Watchdog ─────────────────────────────────────────────────────────────────
 
