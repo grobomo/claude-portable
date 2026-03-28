@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -73,27 +74,82 @@ def save_state(state):
 
 # ── Graph API helpers ────────────────────────────────────────────────────────
 
+_cached_token = {"access_token": "", "expires_at": 0}
+
+def _refresh_graph_token(token_file):
+    """Exchange refresh token for a new access token, update the file."""
+    with open(token_file) as f:
+        data = json.loads(f.read().strip())
+
+    refresh_token = data.get("refresh_token", "")
+    client_id = data.get("client_id", "bd6209be-717c-41a1-add5-19095aeeebec")
+    tenant_id = data.get("tenant_id", "3e04753a-ae5b-42d4-a86d-d6f05460f9e4")
+
+    if not refresh_token:
+        raise RuntimeError("No refresh_token in token file")
+
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "scope": "Chat.Read Chat.ReadWrite User.Read offline_access",
+    }).encode()
+    url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    req = urllib.request.Request(url, data=body, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        result = json.loads(resp.read().decode())
+
+    new_access = result["access_token"]
+    new_refresh = result.get("refresh_token", refresh_token)
+
+    # Update file with new tokens
+    data["access_token"] = new_access
+    data["refresh_token"] = new_refresh
+    with open(token_file, "w") as f:
+        json.dump(data, f)
+
+    _cached_token["access_token"] = new_access
+    _cached_token["expires_at"] = time.time() + 3500  # ~58 min (tokens last 1hr)
+
+    return new_access
+
+
 def _load_graph_token():
-    """Read the Graph access token from GRAPH_TOKEN_FILE."""
+    """Read the Graph access token, auto-refreshing if expired."""
+    # Return cached if still valid
+    if _cached_token["access_token"] and time.time() < _cached_token["expires_at"]:
+        return _cached_token["access_token"]
+
     token_file = os.environ.get("GRAPH_TOKEN_FILE", "")
     if not token_file:
-        raise RuntimeError(
-            "GRAPH_TOKEN_FILE env var is not set. "
-            "Run via dispatcher-daemon.sh or set the env var to a token JSON file."
-        )
+        raise RuntimeError("GRAPH_TOKEN_FILE env var is not set.")
     if not os.path.isfile(token_file):
         raise RuntimeError(f"Graph token file not found: {token_file}")
 
     with open(token_file) as f:
         raw = f.read().strip()
 
-    # Support both {"access_token": "..."} and a raw token string
-    if raw.startswith("{"):
-        data = json.loads(raw)
-        token = data.get("access_token") or data.get("token", "")
-    else:
-        token = raw
+    if not raw.startswith("{"):
+        # Raw token string, can't refresh
+        return raw
 
+    data = json.loads(raw)
+
+    # If we have a refresh token, always refresh to get a fresh access token
+    if data.get("refresh_token"):
+        try:
+            return _refresh_graph_token(token_file)
+        except Exception as e:
+            print(f"  WARNING: Token refresh failed: {e}")
+            # Fall back to stored access token if refresh fails
+            token = data.get("access_token", "")
+            if token:
+                return token
+            raise
+
+    token = data.get("access_token") or data.get("token", "")
     if not token:
         raise RuntimeError(f"No access_token found in {token_file}")
     return token
