@@ -1086,14 +1086,14 @@ def cmd_connect(args):
         push_credentials(inst["ip"], ssh_key)
         start_idle_monitor(inst["ip"], ssh_key)
 
-        if continuous_repo:
-            print(f"\n  Continuous-claude will auto-start via bootstrap.")
-            print(f"  Repo:   {continuous_repo}")
-            print(f"  Branch: {continuous_branch}")
+        if continuous_repo or env_vars.get("CONTINUOUS_CLAUDE_ENABLED") == "true":
+            print(f"\n  Worker launched: {inst['label']} ({inst['ip']})")
+            print(f"  Continuous-claude will auto-start via bootstrap.")
             print(f"  Monitor: ccc status {name or inst['label']}")
             print(f"  Logs:    ccc logs -f {name or inst['label']}")
-
-        connect(inst["ip"], ssh_key, inst["label"])
+            # Don't open terminal tab — worker is autonomous
+        else:
+            connect(inst["ip"], ssh_key, inst["label"])
 
 def cmd_list(args):
     instances = get_instances()

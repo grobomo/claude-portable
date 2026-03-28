@@ -50,13 +50,23 @@ fi
 
 # --- Step 3: Authenticate gh CLI and configure git identity ---
 echo "[3/7] Setting up gh CLI and git identity..."
+# Try Secrets Manager first (secure), fall back to env var
+if [ -z "${GITHUB_TOKEN:-}" ] && command -v aws >/dev/null 2>&1; then
+  SM_TOKEN=$(aws secretsmanager get-secret-value \
+    --secret-id "claude-portable/github-token" \
+    --query SecretString --output text 2>/dev/null || echo "")
+  if [ -n "$SM_TOKEN" ]; then
+    export GITHUB_TOKEN="$SM_TOKEN"
+    echo "  GitHub token retrieved from Secrets Manager."
+  fi
+fi
 if [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null && \
-    echo "  gh CLI authenticated via GITHUB_TOKEN."
+    echo "  gh CLI authenticated."
   gh auth setup-git 2>/dev/null && \
     echo "  gh auth setup-git complete."
 else
-  echo "  No GITHUB_TOKEN set. gh CLI not authenticated."
+  echo "  WARNING: No GITHUB_TOKEN (env or Secrets Manager). gh CLI not authenticated."
 fi
 
 # Set git identity for container commits (safe generic identity)
