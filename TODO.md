@@ -187,3 +187,14 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 
 - [ ] Workers skip blocked tasks: continuous-claude.sh checks `depends-on:` annotations before claiming. If any dependency task is unchecked, skip to the next unblocked task. Log "task N blocked by task M" in the output.
   - PR title: "feat: workers skip tasks with unmet dependencies"
+
+## URGENT: Conversation context in Teams dispatch
+
+- [ ] Track per-user conversation history in dispatcher state. Each user gets a conversation buffer (last 20 messages + responses). When dispatching a new request, prepend the user's recent conversation as context so Claude knows what was discussed. Format: "Previous conversation with {user}:\n{history}\n\nNew message: {prompt}"
+  - PR title: "feat: per-user conversation history in Teams dispatch"
+
+- [ ] Include surrounding chat context: when dispatching, also include the last 5 messages from ALL users in the chat (not just the requester) so Claude has group conversation context. This handles "What do those do" type follow-ups that reference what someone else said.
+  - PR title: "feat: include group chat context in dispatched prompts"
+
+- [ ] Reply threading: when Claude replies to a request, store the reply alongside the original prompt in the conversation buffer. Next time that user sends @claude, the full back-and-forth is available as context.
+  - PR title: "feat: store Claude replies in conversation buffer for continuity"
