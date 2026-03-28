@@ -140,7 +140,7 @@ Workers report their own status to the dispatcher. Dispatcher never has to guess
 - [x] Scale down: when dispatcher receives idle self-report from a worker, it confirms the worker isn't mid-task (checks for open PRs from that worker), then stops the instance. Logs the scale-down event.
   - PR title: "feat: dispatcher scale-down on worker idle self-report"
 
-- [ ] Worker registration: on boot, each worker calls `POST /worker/register {worker_id, ip, role, capabilities}` on the dispatcher. Dispatcher maintains a live fleet roster. Workers that don't register within 5 min of launch are terminated.
+- [x] Worker registration: on boot, each worker calls `POST /worker/register {worker_id, ip, role, capabilities}` on the dispatcher. Dispatcher maintains a live fleet roster. Workers that don't register within 5 min of launch are terminated.
   - PR title: "feat: worker auto-registration with dispatcher"
 
 ### Fleet monitor (safety net)

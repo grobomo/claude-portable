@@ -628,6 +628,43 @@ with open(path, 'w') as f:
   return 0
 }
 
+# --- Register this worker with the dispatcher ---
+register_with_dispatcher() {
+  if [ -z "$DISPATCHER_URL" ]; then
+    return 0
+  fi
+
+  # Try to get the IP address from EC2 metadata (IMDSv2) first, fall back to hostname
+  local ip=""
+  local token
+  token=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+    --connect-timeout 2 2>/dev/null || echo "")
+  if [ -n "$token" ]; then
+    ip=$(curl -s -H "X-aws-ec2-metadata-token: $token" \
+      "http://169.254.169.254/latest/meta-data/local-ipv4" \
+      --connect-timeout 2 2>/dev/null || echo "")
+  fi
+  if [ -z "$ip" ]; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown")
+  fi
+
+  local payload
+  payload=$(printf '{"worker_id":"%s","ip":"%s","role":"worker","capabilities":["continuous-claude","tdd-pipeline"]}' \
+    "$INSTANCE_ID" "$ip")
+
+  if curl -s -f -X POST \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      --connect-timeout 5 \
+      --max-time 10 \
+      "${DISPATCHER_URL}/worker/register" >/dev/null 2>&1; then
+    echo "[+] Registered with dispatcher at ${DISPATCHER_URL} (id=${INSTANCE_ID}, ip=${ip})"
+  else
+    echo "[!] Warning: could not register with dispatcher at ${DISPATCHER_URL} (non-fatal)"
+  fi
+}
+
 # --- Report task completion to dispatcher ---
 report_task_done() {
   local task_num="$1"
@@ -699,6 +736,7 @@ ERROR_COUNT=0
 ITERATION=0
 IDLE_START=0  # epoch seconds when worker first went idle (0 = not idle)
 
+register_with_dispatcher
 merge_leftover_prs
 
 while true; do

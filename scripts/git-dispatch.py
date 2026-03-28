@@ -91,6 +91,9 @@ WORKER_TAG_VALUE = "worker"
 PROJECT_TAG_KEY = "Project"
 PROJECT_TAG_VALUE = "claude-portable"
 
+# How long a launched worker has to register before being terminated (seconds)
+REGISTRATION_TIMEOUT = int(os.environ.get("WORKER_REGISTRATION_TIMEOUT", "300"))  # 5 minutes
+
 # ── State ──────────────────────────────────────────────────────────────────────
 
 _state_lock = threading.Lock()
@@ -107,9 +110,14 @@ _state = {
     "uptime_start": time.time(),
 }
 
-# worker_id -> {status, last_task, last_report, completions}
+# worker_id -> {status, last_task, last_report, completions, registered, registered_at, ip, role, capabilities}
 _fleet_roster: dict = {}
 _fleet_roster_lock = threading.Lock()
+
+# Workers launched by the dispatcher but not yet registered.
+# worker_name -> {launched_at: float}
+_launched_workers: dict = {}
+_launched_workers_lock = threading.Lock()
 
 
 def update_state(**kwargs):
@@ -371,6 +379,8 @@ def launch_worker(region: str, worker_name: str) -> bool:
         )
         if result.returncode == 0:
             log.info("Worker %s launched successfully", worker_name)
+            with _launched_workers_lock:
+                _launched_workers[worker_name] = {"launched_at": time.time()}
             return True
         else:
             log.warning("Worker launch failed for %s: %s", worker_name, result.stderr.strip())
@@ -517,6 +527,48 @@ def _dispatch_tick(region: str):
         )
 
 
+# ── Registration monitor ───────────────────────────────────────────────────────
+
+def registration_monitor_loop(region: str):
+    """Background thread: terminate workers that fail to register within REGISTRATION_TIMEOUT."""
+    log.info(
+        "Registration monitor started (timeout: %ds, check interval: 30s)",
+        REGISTRATION_TIMEOUT,
+    )
+    while True:
+        time.sleep(30)
+        now = time.time()
+        with _launched_workers_lock:
+            pending = dict(_launched_workers)
+
+        for worker_name, info in pending.items():
+            age = now - info["launched_at"]
+            if age < REGISTRATION_TIMEOUT:
+                continue
+
+            # Check if this worker has registered
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_name, {})
+            if entry.get("registered"):
+                # Registered -- remove from pending tracker
+                with _launched_workers_lock:
+                    _launched_workers.pop(worker_name, None)
+                continue
+
+            # Not registered within timeout -- terminate
+            log.warning(
+                "Worker %s has not registered within %ds (age=%ds) -- terminating",
+                worker_name, REGISTRATION_TIMEOUT, int(age),
+            )
+            terminated = stop_worker_instance(worker_name, region)
+            with _launched_workers_lock:
+                _launched_workers.pop(worker_name, None)
+            if terminated:
+                log.info("Unregistered worker %s terminated successfully", worker_name)
+            else:
+                log.warning("Could not terminate unregistered worker %s", worker_name)
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -547,7 +599,50 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        if self.path == "/worker/done":
+        if self.path == "/worker/register":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            ip = str(payload.get("ip", ""))
+            role = str(payload.get("role", "worker"))
+            capabilities = payload.get("capabilities", [])
+            if not isinstance(capabilities, list):
+                capabilities = []
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster.setdefault(worker_id, {
+                    "status": "idle",
+                    "last_task": None,
+                    "last_report": None,
+                    "completions": 0,
+                })
+                entry["registered"] = True
+                entry["registered_at"] = now
+                entry["ip"] = ip
+                entry["role"] = role
+                entry["capabilities"] = capabilities
+                entry["last_report"] = now
+
+            # Remove from pending-registration tracker if present
+            with _launched_workers_lock:
+                _launched_workers.pop(worker_id, None)
+
+            log.info(
+                "Worker registered: worker_id=%s ip=%s role=%s capabilities=%s",
+                worker_id, ip, role, capabilities,
+            )
+
+            resp = json.dumps({
+                "status": "ok",
+                "worker_id": worker_id,
+                "message": "registered",
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif self.path == "/worker/done":
             worker_id = str(payload.get("worker_id", "unknown"))
             task = str(payload.get("task", ""))
             duration = payload.get("duration", 0)
@@ -713,6 +808,15 @@ def main():
     log.info("  AWS region:    %s", region)
 
     start_health_server()
+
+    reg_monitor = threading.Thread(
+        target=registration_monitor_loop,
+        args=(region,),
+        daemon=True,
+        name="registration-monitor",
+    )
+    reg_monitor.start()
+
     dispatch_loop(region)
 
 
