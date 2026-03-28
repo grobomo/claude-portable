@@ -117,7 +117,7 @@ The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT le
 - [x] Add stage-level logging: each stage writes start/end timestamps and pass/fail to `/data/task-{N}-stages.json`. The `ccc work` command shows which stage each worker is on.
   - PR title: "feat: add stage-level logging to TDD pipeline"
 
-- [ ] Add test framework auto-detection: before running tests, detect the project's test framework (pytest, jest, go test, bash -n, etc.) from package.json/pyproject.toml/Makefile. If none found, use `bash -n` for shell scripts and basic assertion scripts.
+- [x] Add test framework auto-detection: before running tests, detect the project's test framework (pytest, jest, go test, bash -n, etc.) from package.json/pyproject.toml/Makefile. If none found, use `bash -n` for shell scripts and basic assertion scripts.
   - PR title: "feat: auto-detect test framework in TDD pipeline"
 
 ## Phase 3: Fleet scaling, self-reporting workers, backup dispatcher
