@@ -20,7 +20,7 @@
 - [x] Add dispatcher heartbeat: write timestamp to S3 every 60s, create CloudWatch alarm for heartbeat age > 5min, SNS email alert
   - PR title: "feat: add dispatcher heartbeat + CloudWatch monitoring"
 
-- [ ] Create Lambda auto-healer: triggered by SNS alarm, checks dispatcher EC2 state, restarts if stopped, launches new if terminated
+- [x] Create Lambda auto-healer: triggered by SNS alarm, checks dispatcher EC2 state, restarts if stopped, launches new if terminated
   - PR title: "feat: add Lambda auto-healer for dispatcher"
 
 - [ ] Add health endpoint to dispatcher: HTTP server on port 8080, returns JSON with dispatch loop status, worker reachability, Graph token validity, pending requests, error count
