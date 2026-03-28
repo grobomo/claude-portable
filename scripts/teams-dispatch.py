@@ -666,8 +666,206 @@ def _update_health(state, error_count):
         _health_state["error_count"] = error_count
 
 
+# ── Relay queue (RONE → AWS) ────────────────────────────────────────────────
+
+_relay_queue = {}  # request_id -> {sender, text, context, status, worker, result, ...}
+_relay_lock = threading.Lock()
+RELAY_API_KEY = os.environ.get("RELAY_API_KEY", "")
+RELAY_RESULTS_DIR = "/data/relay-results"
+os.makedirs(RELAY_RESULTS_DIR, exist_ok=True)
+
+
+def _validate_relay_auth(handler):
+    """Check Authorization header. Returns True if valid."""
+    if not RELAY_API_KEY:
+        return True  # no key configured = open
+    auth = handler.headers.get("Authorization", "")
+    if auth == f"Bearer {RELAY_API_KEY}":
+        return True
+    handler.send_response(401)
+    handler.send_header("Content-Type", "application/json")
+    handler.end_headers()
+    handler.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+    return False
+
+
+def _json_response(handler, data, status=200):
+    body = json.dumps(data, indent=2).encode()
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _handle_relay(handler):
+    """POST /relay — accept a request from RONE and queue for dispatch."""
+    length = int(handler.headers.get("Content-Length", 0))
+    raw = handler.rfile.read(length)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        _json_response(handler, {"error": "invalid JSON"}, 400)
+        return
+
+    request_id = payload.get("request_id", f"{int(time.time())}-{os.urandom(4).hex()}")
+    sender = payload.get("sender", "unknown")
+    text = payload.get("text", "")
+    context = payload.get("context", [])
+
+    if not text:
+        _json_response(handler, {"error": "empty text"}, 400)
+        return
+
+    # Pick a worker
+    worker = pick_worker()
+    worker_name = worker["name"] if worker else ""
+
+    entry = {
+        "request_id": request_id,
+        "sender": sender,
+        "text": text,
+        "context": context,
+        "status": "accepted",
+        "worker": worker_name,
+        "received_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "dispatched_at": "",
+        "completed_at": "",
+        "result": "",
+        "error": "",
+    }
+
+    with _relay_lock:
+        _relay_queue[request_id] = entry
+
+    # Dispatch in background thread
+    if worker:
+        t = threading.Thread(target=_dispatch_relay, args=(request_id,), daemon=True)
+        t.start()
+
+    _json_response(handler, {
+        "status": "accepted",
+        "request_id": request_id,
+        "worker": worker_name,
+        "estimated_seconds": 120,
+    })
+    print(f"  [RELAY] {request_id} from {sender} -> {worker_name}: {text[:60]}", flush=True)
+
+
+def _dispatch_relay(request_id):
+    """Background: dispatch a relay request to a worker and collect result."""
+    with _relay_lock:
+        entry = _relay_queue.get(request_id)
+        if not entry:
+            return
+
+    # Build prompt with context
+    context_str = "\n".join(entry.get("context", []))
+    prompt = f"Request {request_id} from {entry['sender']}.\n"
+    if context_str:
+        prompt += f"\nRecent conversation:\n{context_str}\n"
+    prompt += f"\n{entry['text']}"
+
+    worker_name = entry.get("worker", "")
+    success, info = dispatch_prompt(request_id, prompt, entry["sender"], worker_name)
+
+    with _relay_lock:
+        if success:
+            entry["status"] = "dispatched"
+            entry["dispatched_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            entry["worker"] = info.get("name", worker_name)
+        else:
+            entry["status"] = "failed"
+            entry["error"] = info.get("error", "dispatch failed")
+
+
+def _handle_result(handler, request_id):
+    """GET /result/{id} — return status of a relay request."""
+    with _relay_lock:
+        entry = _relay_queue.get(request_id)
+
+    if not entry:
+        _json_response(handler, {"status": "not_found", "request_id": request_id}, 404)
+        return
+
+    # If dispatched, check worker for result
+    if entry["status"] in ("dispatched", "accepted") and entry.get("worker"):
+        worker_name = entry["worker"]
+        workers = get_running_instances()
+        inst = next((w for w in workers if w["name"] == worker_name), None)
+        if inst:
+            ssh_key = find_ssh_key(worker_name)
+            if ssh_key:
+                result = ssh_exec(inst["ip"], ssh_key,
+                    f"cat /tmp/teams-result-{request_id}.txt 2>/dev/null")
+                if result:
+                    with _relay_lock:
+                        entry["status"] = "completed"
+                        entry["result"] = result[:2000]
+                        entry["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                else:
+                    # Check if Claude is still running
+                    procs = ssh_exec(inst["ip"], ssh_key,
+                        "pgrep -f 'claude.*--print' | wc -l")
+                    try:
+                        if int(procs or "0") > 0:
+                            with _relay_lock:
+                                entry["status"] = "running"
+                        elif entry["status"] == "dispatched":
+                            # Dispatched but no process and no result — check elapsed
+                            dispatched = entry.get("dispatched_at", "")
+                            if dispatched:
+                                try:
+                                    t = time.mktime(time.strptime(dispatched, "%Y-%m-%dT%H:%M:%SZ"))
+                                    if time.time() - t > 900:
+                                        with _relay_lock:
+                                            entry["status"] = "failed"
+                                            entry["error"] = "timed out (15min)"
+                                except (ValueError, OverflowError):
+                                    pass
+                    except ValueError:
+                        pass
+
+    elapsed = 0
+    if entry.get("dispatched_at"):
+        try:
+            t = time.mktime(time.strptime(entry["dispatched_at"], "%Y-%m-%dT%H:%M:%SZ"))
+            elapsed = int(time.time() - t)
+        except (ValueError, OverflowError):
+            pass
+
+    _json_response(handler, {
+        "status": entry["status"],
+        "request_id": request_id,
+        "result": entry.get("result", ""),
+        "worker": entry.get("worker", ""),
+        "error": entry.get("error", ""),
+        "elapsed_seconds": elapsed,
+        "pr_url": entry.get("pr_url", None),
+    })
+
+
+def _handle_board(handler):
+    """GET /board — full task board."""
+    with _relay_lock:
+        tasks = [
+            {
+                "id": rid,
+                "status": e["status"],
+                "worker": e.get("worker", ""),
+                "prompt": e.get("text", "")[:100],
+                "sender": e.get("sender", ""),
+                "elapsed": 0,
+            }
+            for rid, e in _relay_queue.items()
+        ]
+    _json_response(handler, {"tasks": tasks})
+
+
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if not _validate_relay_auth(self):
+            return
         if self.path in ("/health", "/"):
             with _health_lock:
                 data = dict(_health_state)
@@ -679,11 +877,25 @@ class _HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith("/result/"):
+            request_id = self.path.split("/result/", 1)[1].strip("/")
+            _handle_result(self, request_id)
+        elif self.path == "/board":
+            _handle_board(self)
         else:
             self.send_response(404)
             self.end_headers()
 
-    def log_message(self, fmt, *args):  # suppress default access log noise
+    def do_POST(self):
+        if not _validate_relay_auth(self):
+            return
+        if self.path == "/relay":
+            _handle_relay(self)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, fmt, *args):
         pass
 
 
