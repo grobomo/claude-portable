@@ -1,69 +1,59 @@
 #!/bin/bash
 # Dispatcher daemon -- runs on a dedicated dispatcher instance.
-# Fetches Graph token from AWS Secrets Manager, syncs fleet SSH keys from S3,
-# and runs teams-dispatch.py with a watchdog loop (auto-restarts on crash).
+# Watches TODO.md on main for unchecked tasks and manages EC2 worker fleet.
+# No Teams polling -- that is handled by the chatbot instance.
 #
 # Usage:
-#   dispatcher-daemon.sh [chat-id] [trigger] [interval]
+#   dispatcher-daemon.sh
 #
 # Environment:
-#   DISPATCHER_SECRET_NAME    Secrets Manager secret name for Graph token
-#                             (default: claude-portable/graph-token)
-#   DISPATCHER_CHAT_ID        Teams chat ID to monitor (or pass as $1)
-#   DISPATCHER_TRIGGER        Trigger keyword (default: @claude)
-#   DISPATCHER_POLL_INTERVAL  Poll interval in seconds (default: 30)
-#   DISPATCHER_RESTART_DELAY  Seconds to wait before restart on crash (default: 10)
+#   TODO_POLL_INTERVAL        Seconds between git polls (default: 60)
+#   DISPATCHER_REPO_DIR       Path to claude-portable repo (default: /workspace/claude-portable)
+#   DISPATCHER_MAX_WORKERS    Max concurrent workers (default: 5)
+#   DISPATCHER_HEALTH_PORT    Health endpoint port (default: 8080)
+#   DISPATCHER_RESTART_DELAY  Seconds before restart on crash (default: 10)
 #   DISPATCHER_KEY_SYNC_INTERVAL  Fleet key sync interval in seconds (default: 300)
 set -euo pipefail
 
-# ── Config ───────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 
-CHAT_ID="${1:-${DISPATCHER_CHAT_ID:-}}"
-TRIGGER="${2:-${DISPATCHER_TRIGGER:-@claude}}"
-POLL_INTERVAL="${3:-${DISPATCHER_POLL_INTERVAL:-30}}"
-
-SECRET_NAME="${DISPATCHER_SECRET_NAME:-claude-portable/graph-token}"
+POLL_INTERVAL="${TODO_POLL_INTERVAL:-60}"
+REPO_DIR="${DISPATCHER_REPO_DIR:-/workspace/claude-portable}"
+MAX_WORKERS="${DISPATCHER_MAX_WORKERS:-5}"
+HEALTH_PORT="${DISPATCHER_HEALTH_PORT:-8080}"
 RESTART_DELAY="${DISPATCHER_RESTART_DELAY:-10}"
 KEY_SYNC_INTERVAL="${DISPATCHER_KEY_SYNC_INTERVAL:-300}"
 
 LOG_FILE="/data/dispatcher.log"
-TOKEN_FILE="/data/dispatcher/graph-token.json"
 KEY_DIR="${HOME}/.ssh/ccc-keys"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DISPATCH_SCRIPT="${SCRIPT_DIR}/teams-dispatch.py"
-STATE_FILE="/data/dispatcher-state.json"
+DISPATCH_SCRIPT="${SCRIPT_DIR}/git-dispatch.py"
 PID_FILE="/data/dispatcher/daemon.pid"
 
-# ── Preflight ─────────────────────────────────────────────────────────────────
-
-if [ -z "$CHAT_ID" ]; then
-  echo "ERROR: Teams chat ID required. Set DISPATCHER_CHAT_ID or pass as first argument."
-  exit 1
-fi
+# ── Preflight ──────────────────────────────────────────────────────────────────
 
 if [ ! -f "$DISPATCH_SCRIPT" ]; then
-  echo "ERROR: teams-dispatch.py not found at $DISPATCH_SCRIPT"
+  echo "ERROR: git-dispatch.py not found at $DISPATCH_SCRIPT"
   exit 1
 fi
 
-mkdir -p "$(dirname "$TOKEN_FILE")" "$KEY_DIR" "$(dirname "$PID_FILE")"
-chmod 700 "$(dirname "$TOKEN_FILE")"
+mkdir -p "$(dirname "$PID_FILE")" "$KEY_DIR"
 
 # Redirect all output to log file (tee to stdout for docker logs)
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=== Dispatcher Daemon ==="
-echo "  Chat ID:       ${CHAT_ID:0:35}..."
-echo "  Trigger:       $TRIGGER"
+echo "  Repo:          $REPO_DIR"
 echo "  Poll interval: ${POLL_INTERVAL}s"
-echo "  Secret name:   $SECRET_NAME"
+echo "  Max workers:   $MAX_WORKERS"
+echo "  Health port:   $HEALTH_PORT"
 echo "  Log file:      $LOG_FILE"
 echo "  Started:       $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 
 echo $$ > "$PID_FILE"
 
-# ── AWS helpers ───────────────────────────────────────────────────────────────
+# ── AWS helpers ────────────────────────────────────────────────────────────────
 
 get_aws_account() {
   aws sts get-caller-identity --query Account --output text 2>/dev/null || echo ""
@@ -85,27 +75,6 @@ get_region() {
 REGION="$(get_region)"
 echo "  AWS region:    $REGION"
 
-# ── Graph token management ────────────────────────────────────────────────────
-
-fetch_graph_token() {
-  echo "[$(date -u +%H:%M:%S)] Fetching Graph token from Secrets Manager (${SECRET_NAME})..."
-
-  local secret
-  secret=$(aws secretsmanager get-secret-value \
-    --secret-id "$SECRET_NAME" \
-    --region "$REGION" \
-    --query SecretString \
-    --output text 2>&1) || {
-    echo "  ERROR: Failed to fetch secret '${SECRET_NAME}': $secret"
-    return 1
-  }
-
-  # Write token to file (teams-dispatch.py reads it via GRAPH_TOKEN_FILE env var)
-  echo "$secret" > "$TOKEN_FILE"
-  chmod 600 "$TOKEN_FILE"
-  echo "  Graph token written to $TOKEN_FILE"
-}
-
 # ── Fleet SSH key sync ─────────────────────────────────────────────────────────
 
 sync_fleet_keys() {
@@ -121,7 +90,6 @@ sync_fleet_keys() {
 
   echo "[$(date -u +%H:%M:%S)] Syncing fleet SSH keys from ${s3_prefix}..."
 
-  # Sync all .pem keys from S3 fleet-keys/ to local ~/.ssh/ccc-keys/
   local sync_output
   sync_output=$(aws s3 sync "$s3_prefix" "$KEY_DIR/" \
     --region "$REGION" \
@@ -138,8 +106,6 @@ sync_fleet_keys() {
   echo "  Fleet keys synced: ${key_count} key(s) in ${KEY_DIR}"
 }
 
-# ── Background key sync loop ──────────────────────────────────────────────────
-
 start_key_sync_daemon() {
   (
     while true; do
@@ -150,9 +116,8 @@ start_key_sync_daemon() {
   echo "  Key sync daemon started (PID $!, interval: ${KEY_SYNC_INTERVAL}s)"
 }
 
-# ── Dispatcher heartbeat ──────────────────────────────────────────────────────
+# ── Dispatcher heartbeat ───────────────────────────────────────────────────────
 # Writes a timestamp to S3 and publishes a CloudWatch custom metric every 60s.
-# CloudWatch alarm fires if no heartbeat is received for >5 minutes.
 
 HEARTBEAT_INTERVAL="${DISPATCHER_HEARTBEAT_INTERVAL:-60}"
 HEARTBEAT_METRIC_NS="ClaudePortable/Dispatcher"
@@ -206,28 +171,16 @@ start_heartbeat_daemon() {
   echo "  Heartbeat daemon started (PID $!, interval: ${HEARTBEAT_INTERVAL}s)"
 }
 
-# ── Main watchdog loop ────────────────────────────────────────────────────────
+# ── Main watchdog loop ─────────────────────────────────────────────────────────
 
 run_dispatch() {
-  # Build the PYTHONPATH to pick up graph helpers from the token file
-  export GRAPH_TOKEN_FILE="$TOKEN_FILE"
-
-  # Pass state file path to avoid /tmp collisions
-  export TEAMS_DISPATCH_STATE_FILE="$STATE_FILE"
-
   python3 "$DISPATCH_SCRIPT" \
-    --chat-id "$CHAT_ID" \
-    --trigger "$TRIGGER" \
-    --interval "$POLL_INTERVAL"
+    --repo-dir "$REPO_DIR" \
+    --interval "$POLL_INTERVAL" \
+    --max-workers "$MAX_WORKERS"
 }
 
-# ── Startup ───────────────────────────────────────────────────────────────────
-
-# Fetch token on startup (required before launching dispatch)
-if ! fetch_graph_token; then
-  echo "FATAL: Cannot start without Graph token. Check secret '${SECRET_NAME}' in Secrets Manager."
-  exit 1
-fi
+# ── Startup ────────────────────────────────────────────────────────────────────
 
 # Initial key sync on startup
 sync_fleet_keys || true
@@ -239,22 +192,21 @@ start_key_sync_daemon
 write_heartbeat || true   # write immediately on start
 start_heartbeat_daemon
 
-# ── Watchdog ─────────────────────────────────────────────────────────────────
+# ── Watchdog ──────────────────────────────────────────────────────────────────
 
 CRASH_COUNT=0
 MAX_CRASHES=10
 CRASH_WINDOW=300  # seconds -- reset crash count if process runs longer than this
 
 echo ""
-echo "[+] Starting dispatch watchdog (max crashes: ${MAX_CRASHES}, restart delay: ${RESTART_DELAY}s)..."
+echo "[+] Starting git-dispatch.py watchdog (max crashes: ${MAX_CRASHES}, restart delay: ${RESTART_DELAY}s)..."
 echo ""
 
 while true; do
   START_TS=$(date +%s)
 
-  echo "[$(date -u +%H:%M:%S)] Starting teams-dispatch.py (attempt $((CRASH_COUNT + 1)))..."
+  echo "[$(date -u +%H:%M:%S)] Starting git-dispatch.py (attempt $((CRASH_COUNT + 1)))..."
 
-  # Run the dispatcher; capture exit code without aborting the watchdog
   DISPATCH_EXIT=0
   run_dispatch || DISPATCH_EXIT=$?
 
@@ -262,7 +214,6 @@ while true; do
   RUNTIME=$((END_TS - START_TS))
 
   if [ "$RUNTIME" -gt "$CRASH_WINDOW" ]; then
-    # Process ran for a while -- reset crash counter
     CRASH_COUNT=0
     echo "[$(date -u +%H:%M:%S)] Dispatcher ran ${RUNTIME}s before stopping. Resetting crash counter."
   else
@@ -274,10 +225,6 @@ while true; do
     echo "[$(date -u +%H:%M:%S)] FATAL: $MAX_CRASHES rapid crashes. Stopping daemon."
     exit 1
   fi
-
-  # Refresh token before restart (it may have expired)
-  echo "[$(date -u +%H:%M:%S)] Refreshing Graph token before restart..."
-  fetch_graph_token || echo "  WARNING: Token refresh failed. Continuing with cached token."
 
   echo "[$(date -u +%H:%M:%S)] Restarting in ${RESTART_DELAY}s..."
   sleep "$RESTART_DELAY"

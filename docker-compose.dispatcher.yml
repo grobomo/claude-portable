@@ -1,13 +1,16 @@
 # Override for dispatcher instances (headless, no Chrome).
+# Dispatcher watches TODO.md on git for unclaimed tasks and manages EC2 fleet.
+# Teams polling is handled by the chatbot instance, not the dispatcher.
+#
 # Usage: docker compose -f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.dispatcher.yml up -d
 services:
   claude:
     environment:
       - DISPATCHER_MODE=true
-      - DISPATCHER_CHAT_ID=${DISPATCHER_CHAT_ID:-}
-      - DISPATCHER_TRIGGER=${DISPATCHER_TRIGGER:-@claude}
-      - DISPATCHER_POLL_INTERVAL=${DISPATCHER_POLL_INTERVAL:-30}
-      - DISPATCHER_SECRET_NAME=${DISPATCHER_SECRET_NAME:-claude-portable/graph-token}
+      - TODO_POLL_INTERVAL=${TODO_POLL_INTERVAL:-60}
+      - DISPATCHER_REPO_DIR=${DISPATCHER_REPO_DIR:-/workspace/claude-portable}
+      - DISPATCHER_MAX_WORKERS=${DISPATCHER_MAX_WORKERS:-5}
+      - DISPATCHER_HEALTH_PORT=${DISPATCHER_HEALTH_PORT:-8080}
       - DISPATCHER_KEY_SYNC_INTERVAL=${DISPATCHER_KEY_SYNC_INTERVAL:-300}
     # Run dispatcher-daemon.sh directly instead of bootstrap.sh
     entrypoint: ["/opt/claude-portable/scripts/dispatcher-daemon.sh"]
