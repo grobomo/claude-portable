@@ -281,6 +281,86 @@ Resources:
       OKActions:
         - !Ref HeartbeatAlertTopic
 
+  # ── Auto-Healer Lambda ────────────────────────────────────────────────────
+  # Triggered by the SNS topic above. Restarts a stopped dispatcher or
+  # launches a fresh one from the launch template if terminated.
+
+  HealerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${InstanceName}-healer-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: dispatcher-ec2-heal
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DescribeAll
+                Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeLaunchTemplates
+                  - ec2:DescribeLaunchTemplateVersions
+                Resource: '*'
+              - Sid: StartTaggedDispatcher
+                Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/Project': claude-portable
+                    'ec2:ResourceTag/Role': dispatcher
+              - Sid: RunNewDispatcher
+                Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:CreateTags
+                Resource: '*'
+
+  HealerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${InstanceName}-healer'
+      Description: Auto-healer for the Claude dispatcher. Restarts or relaunches the dispatcher when the heartbeat alarm fires.
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt HealerLambdaRole.Arn
+      Timeout: 120
+      MemorySize: 128
+      Environment:
+        Variables:
+          DISPATCHER_NAME: !Ref InstanceName
+          LAUNCH_TEMPLATE_NAME: !Sub '${InstanceName}-lt'
+      Code:
+        ZipFile: |
+          // Placeholder -- deploy real code with: bash lambda/dispatcher-healer/deploy.sh
+          export const handler = async () => ({ statusCode: 200, body: 'placeholder' });
+
+  HealerLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HealerLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref HeartbeatAlertTopic
+
+  HealerSNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref HeartbeatAlertTopic
+      Protocol: lambda
+      Endpoint: !GetAtt HealerLambdaFunction.Arn
+
 Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
@@ -309,6 +389,9 @@ Outputs:
   HeartbeatAlarmName:
     Value: !Ref DispatcherHeartbeatAlarm
     Description: CloudWatch alarm name for dispatcher heartbeat
+  HealerLambdaArn:
+    Value: !GetAtt HealerLambdaFunction.Arn
+    Description: Auto-healer Lambda ARN (deploy real code with lambda/dispatcher-healer/deploy.sh)
   DeployCommand:
     Description: Deploy this stack
     Value: !Sub >-
