@@ -648,7 +648,18 @@ class HealthHandler(BaseHTTPRequestHandler):
             state["uptime_seconds"] = int(time.time() - uptime_start)
             with _fleet_roster_lock:
                 state["fleet_roster"] = dict(_fleet_roster)
+            with _relay_stats_lock:
+                state["relay"] = dict(_relay_stats)
             body = json.dumps(state, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/relay/status":
+            with _relay_stats_lock:
+                stats = dict(_relay_stats)
+            body = json.dumps(stats, indent=2).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -846,6 +857,281 @@ class HealthHandler(BaseHTTPRequestHandler):
         pass  # suppress per-request noise
 
 
+# ── Git relay (RONE ↔ CCC bridge) ───────────────────────────────────────────
+#
+# Polls a shared git repo (ccc-rone-bridge) for relay requests from RONE.
+# See .claude/rules/git-relay-design.md for the full architecture.
+#
+# Repo layout:
+#   requests/pending/     RONE writes here
+#   requests/dispatched/  dispatcher moves here when worker picks up
+#   requests/completed/   worker moves here when done
+#   requests/failed/      on error
+
+RELAY_REPO = os.environ.get(
+    "RELAY_REPO_URL",
+    "https://github.com/joel-ginsberg_tmemu/ccc-rone-bridge.git",
+)
+RELAY_DIR = os.environ.get("RELAY_REPO_DIR", "/data/relay-repo")
+RELAY_POLL_INTERVAL = int(os.environ.get("RELAY_POLL_INTERVAL", "30"))
+
+_relay_stats = {
+    "last_poll": None,
+    "pending": 0,
+    "dispatched": 0,
+    "completed": 0,
+    "failed": 0,
+    "errors": 0,
+}
+_relay_stats_lock = threading.Lock()
+
+
+def _relay_git_pull() -> bool:
+    """Clone or pull the relay repo. Returns True on success."""
+    if not os.path.isdir(os.path.join(RELAY_DIR, ".git")):
+        try:
+            os.makedirs(os.path.dirname(RELAY_DIR), exist_ok=True)
+            r = subprocess.run(
+                ["git", "clone", "--depth", "1", RELAY_REPO, RELAY_DIR],
+                capture_output=True, text=True, timeout=60,
+            )
+            if r.returncode != 0:
+                log.warning("relay git clone failed: %s", r.stderr.strip())
+                return False
+            log.info("Relay repo cloned to %s", RELAY_DIR)
+            return True
+        except Exception as e:
+            log.warning("relay git clone error: %s", e)
+            return False
+    try:
+        r = subprocess.run(
+            ["git", "pull", "--rebase", "origin", "main"],
+            cwd=RELAY_DIR, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            log.warning("relay git pull failed: %s", r.stderr.strip())
+            return False
+        return True
+    except Exception as e:
+        log.warning("relay git pull error: %s", e)
+        return False
+
+
+def _relay_git_push(message: str) -> bool:
+    """Stage all changes and push to relay repo."""
+    try:
+        subprocess.run(["git", "add", "-A"], cwd=RELAY_DIR, capture_output=True, timeout=10)
+        r = subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=RELAY_DIR, capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0 and "nothing to commit" not in r.stdout:
+            log.warning("relay git commit failed: %s", r.stderr.strip())
+            return False
+        r = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=RELAY_DIR, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            log.warning("relay git push failed: %s", r.stderr.strip())
+            return False
+        return True
+    except Exception as e:
+        log.warning("relay git push error: %s", e)
+        return False
+
+
+def _move_relay_file(request_id: str, from_dir: str, to_dir: str, extra_fields: dict = None):
+    """Move a relay request JSON between directories, optionally adding fields."""
+    src = os.path.join(RELAY_DIR, "requests", from_dir, f"{request_id}.json")
+    dst_dir = os.path.join(RELAY_DIR, "requests", to_dir)
+    dst = os.path.join(dst_dir, f"{request_id}.json")
+    try:
+        os.makedirs(dst_dir, exist_ok=True)
+        with open(src, "r") as f:
+            data = json.load(f)
+        if extra_fields:
+            data.update(extra_fields)
+        with open(dst, "w") as f:
+            json.dump(data, f, indent=2)
+        os.remove(src)
+        return data
+    except Exception as e:
+        log.warning("Failed to move relay %s from %s to %s: %s", request_id, from_dir, to_dir, e)
+        return None
+
+
+def _dispatch_relay_request(request_id: str, request_data: dict):
+    """Dispatch a relay request to a worker via SSH + claude -p."""
+    sender = request_data.get("sender", "unknown")
+    text = request_data.get("text", "")
+    context = request_data.get("context", [])
+
+    # Find an idle worker from fleet roster
+    worker_name = ""
+    worker_ip = ""
+    with _fleet_roster_lock:
+        for wid, winfo in _fleet_roster.items():
+            if winfo.get("status") == "idle" and winfo.get("ip"):
+                worker_name = wid
+                worker_ip = winfo["ip"]
+                winfo["status"] = "busy"
+                break
+
+    if not worker_name:
+        log.warning("RELAY %s: no idle worker available", request_id)
+        _move_relay_file(request_id, "dispatched", "pending",
+                         {"error": "no idle worker", "retry_after": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        return
+
+    # Build prompt from request data
+    context_str = "\n".join(str(c) for c in context[-25:])
+    prompt = f"Request from {sender}.\n"
+    if context_str:
+        prompt += f"\nRecent conversation:\n{context_str}\n"
+    prompt += f"\n{text}"
+
+    escaped = prompt.replace("'", "'\\''").replace('"', '\\"')
+    result_file = f"/tmp/relay-result-{request_id}.txt"
+
+    # Find SSH key
+    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_path = os.path.join(key_dir, f"{worker_name}.pem")
+    if not os.path.isfile(key_path):
+        short_name = worker_name.replace("ccc-", "")
+        key_path = os.path.join(key_dir, f"{short_name}.pem")
+    if not os.path.isfile(key_path):
+        log.error("RELAY %s: no SSH key for %s", request_id, worker_name)
+        _move_relay_file(request_id, "dispatched", "failed",
+                         {"error": f"no SSH key for {worker_name}"})
+        _relay_git_push(f"relay: {request_id} failed (no SSH key)")
+        return
+
+    cmd = (
+        f"docker exec -w /workspace/claude-portable claude-portable bash -c '"
+        f"claude -p \"{escaped}\" --dangerously-skip-permissions "
+        f"> {result_file} 2>&1 && cat {result_file}'"
+    )
+
+    try:
+        r = subprocess.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-o", "ConnectTimeout=10",
+            "-i", key_path, f"ubuntu@{worker_ip}", cmd,
+        ], capture_output=True, text=True, timeout=300)
+
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if r.returncode == 0 and r.stdout.strip():
+            _move_relay_file(request_id, "dispatched", "completed", {
+                "result": r.stdout.strip()[:5000],
+                "completed_at": now,
+                "worker": worker_name,
+            })
+            _relay_git_push(f"relay: {request_id} completed by {worker_name}")
+            with _relay_stats_lock:
+                _relay_stats["completed"] += 1
+            log.info("RELAY %s completed by %s", request_id, worker_name)
+        else:
+            error_msg = r.stderr[:500] if r.stderr else "empty response"
+            _move_relay_file(request_id, "dispatched", "failed", {
+                "error": error_msg,
+                "worker": worker_name,
+                "failed_at": now,
+            })
+            _relay_git_push(f"relay: {request_id} failed on {worker_name}")
+            with _relay_stats_lock:
+                _relay_stats["failed"] += 1
+            log.warning("RELAY %s failed on %s: %s", request_id, worker_name, error_msg[:100])
+    except subprocess.TimeoutExpired:
+        _move_relay_file(request_id, "dispatched", "failed", {
+            "error": "timeout (300s)",
+            "worker": worker_name,
+        })
+        _relay_git_push(f"relay: {request_id} timed out on {worker_name}")
+        with _relay_stats_lock:
+            _relay_stats["failed"] += 1
+        log.warning("RELAY %s timed out on %s", request_id, worker_name)
+    except Exception as e:
+        _move_relay_file(request_id, "dispatched", "failed", {
+            "error": str(e),
+            "worker": worker_name,
+        })
+        _relay_git_push(f"relay: {request_id} error on {worker_name}")
+        with _relay_stats_lock:
+            _relay_stats["failed"] += 1
+        log.error("RELAY %s error: %s", request_id, e)
+    finally:
+        with _fleet_roster_lock:
+            entry = _fleet_roster.get(worker_name)
+            if entry and entry.get("status") == "busy":
+                entry["status"] = "idle"
+
+
+def relay_poll_loop():
+    """Background thread: poll relay repo for pending requests, dispatch to workers."""
+    log.info("Relay poll loop started (interval: %ds, repo: %s)", RELAY_POLL_INTERVAL, RELAY_REPO)
+
+    while True:
+        try:
+            _relay_poll_tick()
+        except Exception as e:
+            log.error("Relay poll tick error: %s", e)
+            with _relay_stats_lock:
+                _relay_stats["errors"] += 1
+        time.sleep(RELAY_POLL_INTERVAL)
+
+
+def _relay_poll_tick():
+    """Single relay poll iteration."""
+    if not _relay_git_pull():
+        return
+
+    pending_dir = os.path.join(RELAY_DIR, "requests", "pending")
+    if not os.path.isdir(pending_dir):
+        return
+
+    pending_files = [f for f in os.listdir(pending_dir) if f.endswith(".json")]
+    with _relay_stats_lock:
+        _relay_stats["last_poll"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _relay_stats["pending"] = len(pending_files)
+
+    if not pending_files:
+        return
+
+    log.info("RELAY: %d pending request(s)", len(pending_files))
+
+    for filename in pending_files:
+        request_id = filename.replace(".json", "")
+        filepath = os.path.join(pending_dir, filename)
+        try:
+            with open(filepath, "r") as f:
+                request_data = json.load(f)
+        except Exception as e:
+            log.warning("RELAY: bad JSON in %s: %s", filename, e)
+            continue
+
+        # Move to dispatched/ before processing
+        moved = _move_relay_file(request_id, "pending", "dispatched", {
+            "worker": "",
+            "dispatched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        if not moved:
+            continue
+
+        _relay_git_push(f"relay: dispatching {request_id}")
+        with _relay_stats_lock:
+            _relay_stats["dispatched"] += 1
+
+        # Dispatch in background thread so we can process multiple requests
+        t = threading.Thread(
+            target=_dispatch_relay_request,
+            args=(request_id, request_data),
+            daemon=True,
+            name=f"relay-{request_id}",
+        )
+        t.start()
+
+
 def start_health_server():
     server = HTTPServer(("0.0.0.0", HEALTH_PORT), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -896,6 +1182,17 @@ def main():
         name="registration-monitor",
     )
     reg_monitor.start()
+
+    # Start git relay poller (RONE ↔ CCC bridge)
+    relay_thread = threading.Thread(
+        target=relay_poll_loop,
+        daemon=True,
+        name="relay-poller",
+    )
+    relay_thread.start()
+    log.info("  Relay repo:    %s", RELAY_REPO)
+    log.info("  Relay dir:     %s", RELAY_DIR)
+    log.info("  Relay poll:    %ds", RELAY_POLL_INTERVAL)
 
     dispatch_loop(region)
 

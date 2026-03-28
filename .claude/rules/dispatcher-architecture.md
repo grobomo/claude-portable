@@ -1,6 +1,8 @@
 # Dispatcher Architecture
 
-- Workers built `git-dispatch.py` (watches TODO.md via git). I built relay API on `teams-dispatch.py`.
-- These need to be merged. The relay API endpoints (/relay, /result, /board) should be added to whatever script the dispatcher daemon actually runs.
-- Check `dispatcher-daemon.sh` entrypoint to see which script it starts.
-- Dispatcher needs the repo cloned at `/workspace/claude-portable` on boot.
+- `git-dispatch.py` is the single dispatcher script. It runs two poll loops:
+  1. **TODO poll** (every 60s): watches TODO.md on main, scales EC2 workers
+  2. **Relay poll** (every 30s): watches ccc-rone-bridge git repo for RONE requests
+- HTTP endpoints are for health/status and worker self-reporting only — not for relay.
+- RONE communication uses git files (see git-relay-design.md), not HTTP APIs.
+- Dispatcher needs the main repo at `/workspace/claude-portable` and the relay repo at `/data/relay-repo`.
