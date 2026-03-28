@@ -211,3 +211,14 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 
 - [ ] Wire worker control API into ccc CLI: `ccc interrupt worker-1` calls POST /interrupt. `ccc health worker-1` calls GET /health. No SSH needed.
   - PR title: "feat: ccc interrupt and health commands via worker API"
+
+## Code quality enforcement
+
+- [ ] Add REVIEW stage to TDD pipeline (runs after RESEARCH, before PLAN): Claude must read ALL files in the repo that relate to the current task. It must identify: (1) existing code that already does what the task asks, (2) dead code from previous tasks that should be removed, (3) conflicting implementations (e.g. two dispatch systems), (4) code that should be refactored to accommodate the new feature. Output to /tmp/task-{N}-review.md. If the review finds the task is already done or conflicts with existing code, the worker must REFACTOR first before adding new code.
+  - PR title: "feat: mandatory code review stage in TDD pipeline"
+
+- [ ] Refactor-first rule: if the REVIEW stage finds >3 files that need changes to accommodate the new feature, the worker must create a REFACTOR PR first (separate from the feature PR). Refactor PR cleans up, removes dead code, consolidates duplicates. Feature PR builds on top of the clean base. Never patch on top of spaghetti.
+  - PR title: "feat: refactor-first rule when review finds messy codebase"
+
+- [ ] Add `ccc cleanup` command: runs a one-off Claude invocation that reviews the entire codebase for dead code, duplicate implementations, unused files, and inconsistencies. Outputs a report and optionally creates a cleanup PR.
+  - PR title: "feat: ccc cleanup command for codebase hygiene"
