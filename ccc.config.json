@@ -2,7 +2,7 @@
   "alias": "ccc",
   "region": "us-east-2",
   "instance_type": "t3.large",
-  "max_workers": 10,
+  "max_workers": 50,
   "key_name": "claude-portable-key",
   "idle_timeout_minutes": 30,
   "disk_size_gb": 40,
