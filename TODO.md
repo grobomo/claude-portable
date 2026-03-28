@@ -283,3 +283,42 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 
 - [ ] Commit pipeline folder to PR branch: the task folder `/data/pipeline/task-{N}/` is copied into the repo at `.pipeline/task-{N}/` and committed to the branch before PR creation. All phase outputs (why, research, review, scope, tests, implement, verify), stage-log.json, and reviewer feedback are included in the PR. This provides a full audit trail of how the task was completed. Reviewers can see the thinking process, not just the final code.
   - PR title: "feat: include pipeline audit trail in PR commits"
+
+## Task submission template (enforced)
+
+Every task in TODO.md must follow a standard template. A pre-commit hook or CI check rejects tasks that don't conform. Workers use this context to accurately complete work without guessing.
+
+- [ ] Define task template format in `.github/TASK_TEMPLATE.md`. Every unchecked TODO item must have these fields (indented under the checkbox line):
+  - **What**: one-line description of the deliverable
+  - **Why**: what problem this solves, what breaks without it, user/conversation context that motivated it
+  - **How**: technical approach, key files to modify, patterns to follow from existing code
+  - **Acceptance**: specific testable criteria (not "it works" — exact commands to run, expected output)
+  - **Context**: links to related PRs, previous tasks, conversation excerpts, or design decisions
+  - **PR title**: the PR title to use
+  Example:
+  ```
+  - [ ] Add rolling chat cache to dispatcher
+    - What: dispatcher writes last 50 Teams messages to /data/chat-cache/group-chat.txt every poll cycle
+    - Why: workers answering @claude messages have no conversation context, so replies like "what do those do" fail because Claude doesn't know what "those" refers to (from session 2026-03-28)
+    - How: in teams-dispatch.py poll_once(), after fetching messages, write them to txt. Include sender, timestamp, body. Overwrite each cycle.
+    - Acceptance: file exists after one poll cycle, contains 50 lines, each line has [timestamp] sender: message format
+    - Context: see PR #26 for quoted reply detection, dispatcher-daemon.sh for poll lifecycle
+    - PR title: "feat: rolling chat cache as txt files on dispatcher"
+  ```
+  - PR title: "feat: define task submission template"
+
+- [ ] Task template checker: GitHub Action or pre-commit hook that parses TODO.md and rejects commits where unchecked tasks are missing any of the required fields (What/Why/How/Acceptance). Runs on every push to main. Blocks merge if template is incomplete.
+  - What: CI gate that validates task format
+  - Why: workers built broken features because tasks said "do X" without explaining why or how to verify
+  - How: Python script that parses TODO.md, finds unchecked items, checks for required subsections
+  - Acceptance: push a task missing "Why" field, CI fails with clear error message
+  - Context: this was identified in session 2026-03-28 after dispatcher bugs stacked up from vague tasks
+  - PR title: "feat: task template checker CI gate"
+
+- [ ] Retrofit existing TODO items to follow the template. Go through all unchecked tasks, add missing Why/How/Acceptance fields based on the conversation context from this session and PR history.
+  - What: backfill context on all existing tasks
+  - Why: current tasks are one-liners that workers will misinterpret
+  - How: read each task, find the related conversation context in this chat export, add the fields
+  - Acceptance: every unchecked task in TODO.md passes the template checker
+  - Context: the entire conversation from session 2026-03-28
+  - PR title: "chore: retrofit existing tasks with full template context"
