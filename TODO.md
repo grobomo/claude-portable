@@ -89,7 +89,7 @@ Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 - [x] Fleet status: user asks "what are workers doing?" → chatbot reads git (open branches, recent PRs, TODO.md progress), queries dispatcher health endpoint for live instance status.
   - PR title: "feat: chatbot exposes fleet status"
 
-- [ ] SSH auto-starts Claude Code: SSHing into chatbot auto-launches `claude --dangerously-skip-permissions` in the workspace. User lands in a Claude session with full context, not a bare shell.
+- [x] SSH auto-starts Claude Code: SSHing into chatbot auto-launches `claude --dangerously-skip-permissions` in the workspace. User lands in a Claude session with full context, not a bare shell.
   - PR title: "feat: SSH to chatbot auto-starts Claude Code"
 
 - [ ] Rate limiting: max 20 prompts/hour per user. Configurable via `CHATBOT_RATE_LIMIT` env var.
