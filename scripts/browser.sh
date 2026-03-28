@@ -70,13 +70,32 @@ case "$cmd" in
         fi
       fi
 
-      nohup google-chrome-stable \
-        --no-sandbox --disable-gpu --no-first-run --disable-sync \
-        --disable-background-networking \
-        --remote-debugging-port="${CHROME_DEBUG_PORT}" \
-        --window-size=1920,1080 \
-        --user-data-dir="$CHROME_PROFILE" \
-        &>/dev/null &
+      # Build Chrome flags
+      CHROME_FLAGS=(
+        --no-sandbox --disable-gpu --no-first-run --disable-sync
+        --disable-background-networking
+        --remote-debugging-port="${CHROME_DEBUG_PORT}"
+        --window-size=1920,1080
+        --user-data-dir="$CHROME_PROFILE"
+      )
+
+      # Load blueprint-extra Chrome extension if available
+      EXTENSION_DIR="/opt/mcp/blueprint-extra-mcp/extensions"
+      if [ -d "$EXTENSION_DIR" ]; then
+        # Collect all subdirectories as comma-separated extension paths
+        EXT_PATHS=""
+        for ext in "$EXTENSION_DIR"/*/; do
+          [ -d "$ext" ] || continue
+          [ -n "$EXT_PATHS" ] && EXT_PATHS="$EXT_PATHS,"
+          EXT_PATHS="$EXT_PATHS${ext%/}"
+        done
+        if [ -n "$EXT_PATHS" ]; then
+          CHROME_FLAGS+=(--load-extension="$EXT_PATHS")
+          echo "  Loading extensions from: $EXTENSION_DIR"
+        fi
+      fi
+
+      nohup google-chrome-stable "${CHROME_FLAGS[@]}" &>/dev/null &
       sleep 3
       echo "  Chrome running (profile: $CHROME_PROFILE)"
     else
