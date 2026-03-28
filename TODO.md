@@ -8,7 +8,7 @@
 - [x] Create `cloudformation/dispatcher.yaml` — CF template for dispatcher IAM role: Secrets Manager read, EC2 describe/start/stop, S3 read/write for keys + heartbeat + logs
   - PR title: "feat: add dispatcher CloudFormation template"
 
-- [ ] Update `ccc` launcher to support `--role dispatcher` flag — launches t3.small (no Chrome), runs dispatcher-daemon.sh instead of normal bootstrap, tags instance with Role=dispatcher
+- [x] Update `ccc` launcher to support `--role dispatcher` flag — launches t3.small (no Chrome), runs dispatcher-daemon.sh instead of normal bootstrap, tags instance with Role=dispatcher
   - PR title: "feat: add dispatcher role to ccc launcher"
 
 - [ ] Create S3 key-sharing: on worker launch, upload SSH public key to `s3://claude-portable-state-{account}/fleet-keys/`. Dispatcher pulls all keys at boot + every 5 min.
