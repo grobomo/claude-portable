@@ -1,0 +1,16 @@
+# Override for chatbot instances (human-facing, web-chat + Teams polling, no continuous-claude).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.chatbot.yml up -d
+services:
+  claude:
+    environment:
+      - CHATBOT_MODE=true
+      - CHATBOT_TEAMS_CHAT_ID=${CHATBOT_TEAMS_CHAT_ID:-}
+      - CHATBOT_TEAMS_TRIGGER=${CHATBOT_TEAMS_TRIGGER:-@claude}
+      - CHATBOT_TEAMS_POLL_INTERVAL=${CHATBOT_TEAMS_POLL_INTERVAL:-30}
+      - CHATBOT_TEAMS_SECRET_NAME=${CHATBOT_TEAMS_SECRET_NAME:-claude-portable/graph-token}
+      - CHATBOT_RATE_LIMIT=${CHATBOT_RATE_LIMIT:-20}
+      - CONTINUOUS_CLAUDE_ENABLED=false
+    ports:
+      # SSH + web-chat for phone/Lambda access
+      - "2222:22"
+      - "8888:8888"

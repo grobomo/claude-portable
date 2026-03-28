@@ -8,6 +8,7 @@ Manages EC2 instances with stop/start lifecycle:
   ccc --new                 Always launch a fresh instance
   ccc --continuous URL      Launch with continuous-claude enabled
   ccc --role dispatcher     Launch a dedicated t3.small dispatcher instance
+  ccc --role chatbot        Launch a chatbot instance (web-chat + Teams, no continuous-claude)
   ccc list                  List all managed instances
   ccc stop [name]           Stop an instance (keeps state, no cost)
   ccc kill [name]           Terminate an instance permanently
@@ -485,10 +486,12 @@ def wait_for_container(ip, ssh_key, timeout=300):
 def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=None):
     """Launch a new on-demand EC2 instance.
 
-    role: None (default worker) or 'dispatcher' (t3.small, runs dispatcher-daemon.sh,
-          tagged Role=dispatcher, no Chrome/VNC).
+    role: None (default worker), 'dispatcher' (t3.small, runs dispatcher-daemon.sh,
+          tagged Role=dispatcher, no Chrome/VNC), or 'chatbot' (t3.large, web-chat +
+          Teams polling, tagged Role=chatbot, no continuous-claude).
     """
     is_dispatcher = (role == "dispatcher")
+    is_chatbot = (role == "chatbot")
 
     # Enforce max instances
     existing = get_instances()
@@ -500,9 +503,17 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
         print(f"  Use: ccc stop <name> or ccc kill <name>")
         sys.exit(1)
 
-    label = name or ("dispatcher" if is_dispatcher else f"box-{int(time.time()) % 10000}")
+    if name:
+        label = name
+    elif is_dispatcher:
+        label = "dispatcher"
+    elif is_chatbot:
+        label = "chatbot"
+    else:
+        label = f"box-{int(time.time()) % 10000}"
     instance_name = f"ccc-{label}"
-    print(f"  Launching new instance: {instance_name}" + (" (dispatcher)" if is_dispatcher else ""))
+    role_suffix = f" ({role})" if role else ""
+    print(f"  Launching new instance: {instance_name}{role_suffix}")
 
     # Use golden AMI if available, otherwise latest Ubuntu 24.04
     golden_ami = CFG.get("golden_ami", "")
@@ -587,7 +598,7 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
                                capture_output=True)
 
     # Upload public key to S3 fleet-keys/ (worker instances only, so dispatcher can SSH in)
-    if not is_dispatcher:
+    if not is_dispatcher and not is_chatbot:
         upload_fleet_key(label, instance_key_path)
 
     # Build user-data script
@@ -649,12 +660,53 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
                 else:
                     print("  WARNING: DISPATCHER_CHAT_ID not set — dispatcher will not poll Teams.")
 
+    # Chatbot-specific env vars
+    if is_chatbot:
+        env_vars["CHATBOT_MODE"] = "true"
+        env_vars["CONTINUOUS_CLAUDE_ENABLED"] = "false"
+        env_vars.setdefault("CHATBOT_TEAMS_SECRET_NAME", "claude-portable/graph-token")
+
+        # CHATBOT_TEAMS_CHAT_ID: .env > ccc.config.json > prompt user
+        if not env_vars.get("CHATBOT_TEAMS_CHAT_ID"):
+            cfg_chat_id = CFG.get("chatbot_teams_chat_id", "") or CFG.get("dispatcher_chat_id", "")
+            if cfg_chat_id:
+                env_vars["CHATBOT_TEAMS_CHAT_ID"] = cfg_chat_id
+            else:
+                print("\n  CHATBOT_TEAMS_CHAT_ID not found in .env or ccc.config.json.")
+                print("  This is the Teams chat ID where @claude messages will be monitored.")
+                try:
+                    chat_id = input("  Enter Teams chat ID (or press Enter to skip): ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    chat_id = ""
+                if chat_id:
+                    env_vars["CHATBOT_TEAMS_CHAT_ID"] = chat_id
+                    config_path = CFG.get("_config_path", os.path.join(script_dir, "ccc.config.json"))
+                    try:
+                        save = input(f"  Save to {config_path}? [y/N] ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        save = "n"
+                    if save == "y":
+                        try:
+                            with open(config_path) as f:
+                                cfg_data = json.load(f)
+                        except Exception:
+                            cfg_data = {}
+                        cfg_data["chatbot_teams_chat_id"] = chat_id
+                        with open(config_path, "w") as f:
+                            json.dump(cfg_data, f, indent=2)
+                            f.write("\n")
+                        print(f"  Saved chatbot_teams_chat_id to {config_path}")
+                else:
+                    print("  WARNING: CHATBOT_TEAMS_CHAT_ID not set — chatbot will not poll Teams.")
+
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
 
-    # Compose file list: dispatcher adds docker-compose.dispatcher.yml
+    # Compose file list: role-specific overrides
     if is_dispatcher:
         compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.dispatcher.yml"
+    elif is_chatbot:
+        compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.chatbot.yml"
     else:
         compose_files = "-f docker-compose.yml -f docker-compose.remote.yml"
 
@@ -709,7 +761,7 @@ docker compose {compose_files} up -d
     # Launch instance (on-demand, stoppable, hardened)
     result = aws("ec2", "run-instances",
                  "--image-id", ami_id,
-                 "--instance-type", "t3.small" if is_dispatcher else INSTANCE_TYPE,
+                 "--instance-type", "t3.small" if is_dispatcher else INSTANCE_TYPE,  # chatbot uses default t3.large
                  "--key-name", instance_key_name,
                  "--security-group-ids", sg_id,
                  "--user-data", userdata,
@@ -733,7 +785,8 @@ docker compose {compose_files} up -d
                      "Tags": [
                          {"Key": "Name", "Value": instance_name},
                          {"Key": "Project", "Value": PROJECT_TAG},
-                     ] + ([{"Key": "Role", "Value": "dispatcher"}] if is_dispatcher else [])
+                     ] + ([{"Key": "Role", "Value": "dispatcher"}] if is_dispatcher else
+                          [{"Key": "Role", "Value": "chatbot"}] if is_chatbot else [])
                  }]),
                  "--instance-initiated-shutdown-behavior", "stop")
 
@@ -751,7 +804,7 @@ docker compose {compose_files} up -d
     ip = desc["Reservations"][0]["Instances"][0].get("PublicIpAddress", "")
 
     return {"id": instance_id, "ip": ip, "name": instance_name, "label": label, "state": "running",
-            "ssh_key": instance_key_path, "role": role or "worker"}
+            "ssh_key": instance_key_path, "role": role if role else "worker"}
 
 def _get_aws_credentials():
     """Get AWS credentials content. Tries OS keyring first, then ~/.aws/credentials."""
@@ -960,6 +1013,7 @@ def cmd_connect(args):
     continuous_branch = getattr(args, 'branch', 'main') or 'main'
     role = getattr(args, 'role', None)
     is_dispatcher = (role == "dispatcher")
+    is_chatbot = (role == "chatbot")
 
     print("=" * 45)
     alias = CFG.get("alias", "ccc")
@@ -983,6 +1037,8 @@ def cmd_connect(args):
                 inst_role = inst.get("role", "worker")
                 if inst_role == "dispatcher":
                     compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.dispatcher.yml"
+                elif inst_role == "chatbot":
+                    compose_files = "-f docker-compose.yml -f docker-compose.remote.yml -f docker-compose.chatbot.yml"
                 else:
                     compose_files = "-f docker-compose.yml -f docker-compose.remote.yml"
                 if not wait_for_container(ip, ssh_key, timeout=120):
@@ -996,7 +1052,22 @@ def cmd_connect(args):
             else:
                 print(f"\n  Found running instance: {inst['name']} ({inst['ip']})")
 
-            if not is_dispatcher:
+            if is_dispatcher:
+                print(f"\n  Dispatcher {inst['label']} is running at {inst['ip']}")
+                print(f"  SSH: ssh -i {ssh_key} ubuntu@{inst['ip']}")
+                print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
+            elif is_chatbot or inst.get("role") == "chatbot":
+                push_credentials(inst["ip"], ssh_key)
+                web_token_cmd = "docker exec claude-portable cat /data/web-chat-token 2>/dev/null || true"
+                token = _ssh_exec(inst["ip"], ssh_key, web_token_cmd).strip()
+                lambda_url = CFG.get("web_chat_lambda_url", "")
+                print(f"\n  Chatbot {inst['label']} is running at {inst['ip']}")
+                print(f"  SSH:      ssh -i {ssh_key} ubuntu@{inst['ip']}")
+                print(f"  Web chat: http://{inst['ip']}:8888/?token={token}" if token else f"  Web chat: http://{inst['ip']}:8888/")
+                if lambda_url:
+                    print(f"  Lambda:   {lambda_url}")
+                print(f"  Logs:     ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
+            else:
                 push_credentials(inst["ip"], ssh_key)
 
                 # Inject continuous-claude into existing instance if requested
@@ -1004,10 +1075,6 @@ def cmd_connect(args):
                     _inject_continuous_claude(inst["ip"], ssh_key, continuous_repo, continuous_branch)
 
                 connect(inst["ip"], ssh_key, inst["label"])
-            else:
-                print(f"\n  Dispatcher {inst['label']} is running at {inst['ip']}")
-                print(f"  SSH: ssh -i {ssh_key} ubuntu@{inst['ip']}")
-                print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
             return
 
     # Launch new
@@ -1023,7 +1090,25 @@ def cmd_connect(args):
         sys.exit(1)
     print(" ready!")
 
-    if not is_dispatcher:
+    if is_dispatcher:
+        print(f"\n  Dispatcher launched: {inst['label']} ({inst['ip']})")
+        print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
+        print(f"  SSH:  ssh -i {ssh_key} ubuntu@{inst['ip']}")
+    elif is_chatbot:
+        setup_instance(inst["ip"], ssh_key, inst["label"])
+        push_credentials(inst["ip"], ssh_key)
+        # Wait a moment for web-chat to write its token
+        time.sleep(3)
+        web_token_cmd = "docker exec claude-portable cat /data/web-chat-token 2>/dev/null || true"
+        token = _ssh_exec(inst["ip"], ssh_key, web_token_cmd).strip()
+        lambda_url = CFG.get("web_chat_lambda_url", "")
+        print(f"\n  Chatbot launched: {inst['label']} ({inst['ip']})")
+        print(f"  Web chat: http://{inst['ip']}:8888/?token={token}" if token else f"  Web chat: http://{inst['ip']}:8888/")
+        if lambda_url:
+            print(f"  Lambda:   {lambda_url}")
+        print(f"  SSH:  ssh -i {ssh_key} ubuntu@{inst['ip']}")
+        print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
+    else:
         setup_instance(inst["ip"], ssh_key, inst["label"])
         push_credentials(inst["ip"], ssh_key)
         start_idle_monitor(inst["ip"], ssh_key)
@@ -1036,10 +1121,6 @@ def cmd_connect(args):
             print(f"  Logs:    ccc logs -f {name or inst['label']}")
 
         connect(inst["ip"], ssh_key, inst["label"])
-    else:
-        print(f"\n  Dispatcher launched: {inst['label']} ({inst['ip']})")
-        print(f"  Logs: ssh -i {ssh_key} ubuntu@{inst['ip']} 'docker logs -f claude-portable'")
-        print(f"  SSH:  ssh -i {ssh_key} ubuntu@{inst['ip']}")
 
 def cmd_list(args):
     instances = get_instances()
@@ -1883,7 +1964,7 @@ def cmd_work(args):
     """Show what each worker is doing: branch, PR status, task progress, maintenance mode."""
     import re
     instances = get_instances()
-    workers = [i for i in instances if i.get("role", "worker") != "dispatcher"]
+    workers = [i for i in instances if i.get("role", "worker") not in ("dispatcher", "chatbot")]
 
     print("=" * 70)
     print("  CCC Worker Activity")
@@ -2018,8 +2099,9 @@ def main():
                         help="Enable continuous-claude with this repo URL")
     parser.add_argument("--branch", "-b", default="main",
                         help="Branch for continuous-claude (default: main)")
-    parser.add_argument("--role", choices=["dispatcher"],
-                        help="Instance role: 'dispatcher' launches t3.small running dispatcher-daemon.sh")
+    parser.add_argument("--role", choices=["dispatcher", "chatbot"],
+                        help="Instance role: 'dispatcher' launches t3.small running dispatcher-daemon.sh; "
+                             "'chatbot' launches t3.large with web-chat + Teams polling (no continuous-claude)")
 
     p_list = sub.add_parser("list", help="List instances")
     p_stop = sub.add_parser("stop", help="Stop instance(s)")
