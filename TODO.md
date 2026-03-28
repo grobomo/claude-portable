@@ -80,7 +80,7 @@ Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 - [x] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers.
   - PR title: "feat: chatbot auto-pulls latest git before each response"
 
-- [ ] Chatbot CLAUDE.md with full project context: architecture overview, how to read TODO.md, how to check fleet status (git log, open PRs), how to submit feature requests (add TODO item, commit, push). Auto-updated on each git pull.
+- [x] Chatbot CLAUDE.md with full project context: architecture overview, how to read TODO.md, how to check fleet status (git log, open PRs), how to submit feature requests (add TODO item, commit, push). Auto-updated on each git pull.
   - PR title: "feat: chatbot CLAUDE.md with project context"
 
 - [ ] Feature request flow: user says "add dark mode" → chatbot adds `- [ ] Add dark mode` to TODO.md → commits to branch → opens PR → merges → dispatcher sees new unchecked item → assigns worker. User gets PR link.
