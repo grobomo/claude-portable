@@ -213,6 +213,20 @@ if [ "${CLAUDE_PORTABLE_MODE:-}" = "remote" ]; then
   echo "  Idle monitor PID: $!"
 fi
 
+# --- Start chatbot Teams bridge (chatbot mode) ---
+if [ "${CHATBOT_MODE:-false}" = "true" ]; then
+  CHATBOT_DAEMON="/opt/claude-portable/scripts/chatbot-daemon.sh"
+  if [ -x "$CHATBOT_DAEMON" ]; then
+    echo "[+] Starting chatbot Teams bridge..."
+    echo "  Chat ID: ${CHATBOT_TEAMS_CHAT_ID:-(not set, Teams polling disabled)}"
+    nohup "$CHATBOT_DAEMON" \
+      >> /data/chatbot/chatbot-daemon.log 2>&1 &
+    echo "  chatbot-daemon PID: $!"
+  else
+    echo "  WARNING: chatbot-daemon.sh not found or not executable at $CHATBOT_DAEMON"
+  fi
+fi
+
 # --- Start continuous-claude runner (autonomous task loop) ---
 if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ] && [ -n "${CONTINUOUS_CLAUDE_REPO:-}" ]; then
   CC_BRANCH="${CONTINUOUS_CLAUDE_BRANCH:-main}"
