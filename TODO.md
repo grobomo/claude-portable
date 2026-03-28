@@ -56,31 +56,49 @@
 
 ## Phase 2: Team chatbot instance
 
-Separate CCC instance (`--role chatbot`) that teammates can chat with via browser. It's the human-facing front door to the project — answers questions, brainstorms, accepts feature requests, and submits tasks to the dispatcher.
+Chatbot is the SINGLE human-facing interface. All human interaction goes through it — Teams, web chat, SSH. Git is the coordination layer between chatbot, dispatcher, and workers.
 
-- [ ] Create `chatbot` role in ccc launcher: launches t3.large (needs Claude), clones repo, starts web-chat.js, exposes via Lambda URL. Does NOT run continuous-claude. Does NOT accept dispatched tasks.
+Architecture:
+- Chatbot receives requests (Teams @claude, web chat, SSH)
+- Chatbot answers questions directly (reads git for latest state)
+- Chatbot submits work by adding TODO items + committing to git
+- Dispatcher watches git for unchecked TODO items, scales workers
+- Workers claim tasks via branches, do the work, merge PRs
+- Chatbot sees results on next git pull
+
+Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
+
+- [ ] Create `chatbot` role in ccc launcher: launches t3.large, clones repo, starts web-chat.js + Teams polling, exposes via Lambda URL. Does NOT run continuous-claude (it's not a worker).
   - PR title: "feat: add chatbot role to ccc launcher"
 
-- [ ] Multi-user sessions in web-chat.js: each WebSocket connection gets its own `claude` process with independent conversation context. Track sessions by a user identifier (name prompt on connect or token param). Max 10 concurrent sessions. Each session logs to `/data/sessions/{user}/`.
+- [ ] Move Teams polling from dispatcher to chatbot: chatbot runs teams-dispatch.py (renamed to teams-chat-bridge.py). When it detects @claude, it processes the message itself via Claude (not fire-and-forget to a worker). If work is needed, chatbot adds a TODO item and pushes to git.
+  - PR title: "feat: move Teams polling to chatbot, git-based task submission"
+
+- [ ] Multi-user sessions in web-chat.js: each WebSocket connection gets its own `claude` process with independent conversation context. Track sessions by user identifier (name prompt on connect or token param). Max 10 concurrent sessions. Logs to `/data/sessions/{user}/`.
   - PR title: "feat: multi-user sessions in web-chat.js"
 
-- [ ] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers. This ensures the chatbot's answers reflect the current state of the repo, not a stale snapshot.
+- [ ] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers.
   - PR title: "feat: chatbot auto-pulls latest git before each response"
 
-- [ ] Chatbot CLAUDE.md with full project context: the chatbot's CLAUDE.md includes architecture overview, fleet status commands, how to read TODO.md, how to submit feature requests (creates a TODO item + tells dispatcher). Updated on each git pull.
-  - PR title: "feat: chatbot CLAUDE.md with project context and instructions"
+- [ ] Chatbot CLAUDE.md with full project context: architecture overview, how to read TODO.md, how to check fleet status (git log, open PRs), how to submit feature requests (add TODO item, commit, push). Auto-updated on each git pull.
+  - PR title: "feat: chatbot CLAUDE.md with project context"
 
-- [ ] Feature request flow: when a user says "add feature X" or "I want X", the chatbot creates a new unchecked item in TODO.md, commits to a branch, opens a PR, and tells the dispatcher to assign a worker. The user gets a PR link to track progress.
-  - PR title: "feat: chatbot submits feature requests as TODO items via PRs"
+- [ ] Feature request flow: user says "add dark mode" → chatbot adds `- [ ] Add dark mode` to TODO.md → commits to branch → opens PR → merges → dispatcher sees new unchecked item → assigns worker. User gets PR link.
+  - PR title: "feat: chatbot submits feature requests as TODO items"
 
-- [ ] Fleet status in chatbot: user can ask "what are the workers doing?" and chatbot queries the dispatcher's health endpoint + runs `ccc work` equivalent to show live fleet status, open PRs, task progress.
-  - PR title: "feat: chatbot exposes fleet status to users"
+- [ ] Fleet status: user asks "what are workers doing?" → chatbot reads git (open branches, recent PRs, TODO.md progress), queries dispatcher health endpoint for live instance status.
+  - PR title: "feat: chatbot exposes fleet status"
 
-- [ ] Rate limiting per user: max 20 prompts per hour per user session. Prevents runaway API costs from a single user. Configurable via env var `CHATBOT_RATE_LIMIT`.
+- [ ] SSH auto-starts Claude Code: SSHing into chatbot auto-launches `claude --dangerously-skip-permissions` in the workspace. User lands in a Claude session with full context, not a bare shell.
+  - PR title: "feat: SSH to chatbot auto-starts Claude Code"
+
+- [ ] Rate limiting: max 20 prompts/hour per user. Configurable via `CHATBOT_RATE_LIMIT` env var.
   - PR title: "feat: per-user rate limiting in chatbot"
 
-- [ ] SSH auto-starts Claude Code: when anyone SSHes into the chatbot, `.bashrc` auto-launches `claude --dangerously-skip-permissions` in the repo workspace. User lands directly in a Claude session, not a bare shell. Same full context, tools, and settings as the web chat.
-  - PR title: "feat: SSH to chatbot auto-starts Claude Code session"
+Refactored dispatcher role:
+
+- [ ] Refactor dispatcher: remove Teams polling. Dispatcher now only watches git (polls `TODO.md` on main every 60s for unchecked items) and manages EC2 fleet (start/stop workers based on queue depth). Simpler, single responsibility.
+  - PR title: "refactor: dispatcher watches git instead of Teams"
 
 ## Phase 3: Enforced TDD workflow in continuous-claude
 
