@@ -51,5 +51,5 @@
 - [x] For SSH requests: launch interactive instance, upload the .pem key file to Teams chat as an attachment (Graph API file upload), post the SSH command. Also include web chat URL as an alternative.
   - PR title: "feat: upload SSH key to Teams chat for access requests"
 
-- [ ] Add `ccc work` command — show what each worker is doing: current branch, PR status (open/merged), task progress, maintenance mode
+- [x] Add `ccc work` command — show what each worker is doing: current branch, PR status (open/merged), task progress, maintenance mode
   - PR title: "feat: add ccc work command for fleet activity view"
