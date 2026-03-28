@@ -243,8 +243,6 @@ wss.on("connection", (ws, req) => {
         session.proc.kill("SIGINT");
         safeSend(ws, { type: "system", text: "Interrupted." });
       }
-    } else if (msg.type === "resume") {
-      handleResume(ws, session);
     }
   });
 
@@ -291,11 +289,8 @@ function handleChat(ws, session, text) {
   const trimmed = text.length > 100 ? text.substring(0, 100) + "..." : text;
   console.log(`[${session.id}] Prompt: ${trimmed}`);
 
-  // Use -p for print mode, --resume to continue conversation context
+  // Use -p for print mode (each prompt is independent, work tracked via git/PRs)
   const args = ["-p", text, "--verbose"];
-  if (session.hasConversation) {
-    args.push("--resume");
-  }
 
   const proc = spawn("claude", args, {
     cwd: session.project,
@@ -350,39 +345,6 @@ function handleChat(ws, session, text) {
 
   proc.on("error", (err) => {
     safeSend(ws, { type: "error", text: `Failed to start Claude: ${err.message}` });
-  });
-}
-
-function handleResume(ws, session) {
-  if (session.proc && !session.proc.killed) {
-    session.proc.kill("SIGTERM");
-  }
-
-  const proc = spawn("claude", ["--resume", "--verbose"], {
-    cwd: session.project,
-    env: { ...process.env, TERM: "dumb", NO_COLOR: "1" },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  session.proc = proc;
-  session.hasConversation = true;
-
-  safeSend(ws, { type: "system", text: "Resuming previous conversation..." });
-
-  proc.stdout.on("data", (chunk) => {
-    safeSend(ws, { type: "stream", text: chunk.toString() });
-  });
-
-  proc.stderr.on("data", (chunk) => {
-    const t = chunk.toString();
-    if (!t.includes("Update available") && !t.includes("npm ")) {
-      safeSend(ws, { type: "stderr", text: t });
-    }
-  });
-
-  proc.on("close", (code) => {
-    safeSend(ws, { type: "done", code });
-    session.proc = null;
   });
 }
 

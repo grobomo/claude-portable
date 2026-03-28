@@ -15,13 +15,13 @@
 # ===========================================================================
 # CONFIG DEFAULTS (CLAUDE.md, settings.json, base hooks, base rules)
 # ===========================================================================
-# - name: claude-code-defaults
-#   repo: your-org/claude-code-defaults
-#   type: config
-#   target: /home/claude/.claude
-#   enabled: false
-#   visibility: public
-#   description: "Base config: CLAUDE.md, settings.json, hooks, rules"
+- name: claude-code-defaults
+  repo: grobomo/claude-code-defaults
+  type: config
+  target: /home/claude/.claude
+  enabled: true
+  visibility: public
+  description: "Base config: settings.json (permissions, model, bypass mode)"
 
 # ===========================================================================
 # SKILL MARKETPLACE (published skill plugins)

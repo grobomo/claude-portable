@@ -18,11 +18,13 @@ WORKDIR="${3:-/workspace/continuous-claude}"
 LOG_FILE="/data/continuous-claude.log"
 MAX_ERRORS="${CONTINUOUS_CLAUDE_MAX_ERRORS:-3}"
 COOLDOWN="${CONTINUOUS_CLAUDE_COOLDOWN:-30}"
+INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
 
 # Redirect all output to log file (and stdout for docker logs)
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=== Continuous Claude Runner ==="
+echo "  Instance:   $INSTANCE_ID"
 echo "  Repo:       $REPO_URL"
 echo "  Branch:     $BRANCH"
 echo "  Workdir:    $WORKDIR"
@@ -65,8 +67,9 @@ echo ""
 
 # --- Safety net: merge any leftover PRs from previous runs ---
 merge_leftover_prs() {
-  echo "[+] Checking for leftover PRs from previous runs..."
+  echo "[+] Checking for leftover PRs..."
   local prs
+  # Only merge PRs authored by this git identity (not other instances)
   prs=$(gh pr list --state open --author "@me" --json number,headRefName \
     --jq '.[] | select(.headRefName | startswith("continuous-claude/")) | .number' 2>/dev/null || echo "")
 
@@ -78,7 +81,6 @@ merge_leftover_prs() {
         gh pr close "$pr_num" --delete-branch 2>/dev/null || true
       }
     done
-    # Return to main after merging leftovers
     git checkout "$BRANCH"
     git pull origin "$BRANCH"
   else
@@ -108,6 +110,80 @@ count_remaining() {
   grep -cE '^\s*- \[ \]' TODO.md 2>/dev/null || echo "0"
 }
 
+# --- Get claimed task numbers (open PRs or remote branches from any instance) ---
+get_claimed_tasks() {
+  # Claimed = has an open PR on a continuous-claude/* branch, or a remote branch exists
+  local claimed=""
+
+  # Method 1: open PRs with continuous-claude/ branch prefix
+  local pr_branches
+  pr_branches=$(gh pr list --state open --json headRefName \
+    --jq '.[].headRefName' 2>/dev/null || echo "")
+  for b in $pr_branches; do
+    if [[ "$b" =~ continuous-claude/task-([0-9]+) ]]; then
+      claimed="$claimed ${BASH_REMATCH[1]}"
+    fi
+  done
+
+  # Method 2: remote branches (catches cases where PR hasn't been created yet)
+  local remote_branches
+  remote_branches=$(git ls-remote --heads origin 'refs/heads/continuous-claude/task-*' 2>/dev/null \
+    | sed 's|.*refs/heads/||' || echo "")
+  for b in $remote_branches; do
+    if [[ "$b" =~ continuous-claude/task-([0-9]+) ]]; then
+      claimed="$claimed ${BASH_REMATCH[1]}"
+    fi
+  done
+
+  # Deduplicate
+  echo "$claimed" | tr ' ' '\n' | sort -un | tr '\n' ' '
+}
+
+# --- Find next unclaimed task number ---
+find_next_task() {
+  if [ ! -f "TODO.md" ]; then
+    echo ""
+    return
+  fi
+
+  local claimed
+  claimed=$(get_claimed_tasks)
+  echo "  Claimed tasks: ${claimed:-none}"
+
+  # Parse TODO.md: find unchecked tasks, extract task number, skip claimed ones
+  local task_num=0
+  while IFS= read -r line; do
+    task_num=$((task_num + 1))
+    # Check if this task number is already claimed
+    local is_claimed=false
+    for c in $claimed; do
+      if [ "$c" = "$task_num" ]; then
+        is_claimed=true
+        break
+      fi
+    done
+    if [ "$is_claimed" = false ]; then
+      echo "$task_num"
+      return
+    fi
+  done < <(grep -nE '^\s*- \[ \]' TODO.md | head -20)
+
+  # All unchecked tasks are claimed by other instances
+  echo ""
+}
+
+# --- Maintenance mode ---
+# Touch /data/.maintenance to pause task pickup. Remove to resume.
+# Workers still run, SSH still works, just no new tasks started.
+MAINTENANCE_FILE="/data/.maintenance"
+
+check_maintenance() {
+  if [ -f "$MAINTENANCE_FILE" ]; then
+    return 0  # in maintenance
+  fi
+  return 1
+}
+
 # --- Main loop ---
 ERROR_COUNT=0
 ITERATION=0
@@ -115,9 +191,16 @@ ITERATION=0
 merge_leftover_prs
 
 while true; do
+  # Check maintenance mode before each iteration
+  if check_maintenance; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$INSTANCE_ID] Maintenance mode -- paused (touch $MAINTENANCE_FILE to stay paused, rm to resume)"
+    sleep "$COOLDOWN"
+    continue
+  fi
+
   ITERATION=$((ITERATION + 1))
   echo ""
-  echo "=== Iteration $ITERATION ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
+  echo "=== Iteration $ITERATION [$INSTANCE_ID] ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
 
   # Ensure we're on the base branch with latest
   git checkout "$BRANCH" 2>/dev/null
@@ -134,20 +217,31 @@ while true; do
     exit 0
   fi
 
-  # Run Claude to pick up and execute the next task
-  # The prompt tells Claude to follow the workflow in .claude/rules/continuous-claude.md
-  echo "[+] Invoking Claude for next task..."
+  # Find next unclaimed task (skip tasks other instances are working on)
+  NEXT_TASK=$(find_next_task)
+  if [ -z "$NEXT_TASK" ]; then
+    echo "  All remaining tasks are claimed by other instances. Waiting..."
+    sleep "$COOLDOWN"
+    continue
+  fi
+  echo "  Claiming task #${NEXT_TASK}"
+
+  # Run Claude to execute this specific task
+  echo "[+] Invoking Claude for task #${NEXT_TASK}..."
   CLAUDE_EXIT=0
   claude --print \
     --dangerously-skip-permissions \
-    "Read TODO.md and .claude/rules/continuous-claude.md. Pick the FIRST unchecked task. Workflow:
-1. Create a new branch from ${BRANCH} (git checkout -b continuous-claude/task-N)
-2. Push the branch and open a PR with gh pr create -- title = the PR title specified in TODO.md for that task, body = \"Starting task...\"
-3. Do the actual work. Push commits to the branch as you go.
-4. When done, mark the task done in TODO.md, commit, push.
-5. Merge the PR with: gh pr merge --squash --delete-branch
-Then stop. Do NOT proceed to the next task.
+    "Read TODO.md and .claude/rules/continuous-claude.md.
 
+You are instance '${INSTANCE_ID}'. Pick task #${NEXT_TASK} (the ${NEXT_TASK}th unchecked '- [ ]' item in TODO.md). Workflow:
+1. Create branch: git checkout -b continuous-claude/task-${NEXT_TASK}
+2. Push branch and open PR: gh pr create --title '<PR title from TODO>' --body 'Task #${NEXT_TASK} by ${INSTANCE_ID}'
+3. Do the work. Push commits as you go.
+4. Mark task done in TODO.md, commit, push.
+5. Merge: gh pr merge --squash --delete-branch
+Then STOP. Do NOT proceed to the next task.
+
+CRITICAL: Branch MUST be continuous-claude/task-${NEXT_TASK} exactly. Other instances use the branch name to avoid conflicts.
 CRITICAL: You MUST merge the PR before stopping. If you stop without merging, the task loops forever.
 CRITICAL: No secrets, personal paths, or hardcoded credentials in any file. This is a public repo." \
     2>&1 || CLAUDE_EXIT=$?
@@ -166,7 +260,7 @@ CRITICAL: No secrets, personal paths, or hardcoded credentials in any file. This
     ERROR_COUNT=0  # Reset on success
   fi
 
-  # Safety net: merge any PRs Claude may have left open
+  # Safety net: merge any PRs this instance may have left open
   git checkout "$BRANCH" 2>/dev/null || true
   git pull origin "$BRANCH" 2>/dev/null || true
   merge_leftover_prs

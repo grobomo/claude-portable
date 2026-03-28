@@ -12,6 +12,10 @@ Manages EC2 instances with stop/start lifecycle:
   ccc kill [name]      Terminate an instance permanently
   ccc kill --all       Terminate everything
   ccc status [name]    Show continuous-claude and daemon status
+  ccc dashboard        Fleet-wide view: all instances, branches, PRs, processes
+  ccc cancel <name>    Kill Claude on an instance (--all kills runner, --cleanup deletes branch)
+  ccc maint <name>     Pause task pickup for troubleshooting (--off to resume)
+  ccc teams <chat_id>  Poll Teams chat for @claude, dispatch to ccc instances
 """
 import argparse
 import json
@@ -100,9 +104,10 @@ def _open_terminal_tab(label, ip, ssh_key):
 
     if PLATFORM == "gitbash" and shutil.which("wt.exe"):
         try:
+            # wt.exe needs the full command as a single bash -c string so args don't get split
+            full_cmd = f"ssh -o StrictHostKeyChecking=no -i {ssh_key} ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'"
             subprocess.run(["wt.exe", "-w", "0", "new-tab", "--title", f"{label} ({ip})",
-                            "ssh", "-o", "StrictHostKeyChecking=no", "-i", ssh_key,
-                            f"ubuntu@{ip}", "-t", "docker exec -it claude-portable bash -l"],
+                            "bash", "-c", full_cmd],
                            check=True)
             return True
         except (FileNotFoundError, subprocess.CalledProcessError):
@@ -1022,7 +1027,7 @@ def cmd_scp(args):
     if direction == "upload":
         print(f"  Uploading {local} -> {label}:{remote}")
         # SCP to host, then docker cp into container
-        tmp_name = f"_ccp_upload_{os.path.basename(local)}"
+        tmp_name = f"_ccc_upload_{os.path.basename(local)}"
         r = subprocess.run([
             "scp", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
             "-i", ssh_key, local, f"ubuntu@{ip}:/tmp/{tmp_name}"
@@ -1045,7 +1050,7 @@ def cmd_scp(args):
     else:
         print(f"  Downloading {label}:{remote} -> {local}")
         # Docker cp out of container, then SCP to local
-        tmp_name = f"_ccp_download_{os.path.basename(remote)}"
+        tmp_name = f"_ccc_download_{os.path.basename(remote)}"
         r = subprocess.run([
             "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
             "-i", ssh_key, f"ubuntu@{ip}",
@@ -1514,6 +1519,266 @@ def cmd_logs(args):
             print("  (no log output -- continuous-claude may not have started)")
 
 
+# ── Dashboard ───────────────────────────────────────────────────────────────
+
+def cmd_dashboard(args):
+    """Show fleet-wide status: all instances, branches, PRs, active processes."""
+    instances = get_instances()
+    running = [i for i in instances if i["state"] == "running"]
+    stopped = [i for i in instances if i["state"] == "stopped"]
+
+    print("=" * 70)
+    print("  CCC Fleet Dashboard")
+    print("=" * 70)
+
+    if not instances:
+        print("\n  No instances found.\n")
+        return
+
+    # Summary
+    print(f"\n  Instances: {len(running)} running, {len(stopped)} stopped, {len(instances)} total\n")
+
+    # Per-instance detail
+    for inst in instances:
+        label = inst.get("label") or inst.get("name", "?")
+        state = inst["state"]
+        ip = inst.get("ip", "")
+        itype = inst.get("type", "")
+        print(f"  {'=' * 60}")
+        state_icon = ">>>" if state == "running" else "---"
+        print(f"  {state_icon} {label}  ({state})  {ip}  {itype}")
+
+        if state != "running" or not ip:
+            continue
+
+        ssh_key = find_ssh_key(inst)
+        if not ssh_key:
+            print("      (no SSH key)")
+            continue
+
+        # Active Claude processes
+        procs = _ssh_exec(ip, ssh_key,
+            "ps aux | grep -E \"node.*claude|claude.*--print\" | grep -v grep | wc -l")
+        proc_detail = _ssh_exec(ip, ssh_key,
+            "ps aux | grep -E \"node.*claude|claude.*--print\" | grep -v grep "
+            "| awk \\'{ printf \"      PID %-6s %s\\n\", \\$2, substr(\\$0, index(\\$0,\\$11)) }\\' "
+            "| head -5")
+        print(f"      Claude processes: {procs or '0'}")
+        if proc_detail:
+            print(proc_detail)
+
+        # Current git branch
+        branch = _ssh_exec(ip, ssh_key,
+            "cd /workspace/continuous-claude 2>/dev/null && git branch --show-current || echo '(none)'")
+        print(f"      Git branch: {branch or '(none)'}")
+
+        # Continuous-claude status
+        cc_pid = _ssh_exec(ip, ssh_key, "pgrep -f continuous-claude.sh || true")
+        if cc_pid:
+            last_iter = _ssh_exec(ip, ssh_key,
+                "grep -E '=== Iteration [0-9]+' /data/continuous-claude.log 2>/dev/null | tail -1 || true")
+            tasks_info = _ssh_exec(ip, ssh_key,
+                "if [ -f /workspace/continuous-claude/TODO.md ]; then "
+                "  total=$(grep -cE '^- \\\\[' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+                "  done=$(grep -cE '^- \\\\[x\\\\]' /workspace/continuous-claude/TODO.md 2>/dev/null || echo 0); "
+                "  echo \"$done/$total\"; "
+                "else echo '?'; fi")
+            maint = _ssh_exec(ip, ssh_key, "test -f /data/.maintenance && echo PAUSED || echo ACTIVE")
+            print(f"      Continuous-claude: running (PID {cc_pid}) [{maint}]")
+            if maint == "PAUSED":
+                print(f"      ** MAINTENANCE MODE — task pickup paused **")
+            if last_iter:
+                print(f"      Last iteration: {last_iter.strip()}")
+            print(f"      Tasks: {tasks_info}")
+        else:
+            maint = _ssh_exec(ip, ssh_key, "test -f /data/.maintenance && echo PAUSED || echo ''")
+            status = "not running (MAINTENANCE)" if maint == "PAUSED" else "not running"
+            print(f"      Continuous-claude: {status}")
+
+        # Idle time
+        idle = _ssh_exec(ip, ssh_key,
+            "cat /data/idle-monitor.log 2>/dev/null | tail -1 || true")
+        if idle:
+            print(f"      Idle monitor: {idle[:80]}")
+
+    # Fleet-wide: open PRs across all repos with continuous-claude branches
+    print(f"\n  {'=' * 60}")
+    print(f"  Open PRs (continuous-claude branches)")
+    print(f"  {'=' * 60}")
+
+    # Check for a repo URL from any running instance
+    repo_url = ""
+    for inst in running:
+        ssh_key = find_ssh_key(inst)
+        if ssh_key and inst.get("ip"):
+            repo_url = _ssh_exec(inst["ip"], ssh_key,
+                "cd /workspace/continuous-claude 2>/dev/null && git remote get-url origin 2>/dev/null || true")
+            if repo_url:
+                break
+
+    if repo_url:
+        # Extract owner/repo from URL
+        import re
+        m = re.search(r'github\.com[/:]([^/]+/[^/.]+)', repo_url)
+        if m:
+            repo_slug = m.group(1)
+            try:
+                r = subprocess.run(
+                    ["gh", "pr", "list", "--repo", repo_slug, "--state", "open",
+                     "--json", "number,title,headRefName,author,createdAt",
+                     "--jq", '.[] | select(.headRefName | startswith("continuous-claude/"))'],
+                    capture_output=True, text=True, timeout=15)
+                if r.returncode == 0 and r.stdout.strip():
+                    for line in r.stdout.strip().split("\n"):
+                        try:
+                            pr = json.loads(line)
+                            author = pr.get("author", {}).get("login", "?")
+                            print(f"    #{pr['number']:<5} {pr['headRefName']:<35} {pr['title'][:40]}")
+                        except json.JSONDecodeError:
+                            pass
+                else:
+                    # Try without jq filter
+                    r2 = subprocess.run(
+                        ["gh", "pr", "list", "--repo", repo_slug, "--state", "open",
+                         "--json", "number,title,headRefName"],
+                        capture_output=True, text=True, timeout=15)
+                    if r2.returncode == 0 and r2.stdout.strip():
+                        prs = json.loads(r2.stdout)
+                        cc_prs = [p for p in prs if p.get("headRefName", "").startswith("continuous-claude/")]
+                        if cc_prs:
+                            for pr in cc_prs:
+                                print(f"    #{pr['number']:<5} {pr['headRefName']:<35} {pr['title'][:40]}")
+                        else:
+                            print("    (none)")
+                    else:
+                        print("    (could not fetch)")
+            except Exception as e:
+                print(f"    (error: {e})")
+        else:
+            print(f"    (could not parse repo URL: {repo_url})")
+    else:
+        print("    (no repo detected on any instance)")
+
+    # Remote branches
+    if repo_url:
+        try:
+            r = subprocess.run(
+                ["git", "ls-remote", "--heads", repo_url, "refs/heads/continuous-claude/*"],
+                capture_output=True, text=True, timeout=15)
+            branches = [line.split("refs/heads/")[-1] for line in r.stdout.strip().split("\n") if line]
+            if branches:
+                print(f"\n  Active branches:")
+                for b in branches:
+                    print(f"    {b}")
+            else:
+                print(f"\n  No active continuous-claude branches.")
+        except Exception:
+            pass
+
+    print()
+
+
+def cmd_cancel(args):
+    """Kill Claude processes on an instance to cancel in-progress work."""
+    name = args.name
+    inst = find_available(name)
+    if not inst:
+        print("No instance found." + (f" ({name})" if name else ""))
+        return
+    if inst["state"] != "running":
+        print(f"  Instance {inst.get('label', '?')} is {inst['state']}.")
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print("ERROR: No SSH key found.")
+        return
+
+    ip = inst["ip"]
+    label = inst.get("label", "?")
+
+    if args.all_procs:
+        # Kill everything: continuous-claude runner + all Claude CLI processes
+        print(f"  Killing ALL Claude processes on {label}...")
+        _ssh_exec(ip, ssh_key, "pkill -f continuous-claude.sh || true", timeout=10)
+        _ssh_exec(ip, ssh_key, "pkill -f 'node.*claude' || true", timeout=10)
+        _ssh_exec(ip, ssh_key, "pkill -f 'claude.*--print' || true", timeout=10)
+        print("  Done. All Claude processes killed.")
+    else:
+        # Kill only the current Claude CLI invocation (not the runner loop)
+        print(f"  Killing current Claude task on {label}...")
+        _ssh_exec(ip, ssh_key, "pkill -f 'claude.*--print' || true", timeout=10)
+        _ssh_exec(ip, ssh_key, "pkill -f 'node.*claude' || true", timeout=10)
+        print("  Done. Current task killed (runner will pick up next task).")
+
+    # Optionally clean up the branch
+    if args.cleanup:
+        print("  Cleaning up branch...")
+        branch = _ssh_exec(ip, ssh_key,
+            "cd /workspace/continuous-claude 2>/dev/null && git branch --show-current || true")
+        if branch and branch.startswith("continuous-claude/"):
+            _ssh_exec(ip, ssh_key,
+                f"cd /workspace/continuous-claude && git checkout main && git branch -D {branch} && "
+                f"git push origin --delete {branch} 2>/dev/null || true", timeout=15)
+            # Close any open PR for this branch
+            subprocess.run(
+                ["gh", "pr", "close", branch, "--delete-branch"],
+                capture_output=True, timeout=15)
+            print(f"  Deleted branch {branch} and closed any PR.")
+        else:
+            print(f"  Not on a continuous-claude branch ({branch}).")
+
+
+def cmd_maintenance(args):
+    """Toggle maintenance mode on a worker — pauses task pickup, SSH still works."""
+    name = args.name
+    inst = find_available(name)
+    if not inst:
+        print(f"No instance found." + (f" ({name})" if name else ""))
+        return
+    if inst["state"] != "running":
+        print(f"  Instance {inst.get('label', '?')} is {inst['state']}.")
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print("ERROR: No SSH key found.")
+        return
+
+    ip = inst["ip"]
+    label = inst.get("label", "?")
+
+    if args.off:
+        _ssh_exec(ip, ssh_key, "rm -f /data/.maintenance", timeout=10)
+        print(f"  {label}: maintenance OFF — task pickup resumed.")
+    else:
+        _ssh_exec(ip, ssh_key, "touch /data/.maintenance", timeout=10)
+        print(f"  {label}: maintenance ON — task pickup paused. SSH still works.")
+        print(f"  Resume with: ccc maintenance {name} --off")
+
+
+# ── Teams Dispatch ──────────────────────────────────────────────────────────
+
+def cmd_teams(args):
+    """Poll a Teams chat for @claude mentions and dispatch to ccc instances."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "teams-dispatch.py")
+    if not os.path.isfile(script):
+        print("ERROR: scripts/teams-dispatch.py not found.")
+        sys.exit(1)
+
+    cmd = [sys.executable, script, "--chat-id", args.chat_id,
+           "--trigger", args.trigger, "--interval", str(args.interval)]
+    if args.name:
+        cmd.extend(["--instance", args.name])
+    if args.project:
+        cmd.extend(["--project", args.project])
+
+    try:
+        subprocess.run(cmd)
+    except KeyboardInterrupt:
+        print("\n  Stopped.")
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1552,6 +1817,20 @@ def main():
     p_logs.add_argument("name", nargs="?", help="Instance name")
     p_logs.add_argument("-f", "--follow", action="store_true", help="Follow log output in real-time")
     p_logs.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)")
+    p_teams = sub.add_parser("teams", help="Poll Teams chat for @claude mentions, dispatch to ccc")
+    p_teams.add_argument("chat_id", help="Teams chat ID to monitor")
+    p_teams.add_argument("-n", "--name", help="Preferred ccc instance name")
+    p_teams.add_argument("-t", "--trigger", default="@claude", help="Trigger keyword (default: @claude)")
+    p_teams.add_argument("-i", "--interval", type=int, default=30, help="Poll interval in seconds (default: 30)")
+    p_teams.add_argument("-w", "--project", default="/workspace", help="Working directory on instance")
+    p_dash = sub.add_parser("dashboard", aliases=["dash"], help="Fleet-wide status: instances, branches, PRs, processes")
+    p_cancel = sub.add_parser("cancel", help="Kill Claude processes on an instance")
+    p_cancel.add_argument("name", help="Instance name")
+    p_cancel.add_argument("--all", dest="all_procs", action="store_true", help="Kill runner loop too (not just current task)")
+    p_cancel.add_argument("--cleanup", action="store_true", help="Also delete the in-progress branch and close PR")
+    p_maint = sub.add_parser("maintenance", aliases=["maint"], help="Pause/resume task pickup on a worker")
+    p_maint.add_argument("name", help="Instance name")
+    p_maint.add_argument("--off", action="store_true", help="Resume task pickup (exit maintenance)")
 
     args = parser.parse_args()
 
@@ -1579,6 +1858,14 @@ def main():
         cmd_status(args)
     elif args.command == "logs":
         cmd_logs(args)
+    elif args.command == "teams":
+        cmd_teams(args)
+    elif args.command in ("dashboard", "dash"):
+        cmd_dashboard(args)
+    elif args.command == "cancel":
+        cmd_cancel(args)
+    elif args.command in ("maintenance", "maint"):
+        cmd_maintenance(args)
     else:
         cmd_connect(args)
 

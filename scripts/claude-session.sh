@@ -46,12 +46,7 @@ PROMPT_MODE=false
 PROMPT_TEXT=""
 
 if [ $# -eq 0 ]; then
-  # No args = check for resumable sessions, offer --resume by default
-  CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  HAS_SESSIONS=$(find "$CLAUDE_DIR/projects" -name "*.jsonl" -type f 2>/dev/null | head -1)
-  if [ -n "$HAS_SESSIONS" ]; then
-    set -- --resume
-  fi
+  # No args = start fresh interactive session
   PROMPT_MODE=false
 elif [ "$1" = "-p" ]; then
   # Explicit -p flag
