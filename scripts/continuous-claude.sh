@@ -307,8 +307,23 @@ run_pipeline() {
   echo "  Stage log:   ${stage_log}"
   echo ""
 
-  # Initialize stage log
-  echo '{}' > "$stage_log"
+  # Initialize stage log with task metadata
+  python3 -c "
+import json, sys
+path, task_num, instance, branch, started = sys.argv[1:]
+data = {
+    '_meta': {
+        'task_num': int(task_num),
+        'instance': instance,
+        'branch': branch,
+        'started': started,
+        'status': 'running'
+    }
+}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+" "$stage_log" "$task_num" "$INSTANCE_ID" "$branch_name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null \
+    || echo '{"_meta": {}}' > "$stage_log"
 
   # Create and push branch
   git checkout -b "$branch_name"
@@ -464,6 +479,21 @@ CRITICAL: You MUST merge the PR. If gh pr merge fails, try: gh pr merge --squash
 CRITICAL: After merge, confirm with: git checkout ${BRANCH} && git pull origin ${BRANCH}"
 
   run_stage_with_retry "PR" "6" "$pr_prompt" "$stage_log" || return 1
+
+  # Update meta: pipeline complete
+  python3 -c "
+import json, os, sys
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+if '_meta' in data:
+    data['_meta']['status'] = 'complete'
+    data['_meta']['ended'] = sys.argv[2]
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+" "$stage_log" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
 
   echo ""
   echo "--- Pipeline complete for task #${task_num} ---"

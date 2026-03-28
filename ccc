@@ -1999,6 +1999,42 @@ def cmd_work(args):
         print(f"      Runner:   {cc_status}")
         print(f"      Tasks:    {tasks_info}")
 
+        # Stage progress from stage log
+        if branch.startswith("continuous-claude/task-"):
+            task_match = re.search(r'task-(\d+)', branch)
+            if task_match:
+                task_n = task_match.group(1)
+                stage_json = _ssh_exec(ip, ssh_key,
+                    f"cat /data/task-{task_n}-stages.json 2>/dev/null || echo '{{}}'")
+                try:
+                    stages = json.loads(stage_json or "{}")
+                    stage_names = ["RESEARCH", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
+                    current_stage = None
+                    passed_stages = []
+                    failed_stage = None
+                    for s in stage_names:
+                        if s in stages:
+                            status = stages[s].get("status", "?")
+                            if status == "running":
+                                current_stage = s
+                            elif status == "passed":
+                                passed_stages.append(s)
+                            elif status == "failed":
+                                failed_stage = s
+                    n_done = len(passed_stages)
+                    if current_stage:
+                        print(f"      Stage:    {current_stage} (running) [{n_done}/6 complete]")
+                    elif failed_stage:
+                        print(f"      Stage:    {failed_stage} (FAILED) [{n_done}/6 complete]")
+                    elif n_done == 6:
+                        print(f"      Stage:    all 6 stages complete")
+                    elif n_done > 0:
+                        print(f"      Stage:    {passed_stages[-1]} passed [{n_done}/6 complete]")
+                    else:
+                        print(f"      Stage:    not started")
+                except Exception:
+                    pass  # no stage info available
+
         # PR status for current branch
         if repo_slug and branch and branch != "(none)" and branch.startswith("continuous-claude/"):
             try:

@@ -114,7 +114,7 @@ The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT le
   Each stage is a separate `claude -p` invocation with the previous stage's output as context. If any stage fails, retry that stage (not the whole pipeline).
   - PR title: "feat: enforce multi-stage TDD pipeline in continuous-claude"
 
-- [ ] Add stage-level logging: each stage writes start/end timestamps and pass/fail to `/data/task-{N}-stages.json`. The `ccc work` command shows which stage each worker is on.
+- [x] Add stage-level logging: each stage writes start/end timestamps and pass/fail to `/data/task-{N}-stages.json`. The `ccc work` command shows which stage each worker is on.
   - PR title: "feat: add stage-level logging to TDD pipeline"
 
 - [ ] Add test framework auto-detection: before running tests, detect the project's test framework (pytest, jest, go test, bash -n, etc.) from package.json/pyproject.toml/Makefile. If none found, use `bash -n` for shell scripts and basic assertion scripts.
