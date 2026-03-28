@@ -97,7 +97,7 @@ Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 
 Refactored dispatcher role:
 
-- [ ] Refactor dispatcher: remove Teams polling. Dispatcher now only watches git (polls `TODO.md` on main every 60s for unchecked items) and manages EC2 fleet (start/stop workers based on queue depth). Simpler, single responsibility.
+- [x] Refactor dispatcher: remove Teams polling. Dispatcher now only watches git (polls `TODO.md` on main every 60s for unchecked items) and manages EC2 fleet (start/stop workers based on queue depth). Simpler, single responsibility.
   - PR title: "refactor: dispatcher watches git instead of Teams"
 
 ## Phase 3: Enforced TDD workflow in continuous-claude
