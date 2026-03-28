@@ -288,6 +288,110 @@ run_stage_with_retry() {
   return 1
 }
 
+# --- Detect the test framework used in a repo ---
+# Outputs a multi-line string: FRAMEWORK, RUN_CMD, NOTES
+# Usage: read -r FRAMEWORK RUN_CMD NOTES < <(detect_test_framework /path/to/repo)
+detect_test_framework() {
+  local repo_dir="${1:-.}"
+  local framework="bash"
+  local run_cmd="bash -n"
+  local notes="No test framework detected; using bash -n for shell script syntax checking"
+
+  # Node/JS: check package.json for test runner
+  if [ -f "$repo_dir/package.json" ]; then
+    local pkg_content
+    pkg_content=$(cat "$repo_dir/package.json" 2>/dev/null || echo "")
+    local test_script
+    test_script=$(echo "$pkg_content" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(d.get('scripts',{}).get('test',''))
+" 2>/dev/null || echo "")
+
+    if echo "$pkg_content" | grep -qE '"(jest|@jest/core)"'; then
+      framework="jest"
+      run_cmd="npx jest"
+      notes="Detected Jest (package.json devDependencies)"
+    elif echo "$pkg_content" | grep -q '"vitest"'; then
+      framework="vitest"
+      run_cmd="npx vitest run"
+      notes="Detected Vitest (package.json devDependencies)"
+    elif echo "$pkg_content" | grep -q '"mocha"'; then
+      framework="mocha"
+      run_cmd="npx mocha"
+      notes="Detected Mocha (package.json devDependencies)"
+    elif echo "$pkg_content" | grep -q '"ava"'; then
+      framework="ava"
+      run_cmd="npx ava"
+      notes="Detected AVA (package.json devDependencies)"
+    elif echo "$pkg_content" | grep -q '"tap"'; then
+      framework="tap"
+      run_cmd="npx tap"
+      notes="Detected node-tap (package.json devDependencies)"
+    elif [ -n "$test_script" ] && [ "$test_script" != "echo \"Error: no test specified\" && exit 1" ]; then
+      framework="npm-test"
+      run_cmd="npm test"
+      notes="Detected npm test script: $test_script"
+    fi
+
+  # Python: check for pytest config or imports
+  elif [ -f "$repo_dir/pyproject.toml" ] || [ -f "$repo_dir/setup.cfg" ] || [ -f "$repo_dir/pytest.ini" ]; then
+    if grep -qE '^\[tool.pytest|^\[pytest\]' "$repo_dir/pyproject.toml" "$repo_dir/setup.cfg" "$repo_dir/pytest.ini" 2>/dev/null; then
+      framework="pytest"
+      run_cmd="python3 -m pytest"
+      notes="Detected pytest (pyproject.toml/setup.cfg/pytest.ini)"
+    else
+      framework="pytest"
+      run_cmd="python3 -m pytest"
+      notes="Detected Python project; defaulting to pytest"
+    fi
+  elif [ -f "$repo_dir/requirements.txt" ] && grep -qi "pytest" "$repo_dir/requirements.txt" 2>/dev/null; then
+    framework="pytest"
+    run_cmd="python3 -m pytest"
+    notes="Detected pytest (requirements.txt)"
+
+  # Go: check for go.mod
+  elif [ -f "$repo_dir/go.mod" ]; then
+    framework="go-test"
+    run_cmd="go test ./..."
+    notes="Detected Go module (go.mod)"
+
+  # Ruby: check for Gemfile with rspec or minitest
+  elif [ -f "$repo_dir/Gemfile" ]; then
+    if grep -q "rspec" "$repo_dir/Gemfile" 2>/dev/null; then
+      framework="rspec"
+      run_cmd="bundle exec rspec"
+      notes="Detected RSpec (Gemfile)"
+    else
+      framework="minitest"
+      run_cmd="bundle exec rake test"
+      notes="Detected Ruby project; defaulting to rake test"
+    fi
+
+  # Makefile: check for 'test' target
+  elif [ -f "$repo_dir/Makefile" ] && grep -qE '^test[[:space:]]*:' "$repo_dir/Makefile" 2>/dev/null; then
+    framework="make"
+    run_cmd="make test"
+    notes="Detected Makefile with 'test' target"
+
+  # Shell scripts: bash -n for syntax + test scripts
+  elif find "$repo_dir" -maxdepth 3 -name "*.test.sh" -o -name "test_*.sh" 2>/dev/null | grep -q .; then
+    framework="bash"
+    run_cmd="bash"
+    notes="Detected shell test scripts (*.test.sh / test_*.sh); run each with 'bash <script>'"
+
+  else
+    # Default: bash -n for any .sh files in repo
+    framework="bash"
+    run_cmd="bash -n"
+    notes="No test framework detected; using bash -n for shell script syntax checking. Write assertion scripts if integration tests are needed."
+  fi
+
+  echo "$framework"
+  echo "$run_cmd"
+  echo "$notes"
+}
+
 # --- Execute full TDD pipeline for a task ---
 run_pipeline() {
   local task_num="$1"
@@ -299,12 +403,21 @@ run_pipeline() {
   local plan_file="/tmp/task-${task_num}-plan.md"
   local stage_log="/data/task-${task_num}-stages.json"
 
+  # Detect test framework for this repo
+  local fw_lines
+  mapfile -t fw_lines < <(detect_test_framework "$(pwd)")
+  local test_framework="${fw_lines[0]:-bash}"
+  local test_run_cmd="${fw_lines[1]:-bash -n}"
+  local test_framework_notes="${fw_lines[2]:-No test framework detected}"
+
   echo ""
   echo "--- TDD Pipeline: Task #${task_num} ---"
-  echo "  Description: ${task_desc}"
-  echo "  PR title:    ${pr_title}"
-  echo "  Branch:      ${branch_name}"
-  echo "  Stage log:   ${stage_log}"
+  echo "  Description:      ${task_desc}"
+  echo "  PR title:         ${pr_title}"
+  echo "  Branch:           ${branch_name}"
+  echo "  Stage log:        ${stage_log}"
+  echo "  Test framework:   ${test_framework} (${test_run_cmd})"
+  echo "  Framework notes:  ${test_framework_notes}"
   echo ""
 
   # Initialize stage log with task metadata
@@ -378,20 +491,25 @@ CRITICAL: Write the plan to ${plan_file} using the Write tool."
 TASK: ${task_desc}
 BRANCH: ${branch_name}
 
+TEST FRAMEWORK: ${test_framework}
+TEST COMMAND: ${test_run_cmd}
+FRAMEWORK NOTES: ${test_framework_notes}
+
 STAGE: TESTS FIRST
 You are on branch ${branch_name}. Read the plan at ${plan_file}.
 
 Write the tests BEFORE writing any implementation code:
-1. Create test files as described in the plan
+1. Create test files as described in the plan, using the detected test framework above
 2. Tests should clearly define the expected behavior
-3. Run the tests -- they MUST FAIL at this point (no implementation exists yet)
+3. Run the tests using '${test_run_cmd}' -- they MUST FAIL at this point (no implementation exists yet)
 4. If tests pass when they should fail, the tests are wrong -- fix them
 5. Commit the failing tests to the branch with message: 'test: add failing tests for task ${task_num}'
    Use: git add <test files> && git commit -m 'test: add failing tests for task ${task_num}'
 
 CRITICAL: Tests must be committed to branch ${branch_name}
 CRITICAL: Do NOT write any implementation code in this stage -- only tests
-CRITICAL: Verify tests fail before committing (this confirms tests are actually testing something)"
+CRITICAL: Verify tests fail before committing (this confirms tests are actually testing something)
+CRITICAL: Use the detected framework '${test_framework}'. If no framework was detected (bash -n), write a test shell script with explicit assertions that exit non-zero on failure."
 
   run_stage_with_retry "TESTS" "3" "$tests_prompt" "$stage_log" || return 1
 
@@ -401,19 +519,22 @@ CRITICAL: Verify tests fail before committing (this confirms tests are actually 
 TASK: ${task_desc}
 BRANCH: ${branch_name}
 
+TEST FRAMEWORK: ${test_framework}
+TEST COMMAND: ${test_run_cmd}
+
 STAGE: IMPLEMENT
 Tests are already written and failing (see previous commit). Now write the implementation.
 
 Read the plan at ${plan_file} and the failing tests to understand what to implement.
 
 1. Write the minimum code needed to make the failing tests pass
-2. Run tests after each significant change
+2. Run tests after each significant change using: ${test_run_cmd}
 3. Iterate until ALL tests pass
 4. Commit the implementation with message: 'feat: implement task ${task_num}'
    Use: git add <implementation files> && git commit -m 'feat: implement task ${task_num}'
 
 CRITICAL: Do NOT change the tests -- only add implementation code
-CRITICAL: ALL tests must pass before committing
+CRITICAL: ALL tests must pass before committing (run: ${test_run_cmd})
 CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token\|key' --include='*.sh' --include='*.js' --include='*.py' (remove any real credentials)"
 
   run_stage_with_retry "IMPLEMENT" "4" "$implement_prompt" "$stage_log" || return 1
@@ -424,10 +545,13 @@ CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token
 TASK: ${task_desc}
 BRANCH: ${branch_name}
 
+TEST FRAMEWORK: ${test_framework}
+TEST COMMAND: ${test_run_cmd}
+
 STAGE: VERIFY
 Run the full verification suite before pushing:
 
-1. Run all tests -- ALL must pass
+1. Run all tests using '${test_run_cmd}' -- ALL must pass
 2. Check shell script syntax: bash -n <script> for any .sh files you modified
 3. Check for secrets or personal paths:
    grep -rn 'C:/Users/' . --exclude-dir=.git --include='*.sh' --include='*.json' --include='*.js'
