@@ -158,7 +158,7 @@ Monitor runs on the dispatcher as a background thread. Catches cases where self-
 - [x] Backup dispatcher: launch a second dispatcher instance (`ccc --name dispatcher-backup --role dispatcher`). It runs in standby mode — polls the primary dispatcher's heartbeat in S3. If heartbeat is stale (>5 min), the backup promotes itself to primary and takes over polling Teams + managing workers. Only one dispatcher polls Teams at a time (leader election via S3 heartbeat timestamp).
   - PR title: "feat: backup dispatcher with S3-based leader election"
 
-- [ ] Backup dispatcher tests: simulate primary failure (stop primary), verify backup takes over within 5 min, verify no duplicate Teams messages (only one poller active), verify backup stops polling when primary recovers.
+- [x] Backup dispatcher tests: simulate primary failure (stop primary), verify backup takes over within 5 min, verify no duplicate Teams messages (only one poller active), verify backup stops polling when primary recovers.
   - PR title: "test: backup dispatcher failover and leader election"
 
 ### Task routing by app area
