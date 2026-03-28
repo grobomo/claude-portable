@@ -183,8 +183,59 @@ def get_pending_tasks(repo_dir: str) -> list:
                 "line": i + 1,
                 "description": description,
                 "pr_title": pr_title,
+                "area": route_task_to_area(description),
             })
     return tasks
+
+
+# ── Task routing by app area ─────────────────────────────────────────────────
+
+AREA_KEYWORDS = {
+    "dispatcher": [
+        "dispatch", "dispatcher", "git-dispatch", "relay", "poll",
+        "leader election", "heartbeat", "standby", "primary",
+    ],
+    "fleet": [
+        "fleet", "ccc", "launcher", "ec2", "instance", "scale",
+        "worker", "idle", "monitor", "maintenance", "ssh key",
+    ],
+    "teams-integration": [
+        "teams", "rone", "chatbot", "web-chat", "web chat", "lambda",
+        "graph api", "teams-chat", "bridge", "phone",
+    ],
+    "tdd-pipeline": [
+        "tdd", "pipeline", "test", "continuous-claude", "stage",
+        "research", "plan", "implement", "verify", "gate",
+    ],
+    "infrastructure": [
+        "docker", "dockerfile", "bootstrap", "container", "credential",
+        "secret", "s3", "state-sync", "browser", "chrome", "vnc",
+        "session", "component", "install",
+    ],
+}
+
+
+def route_task_to_area(description: str) -> str | None:
+    """Match a task description to an app area by keyword. Returns area name or None."""
+    desc_lower = description.lower()
+    scores: dict[str, int] = {}
+    for area, keywords in AREA_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in desc_lower)
+        if score > 0:
+            scores[area] = score
+    if not scores:
+        return None
+    return max(scores, key=scores.get)
+
+
+def get_area_context(repo_dir: str, area: str) -> str:
+    """Read the CONTEXT.md for an area. Returns content or empty string."""
+    path = os.path.join(repo_dir, "areas", area, "CONTEXT.md")
+    try:
+        with open(path, "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
 
 
 def get_active_worker_branches(repo_dir: str) -> list:

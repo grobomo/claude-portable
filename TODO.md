@@ -168,7 +168,7 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 - [x] Create app area folders in the repo: `areas/dispatcher/`, `areas/fleet/`, `areas/teams-integration/`, `areas/tdd-pipeline/`, `areas/infrastructure/`. Each folder has a `CONTEXT.md` with architecture notes, key files, gotchas, and design decisions for that area.
   - PR title: "feat: create app area folders with context docs"
 
-- [ ] Task routing: dispatcher reads the task description from TODO.md, matches keywords to app areas (e.g. "dispatcher" → areas/dispatcher, "test" → areas/tdd-pipeline), and includes the relevant `CONTEXT.md` in the prompt sent to the worker. Workers read the area context before starting work.
+- [x] Task routing: dispatcher reads the task description from TODO.md, matches keywords to app areas (e.g. "dispatcher" → areas/dispatcher, "test" → areas/tdd-pipeline), and includes the relevant `CONTEXT.md` in the prompt sent to the worker. Workers read the area context before starting work.
   - PR title: "feat: dispatcher routes tasks to app areas with context"
 
 - [ ] Area-specific workers: when a worker is assigned to an area, it stays on that area until idle. This avoids context-switching overhead. Dispatcher prefers re-assigning a worker to the same area it last worked on.
