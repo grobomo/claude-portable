@@ -26,5 +26,5 @@
 - [x] Add health endpoint to dispatcher: HTTP server on port 8080, returns JSON with dispatch loop status, worker reachability, Graph token validity, pending requests, error count
   - PR title: "feat: add dispatcher health endpoint"
 
-- [ ] End-to-end test: launch dispatcher + 2 workers via ccc, send @claude prompt in Teams, verify ACK + dispatch + result + Teams reply
+- [x] End-to-end test: launch dispatcher + 2 workers via ccc, send @claude prompt in Teams, verify ACK + dispatch + result + Teams reply
   - PR title: "test: end-to-end dispatcher + worker validation"
