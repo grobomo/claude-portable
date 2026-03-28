@@ -77,7 +77,7 @@ Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
 - [x] Multi-user sessions in web-chat.js: each WebSocket connection gets its own `claude` process with independent conversation context. Track sessions by user identifier (name prompt on connect or token param). Max 10 concurrent sessions. Logs to `/data/sessions/{user}/`.
   - PR title: "feat: multi-user sessions in web-chat.js"
 
-- [ ] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers.
+- [x] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers.
   - PR title: "feat: chatbot auto-pulls latest git before each response"
 
 - [ ] Chatbot CLAUDE.md with full project context: architecture overview, how to read TODO.md, how to check fleet status (git log, open PRs), how to submit feature requests (add TODO item, commit, push). Auto-updated on each git pull.
