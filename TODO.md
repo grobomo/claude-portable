@@ -265,3 +265,9 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 
 - [ ] Set up Neural Pipeline (react/) as a ccc-managed project. Create TODO.md in react/ with improvement tasks. Workers develop it using continuous-claude with branches/PRs against the react repo. First tasks: fix monitor status bar, make phases actually enforce gates, add API endpoint for status queries.
   - PR title: "feat: bootstrap Neural Pipeline as ccc-managed project"
+
+- [ ] Worker sends immediate phase transition event to dispatcher when moving between stages (not waiting for next heartbeat). POST /worker/phase-change {worker_id, task, old_phase, new_phase, gate_result}. Dispatcher logs these for audit trail and updates board.json instantly.
+  - PR title: "feat: immediate phase transition events from workers to dispatcher"
+
+- [ ] Add WHY phase as stage 0 in worker pipeline (before RESEARCH). Claude must answer: Why does this task need to exist? What problem does it solve? Is there already a simpler solution? Should this task be rejected, merged with another task, or split into smaller tasks? If WHY phase concludes the task is unnecessary or duplicate, worker skips it and marks it in TODO.md with a note. Gate: WHY output must explicitly state "PROCEED" or "SKIP" — if neither, gate fails.
+  - PR title: "feat: add WHY phase to worker TDD pipeline"
