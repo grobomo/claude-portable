@@ -27,12 +27,12 @@ RESTART_DELAY="${DISPATCHER_RESTART_DELAY:-10}"
 KEY_SYNC_INTERVAL="${DISPATCHER_KEY_SYNC_INTERVAL:-300}"
 
 LOG_FILE="/data/dispatcher.log"
-TOKEN_FILE="/run/dispatcher/graph-token.json"
+TOKEN_FILE="/data/dispatcher/graph-token.json"
 KEY_DIR="${HOME}/.ssh/ccc-keys"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DISPATCH_SCRIPT="${SCRIPT_DIR}/teams-dispatch.py"
 STATE_FILE="/data/dispatcher-state.json"
-PID_FILE="/run/dispatcher/daemon.pid"
+PID_FILE="/data/dispatcher/daemon.pid"
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 
