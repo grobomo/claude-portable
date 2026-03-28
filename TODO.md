@@ -104,7 +104,7 @@ Refactored dispatcher role:
 
 The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT level (not prompts). Each worker takes its time — quality over speed. Scale out workers for parallelism, don't rush individual workers.
 
-- [ ] Rewrite continuous-claude.sh task execution as a multi-stage pipeline. For each task, Claude is invoked SEPARATELY for each stage (not one big prompt). Stages run sequentially with validation gates between them. The stages are:
+- [x] Rewrite continuous-claude.sh task execution as a multi-stage pipeline. For each task, Claude is invoked SEPARATELY for each stage (not one big prompt). Stages run sequentially with validation gates between them. The stages are:
   1. RESEARCH: WebSearch for existing solutions, patterns, best practices. Read all relevant existing code in the repo. Output a research summary to `/tmp/task-{N}-research.md`.
   2. PLAN: Based on research, write a plan: what files to create/modify, what the tests should verify, edge cases. Output to `/tmp/task-{N}-plan.md`.
   3. TESTS FIRST: Write tests that define the expected behavior. Tests MUST fail at this point (no implementation yet). Run tests, verify they fail. Commit tests to branch.
