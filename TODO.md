@@ -222,3 +222,24 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 
 - [ ] Add `ccc cleanup` command: runs a one-off Claude invocation that reviews the entire codebase for dead code, duplicate implementations, unused files, and inconsistencies. Outputs a report and optionally creates a cleanup PR.
   - PR title: "feat: ccc cleanup command for codebase hygiene"
+
+- [ ] Enforcement gates in continuous-claude.sh (NOT prompts — these are bash checks that block progression):
+  Gate 1: RESEARCH output file must exist and be >500 chars. If not, stage fails.
+  Gate 2: REVIEW output must list files examined. If it lists 0 files, stage fails.
+  Gate 3: PLAN output must exist. If task is "already done" per review, skip to next task.
+  Gate 4: Tests must exist in the repo after TESTS stage (count test files before/after, delta must be >0).
+  Gate 5: Tests must FAIL before IMPLEMENT stage (run test suite, expect non-zero exit).
+  Gate 6: Tests must PASS after IMPLEMENT stage (run test suite, expect zero exit).
+  Gate 7: No secrets in diff (`grep -rn` check). No personal paths. Syntax check all changed files.
+  Gate 8: PR diff must not contain "TODO" or "FIXME" or "HACK" in new lines.
+  All gates are `if ! check; then echo "GATE FAILED"; exit 1; fi` — no exceptions.
+  - PR title: "feat: enforcement gates between TDD pipeline stages"
+
+- [ ] Add bash validation gates between each stage in continuous-claude.sh. These are NOT prompts — they are bash checks that block progression with exit 1:
+  After RESEARCH: `[ -f research_file ] && [ $(wc -c < research_file) -gt 100 ]`
+  After PLAN: `[ -f plan_file ] && [ $(wc -c < plan_file) -gt 100 ]`
+  After TESTS: count test files added to branch (git diff --name-only must include test files). Run test command, verify exit code != 0 (tests must fail before implementation).
+  After IMPLEMENT: run test command, verify exit code == 0 (all tests pass).
+  After VERIFY: run secret scan, syntax check all changed files, no TODO/FIXME/HACK in new lines.
+  If any gate fails, retry the stage. If still fails after max retries, skip the task and log the failure.
+  - PR title: "feat: bash validation gates between TDD pipeline stages"
