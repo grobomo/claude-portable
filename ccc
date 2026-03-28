@@ -1904,8 +1904,33 @@ def cmd_cancel(args):
 
 
 def cmd_maintenance(args):
-    """Toggle maintenance mode on a worker — pauses task pickup, SSH still works."""
+    """Toggle maintenance mode on workers — pauses task pickup, SSH still works."""
+    if args.all_workers:
+        instances = [i for i in get_instances() if i["state"] == "running"
+                     and i.get("role", "worker") not in ("dispatcher", "chatbot")]
+        if not instances:
+            print("No running workers.")
+            return
+        for inst in instances:
+            ssh_key = find_ssh_key(inst)
+            if not ssh_key:
+                continue
+            ip = inst.get("ip", "")
+            label = inst.get("label", "?")
+            if not ip:
+                continue
+            if args.off:
+                _ssh_exec(ip, ssh_key, "rm -f /data/.maintenance", timeout=10)
+                print(f"  {label}: maintenance OFF")
+            else:
+                _ssh_exec(ip, ssh_key, "touch /data/.maintenance", timeout=10)
+                print(f"  {label}: maintenance ON")
+        return
+
     name = args.name
+    if not name:
+        print("Usage: ccc maint <name> or ccc maint --all")
+        return
     inst = find_available(name)
     if not inst:
         print(f"No instance found." + (f" ({name})" if name else ""))
