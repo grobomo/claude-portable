@@ -39,5 +39,5 @@
 - [x] Add `cpp logs [name]` command -- SSH to instance, tail /data/continuous-claude.log. Support -f flag for follow mode and -n for line count.
   - PR title: "feat: add cpp logs command to tail continuous-claude"
 
-- [ ] Add --continuous flag to cpp launcher -- `cpp --name X --continuous <repo-url>` sets CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO in the instance .env before docker compose up. Optional --branch flag.
+- [x] Add --continuous flag to cpp launcher -- `cpp --name X --continuous <repo-url>` sets CONTINUOUS_CLAUDE_ENABLED=true and CONTINUOUS_CLAUDE_REPO in the instance .env before docker compose up. Optional --branch flag.
   - PR title: "feat: add --continuous flag to cpp launcher"
