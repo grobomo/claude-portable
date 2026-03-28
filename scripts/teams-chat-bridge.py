@@ -59,6 +59,17 @@ QUESTION_KEYWORDS = [
     "are ", "does ", "can ", "tell me", "help me understand",
 ]
 
+# Phrases that indicate the user wants fleet/worker status
+FLEET_STATUS_KEYWORDS = [
+    "what are workers doing", "worker status", "fleet status",
+    "what's happening", "whats happening", "what is happening",
+    "status update", "what's running", "whats running",
+    "show fleet", "fleet health", "workers busy",
+    "any workers", "how many workers", "what are the workers",
+    "current tasks", "active workers", "what workers",
+    "are workers", "worker progress",
+]
+
 # ── State persistence ────────────────────────────────────────────────────────
 
 STATE_FILE = os.environ.get(
@@ -249,6 +260,139 @@ def is_work_request(prompt):
     if explicit_work:
         return True
     return work_count > 0 and question_count == 0
+
+
+def is_fleet_status_query(prompt):
+    """Return True if the prompt is asking for fleet/worker status."""
+    lower = prompt.lower().strip()
+    return any(kw in lower for kw in FLEET_STATUS_KEYWORDS)
+
+
+def get_fleet_status(repo_dir, dispatcher_url=None):
+    """Collect fleet status from git + optional dispatcher health endpoint.
+
+    Gathers:
+    - TODO.md progress (done/pending)
+    - Open PRs (gh pr list)
+    - Active worker/chatbot branches (git branch -r)
+    - Recent commits (git log)
+    - Dispatcher health (if DISPATCHER_URL is set)
+
+    Returns a formatted multi-line string.
+    """
+    lines = ["=== Fleet Status ===", ""]
+
+    # Sync latest before reading
+    try:
+        subprocess.run(
+            ["git", "pull", "--rebase", "--autostash"],
+            cwd=repo_dir, capture_output=True, timeout=30,
+        )
+    except Exception:
+        pass
+
+    # TODO progress
+    try:
+        with open(os.path.join(repo_dir, "TODO.md")) as f:
+            content = f.read()
+        done = content.count("- [x]")
+        pending = content.count("- [ ]")
+        lines.append(f"Tasks: {done} done / {pending} pending")
+    except Exception as e:
+        lines.append(f"Tasks: (could not read TODO.md: {e})")
+
+    lines.append("")
+
+    # Open PRs
+    try:
+        r = subprocess.run(
+            ["gh", "pr", "list", "--state", "open", "--limit", "20",
+             "--json", "number,title,headRefName,author"],
+            capture_output=True, text=True, timeout=30, cwd=repo_dir,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            prs = json.loads(r.stdout)
+            if prs:
+                lines.append(f"Open PRs ({len(prs)} in progress):")
+                for pr in prs:
+                    author = (pr.get("author") or {}).get("login", "?")
+                    title = pr.get("title", "?")[:60]
+                    lines.append(f"  #{pr['number']} {title} [{author}]")
+            else:
+                lines.append("Open PRs: (none)")
+        else:
+            lines.append("Open PRs: (gh unavailable)")
+    except Exception as e:
+        lines.append(f"Open PRs: (error: {e})")
+
+    lines.append("")
+
+    # Active worker/chatbot branches
+    try:
+        r = subprocess.run(
+            ["git", "branch", "-r"],
+            capture_output=True, text=True, timeout=15, cwd=repo_dir,
+        )
+        if r.returncode == 0:
+            branches = [
+                b.strip().replace("origin/", "")
+                for b in r.stdout.splitlines()
+                if "continuous-claude/" in b or "chatbot/" in b
+            ]
+            if branches:
+                lines.append(f"Active branches ({len(branches)}):")
+                for b in branches[:10]:
+                    lines.append(f"  {b}")
+            else:
+                lines.append("Active branches: (none)")
+    except Exception as e:
+        lines.append(f"Active branches: (error: {e})")
+
+    lines.append("")
+
+    # Recent commits
+    try:
+        r = subprocess.run(
+            ["git", "log", "--oneline", "-8"],
+            capture_output=True, text=True, timeout=15, cwd=repo_dir,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            lines.append("Recent commits:")
+            for line in r.stdout.strip().splitlines():
+                lines.append(f"  {line}")
+    except Exception as e:
+        lines.append(f"Recent commits: (error: {e})")
+
+    # Dispatcher health
+    disp_url = dispatcher_url or os.environ.get("DISPATCHER_URL", "")
+    if disp_url:
+        lines.append("")
+        lines.append("Dispatcher health:")
+        try:
+            health_url = disp_url.rstrip("/") + "/health"
+            req = urllib.request.Request(
+                health_url,
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                health = json.loads(resp.read().decode())
+            lines.append(f"  Status: {health.get('status', '?')}")
+            if "workers" in health:
+                workers = health["workers"]
+                lines.append(f"  Workers: {len(workers)} registered")
+                for w in workers[:5]:
+                    ip = w.get("ip", "?")
+                    reachable = "up" if w.get("reachable") else "down"
+                    lines.append(f"    {ip}: {reachable}")
+            pending = health.get("pending_requests", [])
+            if pending:
+                lines.append(f"  Pending requests: {len(pending)}")
+            if "error_count" in health:
+                lines.append(f"  Error count: {health['error_count']}")
+        except Exception as e:
+            lines.append(f"  (could not reach dispatcher at {disp_url}: {e})")
+
+    return "\n".join(lines)
 
 
 def add_todo_item(prompt, sender, repo_dir=None):
@@ -509,11 +653,17 @@ def poll_once(chat_id, trigger, state, workspace=None):
             req["state"] = STATE_ACKED
             print(f"  [{rid}] ACKed")
 
-        # Run Claude locally
         req["state"] = STATE_PROCESSING
-        print(f"  [{rid}] Running Claude locally...")
-        result = run_claude_locally(prompt, workspace=workspace)
-        print(f"  [{rid}] Claude result: {result[:80]}")
+
+        # Fleet status queries are handled directly (no Claude round-trip needed)
+        if is_fleet_status_query(prompt):
+            print(f"  [{rid}] Fleet status query — collecting from git + dispatcher")
+            result = get_fleet_status(workspace)
+            print(f"  [{rid}] Fleet status collected ({len(result)} chars)")
+        else:
+            print(f"  [{rid}] Running Claude locally...")
+            result = run_claude_locally(prompt, workspace=workspace)
+            print(f"  [{rid}] Claude result: {result[:80]}")
 
         # Check if this is a work request that should be queued
         work_queued = False
