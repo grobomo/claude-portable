@@ -611,13 +611,47 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
         env_vars["CONTINUOUS_CLAUDE_REPO"] = continuous_repo
         env_vars["CONTINUOUS_CLAUDE_BRANCH"] = continuous_branch
 
-    # Dispatcher-specific env vars (read from .env if present)
+    # Dispatcher-specific env vars (read from .env or ccc.config.json)
     if is_dispatcher:
-        for key in ("DISPATCHER_CHAT_ID", "DISPATCHER_TRIGGER", "DISPATCHER_POLL_INTERVAL",
+        # Other dispatcher vars already loaded from .env if present
+        for key in ("DISPATCHER_TRIGGER", "DISPATCHER_POLL_INTERVAL",
                     "DISPATCHER_SECRET_NAME", "DISPATCHER_KEY_SYNC_INTERVAL"):
-            if key in env_vars:
-                pass  # already loaded from .env
+            pass  # loaded from .env above
         env_vars.setdefault("DISPATCHER_SECRET_NAME", "claude-portable/graph-token")
+
+        # DISPATCHER_CHAT_ID: .env > ccc.config.json > prompt user
+        if not env_vars.get("DISPATCHER_CHAT_ID"):
+            cfg_chat_id = CFG.get("dispatcher_chat_id", "")
+            if cfg_chat_id:
+                env_vars["DISPATCHER_CHAT_ID"] = cfg_chat_id
+            else:
+                print("\n  DISPATCHER_CHAT_ID not found in .env or ccc.config.json.")
+                print("  This is the Teams chat ID where @claude messages are monitored.")
+                try:
+                    chat_id = input("  Enter Teams chat ID (or press Enter to skip): ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    chat_id = ""
+                if chat_id:
+                    env_vars["DISPATCHER_CHAT_ID"] = chat_id
+                    # Offer to save to ccc.config.json
+                    config_path = CFG.get("_config_path", os.path.join(script_dir, "ccc.config.json"))
+                    try:
+                        save = input(f"  Save to {config_path}? [y/N] ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        save = "n"
+                    if save == "y":
+                        try:
+                            with open(config_path) as f:
+                                cfg_data = json.load(f)
+                        except Exception:
+                            cfg_data = {}
+                        cfg_data["dispatcher_chat_id"] = chat_id
+                        with open(config_path, "w") as f:
+                            json.dump(cfg_data, f, indent=2)
+                            f.write("\n")
+                        print(f"  Saved dispatcher_chat_id to {config_path}")
+                else:
+                    print("  WARNING: DISPATCHER_CHAT_ID not set — dispatcher will not poll Teams.")
 
     repo_url = env_vars.get("REPO_URL", "https://github.com/grobomo/claude-portable.git")
     gh_token = env_vars.get("GITHUB_TOKEN", "")
