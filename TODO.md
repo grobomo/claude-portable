@@ -243,3 +243,25 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
   After VERIFY: run secret scan, syntax check all changed files, no TODO/FIXME/HACK in new lines.
   If any gate fails, retry the stage. If still fails after max retries, skip the task and log the failure.
   - PR title: "feat: bash validation gates between TDD pipeline stages"
+
+## Neural Pipeline integration for worker tracking
+
+Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each worker tracks its task through pipeline phases. Dispatcher aggregates status from all workers into a live dashboard.
+
+- [ ] Create `scripts/worker-pipeline.py` — adapted from Neural Pipeline concepts. Each worker runs this alongside continuous-claude.sh. It tracks the current task through phases (RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR). Writes phase state to `/data/pipeline-state.json` with: task number, current phase, phase start time, phase output files, pass/fail per gate. Exposes HTTP API on port 8081: GET /status returns pipeline state, POST /interrupt kills current Claude process, POST /pull forces git pull.
+  - PR title: "feat: worker pipeline tracker with HTTP control API"
+
+- [ ] Worker polls dispatcher every 30s: POST /worker/heartbeat with current pipeline state (task, phase, idle time). Dispatcher maintains fleet roster from heartbeats. If a worker misses 3 heartbeats, dispatcher marks it unhealthy.
+  - PR title: "feat: worker heartbeat polling to dispatcher"
+
+- [ ] Dispatcher aggregates pipeline state from all workers into `/data/board.json`. Updated on every heartbeat received. Shows: all tasks, which worker has which task, what phase each is in, time in phase, blocked tasks, completed tasks.
+  - PR title: "feat: dispatcher aggregates worker pipeline state into board"
+
+- [ ] `ccc board` command: reads board.json from dispatcher health endpoint (GET /board), renders a status bar showing each worker and its current phase. Inspired by Neural Pipeline TUI status bar. Color-coded: RESEARCH=blue, PLAN=cyan, TESTS=yellow, IMPLEMENT=green, VERIFY=magenta, PR=white, IDLE=gray.
+  - PR title: "feat: ccc board command with pipeline status visualization"
+
+- [ ] Dispatcher can interrupt workers via API: POST to worker's /interrupt endpoint. Used by `ccc interrupt worker-1` and by dispatcher when reprioritizing tasks.
+  - PR title: "feat: dispatcher interrupts workers via HTTP API"
+
+- [ ] Set up Neural Pipeline (react/) as a ccc-managed project. Create TODO.md in react/ with improvement tasks. Workers develop it using continuous-claude with branches/PRs against the react repo. First tasks: fix monitor status bar, make phases actually enforce gates, add API endpoint for status queries.
+  - PR title: "feat: bootstrap Neural Pipeline as ccc-managed project"
