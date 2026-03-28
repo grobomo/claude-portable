@@ -181,3 +181,9 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 
 - [ ] Dependency visualization: `ccc work` shows a task graph with arrows between dependent tasks. Blocked tasks show as "waiting on #N".
   - PR title: "feat: dependency visualization in ccc work"
+
+- [ ] Dispatcher dependency analysis: every 60s, dispatcher runs a Claude invocation that reads TODO.md + codebase and annotates tasks with `depends-on: task-N` where dependencies exist. Commits the annotated TODO.md back to main. This is fleet-level planning, not per-worker.
+  - PR title: "feat: dispatcher auto-annotates task dependencies"
+
+- [ ] Workers skip blocked tasks: continuous-claude.sh checks `depends-on:` annotations before claiming. If any dependency task is unchecked, skip to the next unblocked task. Log "task N blocked by task M" in the output.
+  - PR title: "feat: workers skip tasks with unmet dependencies"
