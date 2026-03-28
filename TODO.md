@@ -31,7 +31,7 @@
 
 ## Phase 0.5: Dispatcher bugs (must fix before deploy)
 
-- [ ] Fix dispatcher-daemon.sh: uses /run/dispatcher which is not writable by claude user. Change to /data/dispatcher. Verify the fix is in the Dockerfile COPY or the git source that gets pulled at container build time.
+- [x] Fix dispatcher-daemon.sh: uses /run/dispatcher which is not writable by claude user. Change to /data/dispatcher. Verify the fix is in the Dockerfile COPY or the git source that gets pulled at container build time.
   - PR title: "fix: dispatcher token path uses /data instead of /run"
 
 - [ ] Fix dispatcher container git pull: `/opt/claude-portable` is owned by root but container runs as claude. Either chown during build, or use a separate clone dir. The dispatcher needs to pull latest code at startup.
