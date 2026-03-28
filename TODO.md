@@ -54,7 +54,35 @@
 - [x] Add `ccc work` command — show what each worker is doing: current branch, PR status (open/merged), task progress, maintenance mode
   - PR title: "feat: add ccc work command for fleet activity view"
 
-## Phase 2: Enforced TDD workflow in continuous-claude
+## Phase 2: Team chatbot instance
+
+Separate CCC instance (`--role chatbot`) that teammates can chat with via browser. It's the human-facing front door to the project — answers questions, brainstorms, accepts feature requests, and submits tasks to the dispatcher.
+
+- [ ] Create `chatbot` role in ccc launcher: launches t3.large (needs Claude), clones repo, starts web-chat.js, exposes via Lambda URL. Does NOT run continuous-claude. Does NOT accept dispatched tasks.
+  - PR title: "feat: add chatbot role to ccc launcher"
+
+- [ ] Multi-user sessions in web-chat.js: each WebSocket connection gets its own `claude` process with independent conversation context. Track sessions by a user identifier (name prompt on connect or token param). Max 10 concurrent sessions. Each session logs to `/data/sessions/{user}/`.
+  - PR title: "feat: multi-user sessions in web-chat.js"
+
+- [ ] Auto git-pull before every response: before Claude processes each prompt, run `git pull --rebase` in the workspace so Claude always sees the latest code from workers. This ensures the chatbot's answers reflect the current state of the repo, not a stale snapshot.
+  - PR title: "feat: chatbot auto-pulls latest git before each response"
+
+- [ ] Chatbot CLAUDE.md with full project context: the chatbot's CLAUDE.md includes architecture overview, fleet status commands, how to read TODO.md, how to submit feature requests (creates a TODO item + tells dispatcher). Updated on each git pull.
+  - PR title: "feat: chatbot CLAUDE.md with project context and instructions"
+
+- [ ] Feature request flow: when a user says "add feature X" or "I want X", the chatbot creates a new unchecked item in TODO.md, commits to a branch, opens a PR, and tells the dispatcher to assign a worker. The user gets a PR link to track progress.
+  - PR title: "feat: chatbot submits feature requests as TODO items via PRs"
+
+- [ ] Fleet status in chatbot: user can ask "what are the workers doing?" and chatbot queries the dispatcher's health endpoint + runs `ccc work` equivalent to show live fleet status, open PRs, task progress.
+  - PR title: "feat: chatbot exposes fleet status to users"
+
+- [ ] Rate limiting per user: max 20 prompts per hour per user session. Prevents runaway API costs from a single user. Configurable via env var `CHATBOT_RATE_LIMIT`.
+  - PR title: "feat: per-user rate limiting in chatbot"
+
+- [ ] SSH auto-starts Claude Code: when anyone SSHes into the chatbot, `.bashrc` auto-launches `claude --dangerously-skip-permissions` in the repo workspace. User lands directly in a Claude session, not a bare shell. Same full context, tools, and settings as the web chat.
+  - PR title: "feat: SSH to chatbot auto-starts Claude Code session"
+
+## Phase 3: Enforced TDD workflow in continuous-claude
 
 The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT level (not prompts). Each worker takes its time — quality over speed. Scale out workers for parallelism, don't rush individual workers.
 
@@ -73,3 +101,57 @@ The continuous-claude runner must enforce a strict TDD pipeline at the SCRIPT le
 
 - [ ] Add test framework auto-detection: before running tests, detect the project's test framework (pytest, jest, go test, bash -n, etc.) from package.json/pyproject.toml/Makefile. If none found, use `bash -n` for shell scripts and basic assertion scripts.
   - PR title: "feat: auto-detect test framework in TDD pipeline"
+
+## Phase 3: Fleet scaling, self-reporting workers, backup dispatcher
+
+### Worker lifecycle (self-reporting)
+
+Workers report their own status to the dispatcher. Dispatcher never has to guess.
+
+- [ ] Worker self-report: when a worker finishes a task (PR merged), it calls the dispatcher's health endpoint with `POST /worker/done {worker_id, task, duration}`. Dispatcher updates its fleet state and decides whether to assign another task or mark worker idle.
+  - PR title: "feat: worker self-reports task completion to dispatcher"
+
+- [ ] Worker idle self-report: if a worker has been idle for 30 min with no new task, it calls `POST /worker/idle {worker_id, idle_since}` on the dispatcher. Dispatcher confirms and issues `stop-instances` via EC2 API. Worker waits for the stop — does NOT self-terminate.
+  - PR title: "feat: worker self-reports idle status for scale-down"
+
+### Dispatcher scaling logic
+
+- [ ] Scale up: when dispatcher receives an `@claude` request and all workers are busy, it launches a new worker via EC2 API (`ccc --name worker-N --new`). Cap at `max_instances` from ccc.config.json. New worker auto-registers with dispatcher on boot.
+  - PR title: "feat: dispatcher auto-scales workers on demand"
+
+- [ ] Scale down: when dispatcher receives idle self-report from a worker, it confirms the worker isn't mid-task (checks for open PRs from that worker), then stops the instance. Logs the scale-down event.
+  - PR title: "feat: dispatcher scale-down on worker idle self-report"
+
+- [ ] Worker registration: on boot, each worker calls `POST /worker/register {worker_id, ip, role, capabilities}` on the dispatcher. Dispatcher maintains a live fleet roster. Workers that don't register within 5 min of launch are terminated.
+  - PR title: "feat: worker auto-registration with dispatcher"
+
+### Fleet monitor (safety net)
+
+Monitor runs on the dispatcher as a background thread. Catches cases where self-reporting fails.
+
+- [ ] Fleet monitor daemon: every 60s, iterate all registered workers. SSH health check (is the instance responding?). If a worker hasn't self-reported in 35 min AND has no active Claude process, tell dispatcher to stop it. This is the backup — self-reporting is primary.
+  - PR title: "feat: fleet monitor daemon as safety net for scale-down"
+
+- [ ] Fleet monitor tests: test that monitor correctly identifies idle workers, doesn't kill busy workers, handles unreachable workers, respects the 35-min grace period.
+  - PR title: "test: fleet monitor idle detection and safety checks"
+
+### Backup dispatcher
+
+- [ ] Backup dispatcher: launch a second dispatcher instance (`ccc --name dispatcher-backup --role dispatcher`). It runs in standby mode — polls the primary dispatcher's heartbeat in S3. If heartbeat is stale (>5 min), the backup promotes itself to primary and takes over polling Teams + managing workers. Only one dispatcher polls Teams at a time (leader election via S3 heartbeat timestamp).
+  - PR title: "feat: backup dispatcher with S3-based leader election"
+
+- [ ] Backup dispatcher tests: simulate primary failure (stop primary), verify backup takes over within 5 min, verify no duplicate Teams messages (only one poller active), verify backup stops polling when primary recovers.
+  - PR title: "test: backup dispatcher failover and leader election"
+
+### Task routing by app area
+
+Dispatcher assigns tasks to the right worker based on which area of the app the task relates to. Each area has its own folder with context notes for workers.
+
+- [ ] Create app area folders in the repo: `areas/dispatcher/`, `areas/fleet/`, `areas/teams-integration/`, `areas/tdd-pipeline/`, `areas/infrastructure/`. Each folder has a `CONTEXT.md` with architecture notes, key files, gotchas, and design decisions for that area.
+  - PR title: "feat: create app area folders with context docs"
+
+- [ ] Task routing: dispatcher reads the task description from TODO.md, matches keywords to app areas (e.g. "dispatcher" → areas/dispatcher, "test" → areas/tdd-pipeline), and includes the relevant `CONTEXT.md` in the prompt sent to the worker. Workers read the area context before starting work.
+  - PR title: "feat: dispatcher routes tasks to app areas with context"
+
+- [ ] Area-specific workers: when a worker is assigned to an area, it stays on that area until idle. This avoids context-switching overhead. Dispatcher prefers re-assigning a worker to the same area it last worked on.
+  - PR title: "feat: area-affinity for worker task assignment"
