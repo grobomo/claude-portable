@@ -45,7 +45,7 @@
 
 ## Phase 1: Teams UX improvements
 
-- [ ] Detect quoted replies to [Claude Bot] messages as new prompts — even without @claude tag. Teams wraps replies in `<attachment>` tags referencing the original message. If someone replies to a bot message, treat the reply text as a follow-up request.
+- [x] Detect quoted replies to [Claude Bot] messages as new prompts — even without @claude tag. Teams wraps replies in `<attachment>` tags referencing the original message. If someone replies to a bot message, treat the reply text as a follow-up request.
   - PR title: "feat: detect quoted replies to bot messages as prompts"
 
 - [ ] For SSH requests: launch interactive instance, upload the .pem key file to Teams chat as an attachment (Graph API file upload), post the SSH command. Also include web chat URL as an alternative.

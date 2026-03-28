@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Teams -> CCC dispatch with request tracking.
 
-Polls a Teams chat for @claude mentions, dispatches to ccc instances,
-tracks each request through its lifecycle, and replies with results.
+Polls a Teams chat for @claude mentions or quoted replies to bot messages,
+dispatches to ccc instances, tracks each request through its lifecycle,
+and replies with results.
 
 Runs on a dedicated dispatcher EC2 instance (cloud-native mode):
   - Graph token read from GRAPH_TOKEN_FILE (written by dispatcher-daemon.sh)
@@ -167,6 +168,34 @@ def extract_trigger(body_html, trigger):
     idx = body_text.lower().index(trigger_lower)
     prompt = body_text[idx + len(trigger):].strip()
     return (prompt, True) if prompt else (None, False)
+
+
+def is_reply_to_bot(m):
+    """Return True if this message is a quoted reply to a [Claude Bot] message.
+
+    Teams encodes quoted replies as attachments with contentType="messageReference".
+    The attachment content JSON includes a messagePreview field with the quoted text.
+    """
+    for att in m.get("attachments", []):
+        if att.get("contentType") != "messageReference":
+            continue
+        try:
+            content = json.loads(att.get("content", "{}"))
+            if BOT_TAG in content.get("messagePreview", ""):
+                return True
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return False
+
+
+def extract_reply_text(body_html):
+    """Extract only the new reply text, stripping any <attachment> quote blocks."""
+    # Remove <attachment ...>...</attachment> elements (the quoted original message)
+    text = re.sub(r"<attachment[^>]*>.*?</attachment>", "", body_html,
+                  flags=re.DOTALL | re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text).strip()
+    return text
 
 
 # ── EC2 worker discovery ─────────────────────────────────────────────────────
@@ -500,6 +529,12 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
 
         body_html = m.get("body", {}).get("content", "")
         prompt, is_trigger = extract_trigger(body_html, trigger)
+
+        # If no @claude trigger, check for a quoted reply to a bot message
+        if not is_trigger and is_reply_to_bot(m):
+            reply_text = extract_reply_text(body_html)
+            if reply_text:
+                prompt, is_trigger = reply_text, True
 
         # Mark as processed regardless
         processed.add(mid)
