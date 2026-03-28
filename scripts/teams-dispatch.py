@@ -4,7 +4,10 @@
 Polls a Teams chat for @claude mentions, dispatches to ccc instances,
 tracks each request through its lifecycle, and replies with results.
 
-Runs locally on the laptop (needs Graph API token + ccc launcher).
+Runs on a dedicated dispatcher EC2 instance (cloud-native mode):
+  - Graph token read from GRAPH_TOKEN_FILE (written by dispatcher-daemon.sh)
+  - Workers discovered via EC2 API tags (Project=claude-portable, not dispatcher)
+  - SSH keys synced from S3 fleet-keys/ by dispatcher-daemon.sh
 
 Usage:
     python teams-dispatch.py --chat-id <TEAMS_CHAT_ID>
@@ -20,14 +23,11 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
 
-sys.path.insert(0, "C:/Users/joelg/Documents/ProjectsCL1/msgraph-lib")
-from token_manager import graph_get, graph_post
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CCC_DIR = os.path.dirname(SCRIPT_DIR)
-CCC_CMD = os.path.join(CCC_DIR, "ccc")
 
 # Request states
 STATE_RECEIVED = "received"
@@ -39,9 +39,21 @@ STATE_FAILED = "failed"
 
 BOT_TAG = "[Claude Bot]"
 
+GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+
+# Instance naming convention (ccc prefixes names with "ccc-"):
+#   worker-N / ccc-worker-N  = automated task runner
+#   interactive / ccc-interactive = SSH/manual use (no automated tasks)
+WORKER_PATTERNS = ("worker-", "ccc-worker-")
+INTERACTIVE_PATTERNS = ("interactive", "ccc-interactive")
+
 # ── State persistence ───────────────────────────────────────────────────────
 
-STATE_FILE = os.path.join(os.environ.get("TEMP", "/tmp"), "teams-dispatch-state.json")
+STATE_FILE = os.environ.get(
+    "TEAMS_DISPATCH_STATE_FILE",
+    os.path.join(os.environ.get("TEMP", "/tmp"), "teams-dispatch-state.json")
+)
+
 
 def load_state():
     if os.path.isfile(STATE_FILE):
@@ -49,9 +61,74 @@ def load_state():
             return json.load(f)
     return {"processed_msgs": [], "requests": {}}
 
+
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
+
+
+# ── Graph API helpers ────────────────────────────────────────────────────────
+
+def _load_graph_token():
+    """Read the Graph access token from GRAPH_TOKEN_FILE."""
+    token_file = os.environ.get("GRAPH_TOKEN_FILE", "")
+    if not token_file:
+        raise RuntimeError(
+            "GRAPH_TOKEN_FILE env var is not set. "
+            "Run via dispatcher-daemon.sh or set the env var to a token JSON file."
+        )
+    if not os.path.isfile(token_file):
+        raise RuntimeError(f"Graph token file not found: {token_file}")
+
+    with open(token_file) as f:
+        raw = f.read().strip()
+
+    # Support both {"access_token": "..."} and a raw token string
+    if raw.startswith("{"):
+        data = json.loads(raw)
+        token = data.get("access_token") or data.get("token", "")
+    else:
+        token = raw
+
+    if not token:
+        raise RuntimeError(f"No access_token found in {token_file}")
+    return token
+
+
+def graph_get(path, params=None):
+    """GET from MS Graph API, return parsed JSON body."""
+    token = _load_graph_token()
+    url = f"{GRAPH_BASE}{path}"
+    if params:
+        query = "&".join(f"{k}={urllib.request.quote(str(v))}" for k, v in params.items())
+        url = f"{url}?{query}"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
+def graph_post(path, body):
+    """POST to MS Graph API, return parsed JSON body (or empty dict on 204)."""
+    token = _load_graph_token()
+    url = f"{GRAPH_BASE}{path}"
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(url, data=data, method="POST", headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+            return json.loads(raw.decode()) if raw else {}
+    except urllib.error.HTTPError as e:
+        if e.code == 204:
+            return {}
+        raise
+
 
 # ── Teams helpers ───────────────────────────────────────────────────────────
 
@@ -65,6 +142,7 @@ def reply_in_teams(chat_id, text):
     except Exception as e:
         print(f"  WARNING: Teams reply failed: {e}")
         return False
+
 
 def fetch_messages(chat_id, count=10):
     """Fetch recent messages from a Teams chat."""
@@ -87,32 +165,87 @@ def extract_trigger(body_html, trigger):
     prompt = body_text[idx + len(trigger):].strip()
     return (prompt, True) if prompt else (None, False)
 
-# ── CCC helpers ─────────────────────────────────────────────────────────────
+
+# ── EC2 worker discovery ─────────────────────────────────────────────────────
+
+def _aws_region():
+    """Get current AWS region from EC2 metadata or env."""
+    try:
+        token = subprocess.run([
+            "curl", "-s", "-X", "PUT",
+            "http://169.254.169.254/latest/api/token",
+            "-H", "X-aws-ec2-metadata-token-ttl-seconds: 21600",
+            "--connect-timeout", "2",
+        ], capture_output=True, text=True, timeout=5).stdout.strip()
+        if token:
+            region = subprocess.run([
+                "curl", "-s",
+                "-H", f"X-aws-ec2-metadata-token: {token}",
+                "http://169.254.169.254/latest/meta-data/placement/region",
+                "--connect-timeout", "2",
+            ], capture_output=True, text=True, timeout=5).stdout.strip()
+            if region:
+                return region
+    except Exception:
+        pass
+    return os.environ.get("AWS_DEFAULT_REGION", "us-east-2")
+
 
 def get_running_instances():
-    """Get list of running ccc instances."""
+    """Discover running claude-portable worker instances via EC2 API tags."""
+    region = _aws_region()
     try:
-        r = subprocess.run(["python", CCC_CMD, "list"],
-                           capture_output=True, text=True, timeout=15)
+        r = subprocess.run([
+            "aws", "ec2", "describe-instances",
+            "--region", region,
+            "--filters",
+            "Name=tag:Project,Values=claude-portable",
+            "Name=instance-state-name,Values=running",
+            "--query",
+            (
+                "Reservations[].Instances[]"
+                ".{name: Tags[?Key=='Name'].Value|[0],"
+                " id: InstanceId,"
+                " ip: PublicIpAddress,"
+                " role: Tags[?Key=='Role'].Value|[0]}"
+            ),
+            "--output", "json",
+        ], capture_output=True, text=True, timeout=20)
+
+        if r.returncode != 0:
+            print(f"  WARNING: EC2 describe-instances failed: {r.stderr.strip()}")
+            return []
+
+        items = json.loads(r.stdout)
         instances = []
-        for line in r.stdout.strip().split("\n")[2:]:  # skip header + separator
-            parts = line.split()
-            if len(parts) >= 3 and parts[2] == "running":
-                instances.append({"name": parts[0], "id": parts[1], "ip": parts[3] if len(parts) > 3 else ""})
+        for item in items:
+            name = (item.get("name") or "").strip()
+            ip = (item.get("ip") or "").strip()
+            role = (item.get("role") or "").strip().lower()
+            iid = (item.get("id") or "").strip()
+            if not ip:
+                continue
+            # Exclude dispatcher itself
+            if role == "dispatcher":
+                continue
+            instances.append({"name": name, "id": iid, "ip": ip, "role": role})
         return instances
-    except Exception:
+    except Exception as e:
+        print(f"  WARNING: get_running_instances error: {e}")
         return []
 
+
 def find_ssh_key(instance_name):
-    """Find SSH key for a named instance."""
+    """Find SSH key for a named instance (synced from S3 by dispatcher-daemon.sh)."""
     key_dir = os.path.expanduser("~/.ssh/ccc-keys")
     key_path = os.path.join(key_dir, f"{instance_name}.pem")
     if os.path.isfile(key_path):
         return key_path
     return None
 
+
 def ssh_exec(ip, ssh_key, cmd, timeout=15):
-    """Run command on ccc container, return stdout."""
+    """Run command on ccc container via SSH, return stdout."""
     try:
         r = subprocess.run([
             "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
@@ -123,13 +256,8 @@ def ssh_exec(ip, ssh_key, cmd, timeout=15):
     except Exception:
         return ""
 
-_dispatch_counter = 0
 
-# Instance naming convention (ccc prefixes names with "ccc-"):
-#   worker-N / ccc-worker-N  = automated task runner
-#   interactive / ccc-interactive = SSH/manual use (no automated tasks)
-WORKER_PATTERNS = ("worker-", "ccc-worker-")
-INTERACTIVE_PATTERNS = ("interactive", "ccc-interactive")
+_dispatch_counter = 0
 
 
 def get_workers():
@@ -141,7 +269,8 @@ def get_workers():
 def get_interactive():
     """Get the interactive instance, or None."""
     return next((i for i in get_running_instances()
-                 if any(i["name"] == p or i["name"].startswith(p + "-") for p in INTERACTIVE_PATTERNS)), None)
+                 if any(i["name"] == p or i["name"].startswith(p + "-")
+                        for p in INTERACTIVE_PATTERNS)), None)
 
 
 def pick_worker():
@@ -149,9 +278,11 @@ def pick_worker():
     global _dispatch_counter
     workers = get_workers()
     if not workers:
-        # Fall back to any running instance that isn't interactive
+        # Fall back to any running non-worker instance
         all_inst = get_running_instances()
-        workers = [i for i in all_inst if i["name"] != INTERACTIVE_NAME]
+        workers = [i for i in all_inst
+                   if not any(i["name"] == p or i["name"].startswith(p + "-")
+                              for p in INTERACTIVE_PATTERNS)]
     if not workers:
         return None
     inst = workers[_dispatch_counter % len(workers)]
@@ -181,7 +312,7 @@ def dispatch_prompt(request_id, prompt, sender, instance_name=None, project="/wo
     if not ssh_key:
         return False, {"error": f"no SSH key for {name}"}
 
-    # Run claude -p on the instance, capture stdout to the result file directly via shell
+    # Run claude -p on the instance, capture stdout to the result file
     escaped = full_prompt.replace("'", "'\\''").replace('"', '\\"')
     result_file = f"/tmp/teams-result-{request_id}.txt"
     cmd = (
@@ -208,52 +339,40 @@ def is_ssh_request(prompt):
                 "shell access", "ssh plz", "ssh please", "give me a shell", "i need ssh",
                 "need ssh", "want ssh", "ssh to", "shell session", "give me terminal"]
     prompt_lower = prompt.lower().strip()
-    # Also match if the entire prompt is just "ssh" or "shell"
     if prompt_lower in ("ssh", "shell", "terminal", "ssh plz", "ssh please"):
         return True
     return any(k in prompt_lower for k in keywords)
 
 
 def handle_ssh_request(chat_id, sender):
-    """Handle SSH session request — use dedicated interactive instance, never a worker."""
+    """Handle SSH session request — report interactive instance details if running."""
     inst = get_interactive()
 
     if not inst:
-        # No interactive instance running — launch one
         reply_in_teams(chat_id,
-            f"Launching an interactive instance for you, {sender}. This takes ~3-5 min...")
-        try:
-            r = subprocess.run(
-                ["python", CCC_CMD, "--name", "interactive", "--new"],
-                capture_output=True, text=True, timeout=420)
-            # Re-check
-            inst = get_interactive()
-        except Exception as e:
-            reply_in_teams(chat_id, f"Failed to launch interactive instance: {e}")
-            return
-
-    if not inst:
-        reply_in_teams(chat_id, f"Could not start interactive instance, {sender}. Try `ccc -n interactive` manually.")
+            f"No interactive instance is currently running, {sender}. "
+            f"Launch one with: `ccc --name interactive` from your local machine.")
         return
 
     name = inst["name"]
     ip = inst["ip"]
     ssh_key_path = find_ssh_key(name)
-    key_info = f"~/.ssh/ccc-keys/{name}.pem" if ssh_key_path else "(key not found)"
+    key_info = f"~/.ssh/ccc-keys/{name}.pem" if ssh_key_path else "(key not found locally)"
 
     reply_in_teams(chat_id,
         f"Here you go, {sender}:\n\n"
         f"Instance: {name} ({ip})\n"
         f"SSH: `ssh -i {key_info} ubuntu@{ip} -t 'docker exec -it claude-portable bash -l'`\n"
-        f"Web chat: http://{ip}:8888/\n"
-        f"Or run: `ccc -n {name}`\n\n"
+        f"Web chat: http://{ip}:8888/\n\n"
         f"This instance is yours — no automated tasks will run on it."
     )
+
 
 def check_result(ip, ssh_key, request_id):
     """Check if a request has completed by looking for result file."""
     result = ssh_exec(ip, ssh_key, f"cat /tmp/teams-result-{request_id}.txt 2>/dev/null")
     return result if result else None
+
 
 # ── Poll loop ───────────────────────────────────────────────────────────────
 
@@ -336,27 +455,28 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
             req["instance_name"] = info.get("name", "")
             print(f"  [{rid}] Dispatched to {info.get('name', '?')} ({info.get('ip', '?')})")
             reply_in_teams(chat_id,
-                f"Request `{rid}` dispatched to {info.get('name', 'worker')}. I'll post the result when it's done.")
+                f"Request `{rid}` dispatched to {info.get('name', 'worker')}. "
+                f"I'll post the result when it's done.")
         else:
             req["state"] = STATE_FAILED
             err = info.get("error", "unknown") if isinstance(info, dict) else str(info)
             print(f"  [{rid}] FAILED to dispatch: {err}")
-            reply_in_teams(chat_id, f"Request `{rid}` failed to dispatch: {err}. No running instances?")
+            reply_in_teams(chat_id,
+                f"Request `{rid}` failed to dispatch: {err}. No running instances?")
 
     # --- Phase 3: Check pending requests for results ---
     for rid, req in list(requests.items()):
         if req["state"] not in (STATE_DISPATCHED, STATE_RUNNING):
             continue
 
-        # Find the instance this was dispatched to
         ip = req.get("instance_ip", "")
         name = req.get("instance_name", "")
 
-        # If we don't have instance info, try to find from running instances
+        # If we lost instance info, try to recover from running instances
         if not ip:
             instances = get_running_instances()
             if instances:
-                inst = instances[0]  # Use first running instance
+                inst = instances[0]
                 ip = inst.get("ip", "")
                 name = inst.get("name", "")
                 req["instance_ip"] = ip
@@ -369,14 +489,13 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
         if not ssh_key:
             continue
 
-        # Check for result file first (per-request ID, no collision)
+        # Check for result file (per-request ID, no collision)
         result = check_result(ip, ssh_key, rid)
         if result:
             req["state"] = STATE_COMPLETED
             req["result"] = result[:500]
             print(f"  [{rid}] COMPLETED: {result[:80]}")
-            reply_in_teams(chat_id,
-                f"Request `{rid}` completed!\n\n{result[:400]}")
+            reply_in_teams(chat_id, f"Request `{rid}` completed!\n\n{result[:400]}")
             continue
 
         # Check if Claude is still running
@@ -396,9 +515,10 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
             req["result"] = "Claude exited without writing result"
             print(f"  [{rid}] Claude exited with no result")
             reply_in_teams(chat_id,
-                f"Request `{rid}` — Claude finished but didn't produce a result. Check instance logs.")
+                f"Request `{rid}` — Claude finished but didn't produce a result. "
+                f"Check instance logs.")
 
-        # Timeout: 15min from dispatch time (not message time)
+        # Timeout: 15min from dispatch time
         timeout_ts = req.get("dispatched_at", req.get("timestamp", ""))
         if timeout_ts and req["state"] in (STATE_DISPATCHED, STATE_RUNNING):
             try:
@@ -427,22 +547,34 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Teams -> CCC dispatch with request tracking")
+    parser = argparse.ArgumentParser(
+        description="Teams -> CCC dispatch (cloud-native, runs on dispatcher EC2 instance)"
+    )
     parser.add_argument("--chat-id", required=True, help="Teams chat ID to monitor")
     parser.add_argument("--trigger", default="@claude", help="Trigger keyword (default: @claude)")
-    parser.add_argument("--interval", type=int, default=30, help="Poll interval seconds (default: 30)")
-    parser.add_argument("--instance", help="Preferred ccc instance name")
-    parser.add_argument("--project", default="/workspace", help="Working directory on instance")
+    parser.add_argument("--interval", type=int, default=30,
+                        help="Poll interval seconds (default: 30)")
+    parser.add_argument("--instance", help="Preferred worker instance name")
+    parser.add_argument("--project", default="/workspace",
+                        help="Working directory on instance (default: /workspace)")
     args = parser.parse_args()
 
+    # Validate required env var early
+    if not os.environ.get("GRAPH_TOKEN_FILE"):
+        print("ERROR: GRAPH_TOKEN_FILE env var is not set.", file=sys.stderr)
+        print("  Run via dispatcher-daemon.sh, or set GRAPH_TOKEN_FILE to a token JSON file.",
+              file=sys.stderr)
+        sys.exit(1)
+
     print("=" * 55)
-    print(f"  {BOT_TAG} Teams -> CCC Dispatch")
+    print(f"  {BOT_TAG} Teams -> CCC Dispatch (cloud-native)")
     print("=" * 55)
-    print(f"  Chat:     {args.chat_id[:35]}...")
-    print(f"  Trigger:  {args.trigger}")
-    print(f"  Poll:     every {args.interval}s")
-    print(f"  Instance: {args.instance or 'auto'}")
-    print(f"  State:    {STATE_FILE}")
+    print(f"  Chat:       {args.chat_id[:35]}...")
+    print(f"  Trigger:    {args.trigger}")
+    print(f"  Poll:       every {args.interval}s")
+    print(f"  Instance:   {args.instance or 'auto (EC2 tag discovery)'}")
+    print(f"  Token file: {os.environ.get('GRAPH_TOKEN_FILE', '(not set)')}")
+    print(f"  State:      {STATE_FILE}")
     print()
 
     state = load_state()
