@@ -220,6 +220,75 @@ def get_active_worker_branches(repo_dir: str) -> list:
 
 # ── EC2 helpers ────────────────────────────────────────────────────────────────
 
+def get_own_private_ip() -> str:
+    """Return this instance's private IP via IMDSv2, or empty string if unavailable."""
+    try:
+        token_result = subprocess.run(
+            ["curl", "-s", "-X", "PUT",
+             "http://169.254.169.254/latest/api/token",
+             "-H", "X-aws-ec2-metadata-token-ttl-seconds: 21600",
+             "--connect-timeout", "2"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if token_result.returncode == 0 and token_result.stdout:
+            token = token_result.stdout.strip()
+            ip_result = subprocess.run(
+                ["curl", "-s",
+                 "-H", f"X-aws-ec2-metadata-token: {token}",
+                 "http://169.254.169.254/latest/meta-data/local-ipv4",
+                 "--connect-timeout", "2"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if ip_result.returncode == 0 and ip_result.stdout.strip():
+                return ip_result.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def ensure_dispatcher_url_in_env(repo_dir: str, dispatcher_url: str) -> None:
+    """Write DISPATCHER_URL to the .env file in repo_dir so workers launched via ccc
+    will automatically receive it and know where to register.
+
+    If the key already exists with the correct value, the file is left unchanged.
+    If it exists with a different value, it is updated.
+    If it is absent, it is appended.
+    """
+    env_path = os.path.join(repo_dir, ".env")
+    key = "DISPATCHER_URL"
+    new_line = f"{key}={dispatcher_url}\n"
+
+    # Read existing file (ok if missing)
+    try:
+        with open(env_path, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    updated = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            if line.strip() == f"{key}={dispatcher_url}":
+                # Already correct -- no-op
+                log.debug("DISPATCHER_URL already set correctly in .env")
+                return
+            new_lines.append(new_line)
+            updated = True
+        else:
+            new_lines.append(line)
+
+    if not updated:
+        new_lines.append(new_line)
+
+    try:
+        with open(env_path, "w") as f:
+            f.writelines(new_lines)
+        log.info("Set %s=%s in %s", key, dispatcher_url, env_path)
+    except Exception as e:
+        log.warning("Could not write DISPATCHER_URL to %s: %s", env_path, e)
+
+
 def get_aws_region() -> str:
     """Get current AWS region from instance metadata or env."""
     region = os.environ.get("AWS_DEFAULT_REGION", "")
@@ -806,6 +875,17 @@ def main():
 
     region = get_aws_region()
     log.info("  AWS region:    %s", region)
+
+    # Determine own IP and inject DISPATCHER_URL into .env so workers launched via
+    # ccc will automatically receive it and know where to register on boot.
+    own_ip = os.environ.get("DISPATCHER_IP", "") or get_own_private_ip()
+    if own_ip:
+        dispatcher_url = f"http://{own_ip}:{HEALTH_PORT}"
+        log.info("  Dispatcher URL: %s", dispatcher_url)
+        ensure_dispatcher_url_in_env(REPO_DIR, dispatcher_url)
+    else:
+        log.warning("Could not determine own IP -- DISPATCHER_URL not injected into .env")
+        log.warning("Workers will not be able to auto-register unless DISPATCHER_URL is set manually")
 
     start_health_server()
 
