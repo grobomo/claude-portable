@@ -252,9 +252,9 @@ def is_work_request(prompt):
 
 
 def add_todo_item(prompt, sender, repo_dir=None):
-    """Add a TODO item to TODO.md in the git repo, commit, and push.
+    """Add a TODO item to TODO.md: create branch → commit → open PR → merge.
 
-    Returns (success, pr_branch_or_error_message).
+    Returns (success, pr_url_or_error_message).
     """
     repo_dir = repo_dir or os.environ.get("CHATBOT_TODO_REPO_DIR", "/workspace/claude-portable")
     todo_path = os.path.join(repo_dir, "TODO.md")
@@ -275,24 +275,11 @@ def add_todo_item(prompt, sender, repo_dir=None):
     if len(task_desc) > 80:
         task_desc = task_desc[:77].rsplit(" ", 1)[0] + "..."
 
-    todo_item = f"- [ ] {task_desc} (requested by {sender})\n  - PR title: \"feat: {task_desc[:60].lower()}\"\n"
+    pr_title = f"feat: {task_desc[:60].lower()}"
+    todo_item = f"- [ ] {task_desc} (requested by {sender})\n  - PR title: \"{pr_title}\"\n"
 
-    # Read current TODO.md, append item to a "Chatbot Requests" section
-    with open(todo_path) as f:
-        content = f.read()
-
-    section_header = "\n## Chatbot Requests\n\n"
-    if section_header.strip() in content:
-        # Append before the last line
-        content = content.rstrip("\n") + "\n" + todo_item + "\n"
-    else:
-        content = content.rstrip("\n") + section_header + todo_item + "\n"
-
-    with open(todo_path, "w") as f:
-        f.write(content)
-
-    # Commit and push
     branch = f"chatbot/request-{uuid.uuid4().hex[:6]}"
+
     try:
         # Configure git if needed
         subprocess.run(["git", "config", "user.name", "claude-chatbot"],
@@ -300,28 +287,78 @@ def add_todo_item(prompt, sender, repo_dir=None):
         subprocess.run(["git", "config", "user.email", "noreply@claude-portable"],
                        cwd=repo_dir, capture_output=True)
 
-        # Pull latest first
+        # Ensure we're on main and up to date
+        subprocess.run(["git", "checkout", "main"],
+                       cwd=repo_dir, capture_output=True, timeout=15)
         subprocess.run(["git", "pull", "--rebase", "--autostash"],
                        cwd=repo_dir, capture_output=True, timeout=30)
 
-        # Commit on current branch (main) to avoid PR overhead for chatbot requests
+        # Create a feature branch
+        branch_result = subprocess.run(
+            ["git", "checkout", "-b", branch],
+            cwd=repo_dir, capture_output=True, text=True, timeout=15
+        )
+        if branch_result.returncode != 0:
+            return False, f"Git branch failed: {branch_result.stderr.strip()[:200]}"
+
+        # Read current TODO.md, append item to a "Chatbot Requests" section
+        with open(todo_path) as f:
+            content = f.read()
+
+        section_header = "\n## Chatbot Requests\n\n"
+        if section_header.strip() in content:
+            content = content.rstrip("\n") + "\n" + todo_item + "\n"
+        else:
+            content = content.rstrip("\n") + section_header + todo_item + "\n"
+
+        with open(todo_path, "w") as f:
+            f.write(content)
+
+        # Commit
         subprocess.run(["git", "add", "TODO.md"], cwd=repo_dir, capture_output=True)
         commit_msg = f"feat: add chatbot request from {sender}\n\n{task_desc[:100]}"
-        result = subprocess.run(
+        commit_result = subprocess.run(
             ["git", "commit", "-m", commit_msg],
             cwd=repo_dir, capture_output=True, text=True, timeout=15
         )
-        if result.returncode != 0:
-            return False, f"Git commit failed: {result.stderr.strip()[:200]}"
+        if commit_result.returncode != 0:
+            return False, f"Git commit failed: {commit_result.stderr.strip()[:200]}"
 
+        # Push branch
         push_result = subprocess.run(
-            ["git", "push"],
+            ["git", "push", "-u", "origin", branch],
             cwd=repo_dir, capture_output=True, text=True, timeout=30
         )
         if push_result.returncode != 0:
             return False, f"Git push failed: {push_result.stderr.strip()[:200]}"
 
-        return True, task_desc
+        # Open PR
+        pr_body = f"Feature request from {sender}:\n\n> {prompt[:500]}\n\nAdded to TODO.md for worker pickup."
+        pr_result = subprocess.run(
+            ["gh", "pr", "create", "--title", pr_title, "--body", pr_body],
+            cwd=repo_dir, capture_output=True, text=True, timeout=30
+        )
+        if pr_result.returncode != 0:
+            return False, f"gh pr create failed: {pr_result.stderr.strip()[:200]}"
+
+        pr_url = pr_result.stdout.strip()
+
+        # Merge PR immediately (chatbot TODO PRs are always safe to merge)
+        merge_result = subprocess.run(
+            ["gh", "pr", "merge", "--squash", "--delete-branch"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=60
+        )
+        if merge_result.returncode != 0:
+            # PR was created but not merged — still report it
+            return True, pr_url
+
+        # Return to main
+        subprocess.run(["git", "checkout", "main"],
+                       cwd=repo_dir, capture_output=True, timeout=15)
+        subprocess.run(["git", "pull", "--rebase"],
+                       cwd=repo_dir, capture_output=True, timeout=30)
+
+        return True, pr_url
     except subprocess.TimeoutExpired:
         return False, "Git operation timed out"
     except Exception as e:
@@ -482,11 +519,11 @@ def poll_once(chat_id, trigger, state, workspace=None):
         work_queued = False
         if is_work_request(prompt):
             print(f"  [{rid}] Detected work request — adding TODO item...")
-            success, info = add_todo_item(prompt, sender)
+            success, info = add_todo_item(prompt, sender, workspace)
             if success:
                 work_queued = True
-                queue_note = f"\n\nI've also added this to the task queue as a TODO item. Workers will pick it up automatically."
-                print(f"  [{rid}] TODO item added: {info}")
+                queue_note = f"\n\nI've queued this as a TODO item. Workers will pick it up automatically. PR: {info}"
+                print(f"  [{rid}] TODO item added, PR: {info}")
             else:
                 queue_note = f"\n\n(Note: Failed to queue as TODO item: {info})"
                 print(f"  [{rid}] WARNING: Failed to add TODO: {info}")
