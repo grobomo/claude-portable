@@ -1420,6 +1420,47 @@ def cmd_status(args):
 
     print()
 
+def cmd_logs(args):
+    """Tail the continuous-claude log on a remote instance."""
+    name = args.name
+    inst = find_available(name)
+    if not inst:
+        print("No instance found." + (f" ({name})" if name else ""))
+        return
+    if inst["state"] != "running":
+        print(f"\n  Instance {inst['label']} is {inst['state']} (not running).")
+        return
+
+    ssh_key = find_ssh_key(inst)
+    if not ssh_key:
+        print(f"ERROR: No SSH key for {inst['name']}")
+        return
+
+    ip = inst["ip"]
+    lines = args.lines or 50
+
+    if args.follow:
+        # Stream logs in real-time -- replaces current process
+        tail_cmd = f"tail -n {lines} -f /data/continuous-claude.log"
+        ssh_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+            "-o", "LogLevel=ERROR", "-i", ssh_key, f"ubuntu@{ip}",
+            f"docker exec claude-portable bash -c '{tail_cmd}'"
+        ]
+        print(f"  Tailing logs on {inst['label']} ({ip}) -- Ctrl+C to stop\n")
+        try:
+            subprocess.run(ssh_cmd)
+        except KeyboardInterrupt:
+            print("\n  Stopped.")
+    else:
+        # One-shot: fetch last N lines
+        output = _ssh_exec(ip, ssh_key, f"tail -n {lines} /data/continuous-claude.log", timeout=30)
+        if output:
+            print(output)
+        else:
+            print("  (no log output -- continuous-claude may not have started)")
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1450,6 +1491,10 @@ def main():
     p_offload.add_argument("prompt", nargs="*", help="Prompt to send to Claude (optional)")
     p_status = sub.add_parser("status", help="Show continuous-claude and daemon status")
     p_status.add_argument("name", nargs="?", help="Instance name")
+    p_logs = sub.add_parser("logs", help="Tail continuous-claude log on instance")
+    p_logs.add_argument("name", nargs="?", help="Instance name")
+    p_logs.add_argument("-f", "--follow", action="store_true", help="Follow log output in real-time")
+    p_logs.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)")
 
     args = parser.parse_args()
 
@@ -1475,6 +1520,8 @@ def main():
         cmd_offload(args)
     elif args.command == "status":
         cmd_status(args)
+    elif args.command == "logs":
+        cmd_logs(args)
     else:
         cmd_connect(args)
 
