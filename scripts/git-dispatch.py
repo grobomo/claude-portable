@@ -33,8 +33,57 @@ log = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.environ.get("TODO_POLL_INTERVAL", "60"))
 REPO_DIR = os.environ.get("DISPATCHER_REPO_DIR", "/workspace/claude-portable")
-MAX_WORKERS = int(os.environ.get("DISPATCHER_MAX_WORKERS", "5"))
 HEALTH_PORT = int(os.environ.get("DISPATCHER_HEALTH_PORT", "8080"))
+
+_DEFAULT_MAX_WORKERS = 5
+
+
+def load_ccc_config(repo_dir: str) -> dict:
+    """Load ccc.config.json from repo_dir. Returns empty dict on any error."""
+    config_path = os.path.join(repo_dir, "ccc.config.json")
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        log.debug("ccc.config.json not found at %s", config_path)
+        return {}
+    except json.JSONDecodeError as e:
+        log.warning("ccc.config.json parse error: %s", e)
+        return {}
+    except Exception as e:
+        log.warning("Could not load ccc.config.json: %s", e)
+        return {}
+
+
+def get_max_workers(repo_dir: str) -> int:
+    """Return max worker cap.
+
+    Priority (highest first):
+    1. DISPATCHER_MAX_WORKERS env var
+    2. max_workers in ccc.config.json
+    3. max_instances in ccc.config.json (legacy key used by ccc launcher)
+    4. Built-in default (5)
+    """
+    env_val = os.environ.get("DISPATCHER_MAX_WORKERS")
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            log.warning("Invalid DISPATCHER_MAX_WORKERS=%r, ignoring", env_val)
+
+    cfg = load_ccc_config(repo_dir)
+    for key in ("max_workers", "max_instances"):
+        val = cfg.get(key)
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                log.warning("Invalid %s=%r in ccc.config.json, ignoring", key, val)
+
+    return _DEFAULT_MAX_WORKERS
+
+
+MAX_WORKERS = get_max_workers(REPO_DIR)
 
 # EC2 tags used to find worker instances
 WORKER_TAG_KEY = "Role"
@@ -285,6 +334,31 @@ def stop_worker_instance(worker_id: str, region: str) -> bool:
         return False
 
 
+def get_next_worker_name(running_workers: list) -> str:
+    """Generate a non-colliding worker name.
+
+    Finds the highest numeric suffix among existing worker-N instances and
+    returns worker-(N+1). Falls back to a timestamp-based name if no
+    numeric suffixes exist.
+    """
+    max_n = 0
+    for inst in running_workers:
+        tags = inst.get("Tags") or []
+        for tag in tags:
+            if tag.get("Key") == "Name":
+                name = tag.get("Value", "")
+                parts = name.split("-")
+                if len(parts) >= 2 and parts[0] == "worker":
+                    try:
+                        max_n = max(max_n, int(parts[-1]))
+                    except ValueError:
+                        pass
+    if max_n > 0:
+        return f"worker-{max_n + 1}"
+    # No numeric names found -- use timestamp to avoid collisions
+    return f"worker-{int(time.time())}"
+
+
 def launch_worker(region: str, worker_name: str) -> bool:
     """Launch a new worker EC2 instance using ccc launcher."""
     log.info("Launching new worker: %s", worker_name)
@@ -375,8 +449,11 @@ def _dispatch_tick(region: str):
             unclaimed, worker_count, MAX_WORKERS, workers_to_launch,
         )
         launched = 0
+        current_workers = list(running_workers)  # snapshot for name generation
         for i in range(workers_to_launch):
-            worker_name = f"worker-{int(time.time())}-{i}"
+            worker_name = get_next_worker_name(current_workers)
+            # Add a synthetic entry so the next iteration picks a different name
+            current_workers.append({"Tags": [{"Key": "Name", "Value": worker_name}]})
             if launch_worker(region, worker_name):
                 launched += 1
         if launched:
@@ -539,13 +616,13 @@ def start_health_server():
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
+    global POLL_INTERVAL, REPO_DIR, MAX_WORKERS
     parser = argparse.ArgumentParser(description="Git-based dispatcher for claude-portable fleet")
     parser.add_argument("--repo-dir", default=REPO_DIR, help="Path to claude-portable repo")
     parser.add_argument("--interval", type=int, default=POLL_INTERVAL, help="Poll interval in seconds")
     parser.add_argument("--max-workers", type=int, default=MAX_WORKERS, help="Max concurrent workers")
     args = parser.parse_args()
 
-    global POLL_INTERVAL, REPO_DIR, MAX_WORKERS
     POLL_INTERVAL = args.interval
     REPO_DIR = args.repo_dir
     MAX_WORKERS = args.max_workers
