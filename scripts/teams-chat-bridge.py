@@ -90,6 +90,92 @@ def save_state(state):
         json.dump(state, f, indent=2)
 
 
+# ── Chat cache ──────────────────────────────────────────────────────────────
+
+CHAT_CACHE_DIR = os.environ.get("CHAT_CACHE_DIR", "/data/chat-cache")
+
+
+def update_chat_cache(messages, bot_replies=None):
+    """Write rolling chat transcript to disk for context.
+
+    messages: list of Graph API message objects (newest first)
+    bot_replies: optional list of (sender, prompt, response) tuples to append
+    """
+    os.makedirs(CHAT_CACHE_DIR, exist_ok=True)
+    os.makedirs(os.path.join(CHAT_CACHE_DIR, "users"), exist_ok=True)
+
+    # Build transcript lines (reverse to chronological order)
+    lines = []
+    user_msgs = {}  # sender -> [(timestamp, line)]
+
+    for m in reversed(messages[:50]):
+        ts = m.get("createdDateTime", "")[:19]
+        fr = m.get("from", {})
+        sender = "(unknown)"
+        if fr and fr.get("user"):
+            sender = fr["user"].get("displayName", "(unknown)")
+
+        body_html = m.get("body", {}).get("content", "")
+        body_text = re.sub(r"<[^>]+>", "", body_html).strip()
+        if not body_text:
+            continue
+
+        line = f"[{ts}] {sender}: {body_text}"
+        lines.append(line)
+
+        # Track per-user messages
+        if sender not in user_msgs:
+            user_msgs[sender] = []
+        user_msgs[sender].append((ts, line))
+
+    # Append bot replies if provided
+    if bot_replies:
+        for sender, prompt, response in bot_replies:
+            ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+            lines.append(f"[{ts}] {sender}: {prompt}")
+            lines.append(f"[{ts}] Claude Bot: {response[:500]}")
+            if sender not in user_msgs:
+                user_msgs[sender] = []
+            user_msgs[sender].append((ts, f"[{ts}] {sender}: {prompt}"))
+            user_msgs[sender].append((ts, f"[{ts}] Claude Bot: {response[:500]}"))
+
+    # Write group chat transcript
+    group_file = os.path.join(CHAT_CACHE_DIR, "group-chat.txt")
+    with open(group_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines[-50:]) + "\n")
+
+    # Write per-user files (last 20 messages each)
+    for sender, entries in user_msgs.items():
+        safe_name = re.sub(r"[^\w\-. ]", "_", sender).strip()
+        if not safe_name:
+            continue
+        user_file = os.path.join(CHAT_CACHE_DIR, "users", f"{safe_name}.txt")
+        user_lines = [line for _, line in entries[-20:]]
+        with open(user_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(user_lines) + "\n")
+
+
+def get_chat_context_prompt(sender):
+    """Return a context prefix for Claude prompts with chat history."""
+    context_parts = []
+    group_file = os.path.join(CHAT_CACHE_DIR, "group-chat.txt")
+    if os.path.isfile(group_file):
+        context_parts.append(
+            f"Recent group chat transcript is at {group_file} — "
+            "read it with the Read tool to understand conversation context."
+        )
+    safe_name = re.sub(r"[^\w\-. ]", "_", sender).strip()
+    user_file = os.path.join(CHAT_CACHE_DIR, "users", f"{safe_name}.txt")
+    if os.path.isfile(user_file):
+        context_parts.append(
+            f"Your conversation history with {sender} is at {user_file} — "
+            "read it to understand prior back-and-forth."
+        )
+    if context_parts:
+        return "CONTEXT:\n" + "\n".join(context_parts) + "\n\nNEW MESSAGE:\n"
+    return ""
+
+
 # ── Graph API helpers ────────────────────────────────────────────────────────
 
 def _load_graph_token():
