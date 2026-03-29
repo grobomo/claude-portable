@@ -15,9 +15,9 @@ import tempfile
 import unittest
 
 
-SCRIPT_PATH = os.path.join(
+SCRIPT_PATH = os.path.normpath(os.path.join(
     os.path.dirname(__file__), "..", "scripts", "continuous-claude.sh"
-)
+))
 
 
 class TestReviewStageStructure(unittest.TestCase):
