@@ -152,5 +152,72 @@ class TestReviewVerdictParsing(unittest.TestCase):
         self.assertEqual(self._parse_verdict(review), "PROCEED")
 
 
+class TestEnforcementGates(unittest.TestCase):
+    """Verify enforcement gates are present and numbered correctly."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SCRIPT_PATH) as f:
+            cls.script = f.read()
+
+    def test_seven_gates_present(self):
+        """All 7 gates exist in the script."""
+        for n in range(1, 8):
+            self.assertIn(
+                f"GATE {n}",
+                self.script,
+                f"Gate {n} not found in script"
+            )
+
+    def test_gate_1_checks_research(self):
+        """Gate 1 checks research file size >500 chars."""
+        gate1 = self.script[self.script.index("GATE 1"):self.script.index("GATE 2")]
+        self.assertIn("500", gate1)
+        self.assertIn("research_file", gate1)
+
+    def test_gate_2_checks_review_verdict(self):
+        """Gate 2 checks review file has a VERDICT."""
+        gate2 = self.script[self.script.index("GATE 2"):self.script.index("GATE 3")]
+        self.assertIn("VERDICT", gate2)
+        self.assertIn("review_file", gate2)
+
+    def test_gate_3_checks_plan(self):
+        """Gate 3 checks plan file size >100 chars."""
+        gate3 = self.script[self.script.index("GATE 3"):self.script.index("GATE 4")]
+        self.assertIn("100", gate3)
+        self.assertIn("plan_file", gate3)
+
+    def test_gate_4_checks_test_files(self):
+        """Gate 4 checks test files were added."""
+        gate4 = self.script[self.script.index("GATE 4"):self.script.index("GATE 5")]
+        self.assertIn("test_files_added", gate4)
+
+    def test_gate_5_checks_tests_fail(self):
+        """Gate 5 verifies tests fail before implementation."""
+        gate5 = self.script[self.script.index("GATE 5"):self.script.index("GATE 6")]
+        self.assertIn("test_run_cmd", gate5)
+        self.assertIn("fail", gate5.lower())
+
+    def test_gate_6_checks_tests_pass(self):
+        """Gate 6 verifies tests pass after implementation."""
+        gate6 = self.script[self.script.index("GATE 6"):self.script.index("GATE 7")]
+        self.assertIn("test_run_cmd", gate6)
+        self.assertIn("pass", gate6.lower())
+
+    def test_gate_7_checks_secrets(self):
+        """Gate 7 checks for secrets and personal paths in diff."""
+        gate7_start = self.script.index("GATE 7")
+        gate7 = self.script[gate7_start:gate7_start + 1500]
+        self.assertIn("C:/Users/", gate7)
+        self.assertIn("AKIA", gate7)
+        self.assertIn("bash -n", gate7)
+
+    def test_gates_return_1_on_failure(self):
+        """All gates return 1 on failure."""
+        for n in range(1, 8):
+            marker = f"GATE {n} FAILED"
+            self.assertIn(marker, self.script, f"Gate {n} missing FAILED message")
+
+
 if __name__ == "__main__":
     unittest.main()
