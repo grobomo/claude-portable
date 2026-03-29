@@ -721,7 +721,7 @@ If you cannot fix all issues after attempting, output: VERIFY_FAILED with detail
 
   run_stage_with_retry "VERIFY" "6" "$verify_prompt" "$stage_log" || return 1
 
-  # ===== STAGE 6: PR =====
+  # ===== STAGE 7: PR =====
   local pr_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
