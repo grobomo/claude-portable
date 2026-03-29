@@ -170,7 +170,7 @@ class TestRefactorFirstRule(unittest.TestCase):
 
     def test_refactor_first_does_not_implement(self):
         """Refactor prompt explicitly says NOT to implement the feature."""
-        refactor_idx = self.script.index("REFACTOR_FIRST")
+        refactor_idx = self.script.index("Handle REFACTOR_FIRST")
         refactor_section = self.script[refactor_idx:refactor_idx + 3000]
         self.assertIn("Do NOT implement the feature", refactor_section)
 
