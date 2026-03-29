@@ -545,14 +545,84 @@ CRITICAL: Write the research summary to ${research_file} using the Write tool."
 
   run_stage_with_retry "RESEARCH" "1" "$research_prompt" "$stage_log" || return 1
 
-  # ===== STAGE 2: PLAN =====
+  # ===== STAGE 2: REVIEW =====
+  local review_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
+
+TASK: ${task_desc}
+
+STAGE: REVIEW (mandatory codebase audit)
+Research summary is at: ${research_file}
+Read it first.
+
+Your job is to audit the ENTIRE codebase for issues that affect this task BEFORE any planning or coding begins. You must:
+
+1. Read ALL files in the repo that relate to this task (use Grep and Glob to find them).
+2. Identify and document in '${review_file}':
+
+   ## Existing Implementations
+   Code that ALREADY does what this task asks (partially or fully). If found, note the file and function.
+   If the task is already fully implemented, write: VERDICT: ALREADY_DONE
+
+   ## Dead Code
+   Code from previous tasks/PRs that is no longer used or referenced. List file:line for each.
+
+   ## Conflicting Implementations
+   Multiple implementations of the same concept (e.g. two dispatch systems, duplicate helpers).
+   Note which should be kept and which removed.
+
+   ## Refactoring Needed
+   Code that must be changed to cleanly accommodate the new feature. If >3 files need refactoring,
+   write: VERDICT: REFACTOR_FIRST
+
+   ## Verdict
+   One of:
+   - PROCEED: codebase is clean, task can be implemented directly
+   - ALREADY_DONE: task is already implemented, skip it
+   - REFACTOR_FIRST: clean up required before new code (list the refactoring steps)
+
+CRITICAL: Write the review to ${review_file} using the Write tool.
+CRITICAL: Be thorough -- read actual file contents, don't guess from filenames.
+CRITICAL: The verdict MUST be one of: PROCEED, ALREADY_DONE, REFACTOR_FIRST"
+
+  run_stage_with_retry "REVIEW" "2" "$review_prompt" "$stage_log" || return 1
+
+  # Check review verdict -- skip task if already done
+  local review_verdict=""
+  if [ -f "$review_file" ]; then
+    review_verdict=$(grep -oE 'VERDICT: (PROCEED|ALREADY_DONE|REFACTOR_FIRST)' "$review_file" | tail -1 | sed 's/VERDICT: //' || echo "")
+  fi
+  if [ "$review_verdict" = "ALREADY_DONE" ]; then
+    echo "  [REVIEW] Task is already implemented. Skipping."
+    python3 -c "
+import re, sys
+task_num = int(sys.argv[1])
+with open('TODO.md') as f:
+    lines = f.readlines()
+count = 0
+for i, line in enumerate(lines):
+    if re.match(r'\s*- \[ \]', line):
+        count += 1
+        if count == task_num:
+            lines[i] = line.replace('- [ ]', '- [x]', 1)
+            break
+with open('TODO.md', 'w') as f:
+    f.writelines(lines)
+" "$task_num" 2>/dev/null || true
+    git add TODO.md 2>/dev/null && git commit -m "chore: skip task ${task_num} (already implemented per review)" 2>/dev/null && git push origin "$BRANCH" 2>/dev/null || true
+    git branch -D "$branch_name" 2>/dev/null || true
+    git push origin --delete "$branch_name" 2>/dev/null || true
+    return 0
+  fi
+
+  # ===== STAGE 3: PLAN =====
   local plan_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
 
 STAGE: PLAN
 Research summary is at: ${research_file}
-Read it first, then create an implementation plan.
+Code review is at: ${review_file}
+Read BOTH files first, then create an implementation plan.
 
 Write a detailed plan to '${plan_file}' that includes:
 1. Exact list of files to create or modify (with paths)
@@ -560,13 +630,17 @@ Write a detailed plan to '${plan_file}' that includes:
 3. What tests to write first (TDD - tests before implementation)
 4. What each test should verify (specific behaviors, edge cases)
 5. Implementation order (which files to write first)
+6. Any refactoring from the review that must happen first
+
+If the review verdict was REFACTOR_FIRST, the plan must start with refactoring steps
+(remove dead code, consolidate duplicates) BEFORE adding new functionality.
 
 Output ONLY the plan file. No code changes yet.
 CRITICAL: Write the plan to ${plan_file} using the Write tool."
 
-  run_stage_with_retry "PLAN" "2" "$plan_prompt" "$stage_log" || return 1
+  run_stage_with_retry "PLAN" "3" "$plan_prompt" "$stage_log" || return 1
 
-  # ===== STAGE 3: TESTS FIRST =====
+  # ===== STAGE 4: TESTS FIRST =====
   local tests_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
