@@ -666,7 +666,7 @@ CRITICAL: Do NOT write any implementation code in this stage -- only tests
 CRITICAL: Verify tests fail before committing (this confirms tests are actually testing something)
 CRITICAL: Use the detected framework '${test_framework}'. If no framework was detected (bash -n), write a test shell script with explicit assertions that exit non-zero on failure."
 
-  run_stage_with_retry "TESTS" "3" "$tests_prompt" "$stage_log" || return 1
+  run_stage_with_retry "TESTS" "4" "$tests_prompt" "$stage_log" || return 1
 
   # ===== STAGE 4: IMPLEMENT =====
   local implement_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
