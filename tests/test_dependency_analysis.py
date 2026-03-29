@@ -147,7 +147,7 @@ class TestAnnotateTodo(unittest.TestCase):
         self.assertEqual(result, SAMPLE_TODO, "Should not annotate completed tasks")
 
     def test_multiple_deps_added(self):
-        deps = {17: [11, 8]}  # line 17 = "Fifth task" depends on 11 and 8
+        deps = {18: [11, 8]}  # line 18 = "Fifth task" depends on 11 and 8
         result = gd.annotate_todo_with_deps(SAMPLE_TODO, deps)
         lines = result.splitlines()
         fifth_idx = next(i for i, l in enumerate(lines) if "Fifth task" in l)
