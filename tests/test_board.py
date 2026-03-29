@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for dispatcher board aggregation (board.json)."""
+"""Tests for dispatcher board aggregation (board.json + /board endpoint)."""
 
 import importlib.machinery
 import importlib.util
@@ -7,8 +7,11 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
+from http.client import HTTPConnection
+from http.server import HTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
@@ -25,10 +28,19 @@ class TestBuildBoard(unittest.TestCase):
     def setUp(self):
         with gd._fleet_roster_lock:
             gd._fleet_roster.clear()
+        self.tmpdir = tempfile.mkdtemp()
+        self._orig_repo = gd.REPO_DIR
+        gd.REPO_DIR = self.tmpdir
+        # Write empty TODO.md by default
+        with open(os.path.join(self.tmpdir, "TODO.md"), "w") as f:
+            f.write("")
 
     def tearDown(self):
+        gd.REPO_DIR = self._orig_repo
         with gd._fleet_roster_lock:
             gd._fleet_roster.clear()
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_empty_roster_returns_empty_workers(self):
         board = gd._build_board()

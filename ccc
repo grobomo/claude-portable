@@ -2381,6 +2381,10 @@ def main():
     p_maint.add_argument("--off", action="store_true", help="Resume task pickup (exit maintenance)")
     p_work = sub.add_parser("work", help="Show what each worker is doing: branch, PR status, task progress")
 
+    p_board = sub.add_parser("board", help="Pipeline status board from dispatcher (worker phases, tasks)")
+    p_board.add_argument("-n", "--name", default="dispatcher", help="Dispatcher instance name (default: dispatcher)")
+    p_board.add_argument("--json", dest="raw_json", action="store_true", help="Output raw JSON instead of formatted view")
+
     p_health = sub.add_parser("health", help="Get worker health via HTTP API (no SSH)")
     p_health.add_argument("name", help="Worker name")
 
@@ -2438,6 +2442,8 @@ def main():
         cmd_maintenance(args)
     elif args.command == "work":
         cmd_work(args)
+    elif args.command == "board":
+        cmd_board(args)
     elif args.command == "health":
         cmd_health_api(args)
     elif args.command == "interrupt":

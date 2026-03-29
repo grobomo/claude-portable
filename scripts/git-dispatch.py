@@ -1218,46 +1218,109 @@ def _fleet_monitor_tick(region: str):
 
 
 def _build_board() -> dict:
-    """Build board.json from fleet roster. Called after each heartbeat."""
-    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    """Build board.json from fleet roster + TODO.md task list.
+
+    Includes per-worker pipeline state, per-task worker assignments,
+    time-in-phase, and summary counts.
+    """
+    now = time.time()
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+
     workers = []
+    task_to_worker = {}  # task description -> worker_id
+
     with _fleet_roster_lock:
         for wid, info in _fleet_roster.items():
             pipeline = info.get("pipeline", {})
-            task = info.get("task", {})
+            task_info = info.get("task", {})
+            phase = pipeline.get("stage", "idle")
+            phase_start = pipeline.get("phases", {}).get(phase, {}).get("start")
+
+            time_in_phase_s = None
+            if phase_start:
+                try:
+                    pt = time.mktime(time.strptime(phase_start, "%Y-%m-%dT%H:%M:%SZ"))
+                    time_in_phase_s = int(now - pt)
+                except (ValueError, OverflowError):
+                    pass
+
             workers.append({
                 "worker_id": wid,
                 "status": info.get("status", "unknown"),
                 "healthy": info.get("healthy", True),
-                "phase": pipeline.get("stage", "idle"),
+                "phase": phase,
+                "phase_start": phase_start,
+                "time_in_phase_s": time_in_phase_s,
                 "phases_complete": pipeline.get("stages_complete", 0),
-                "task_num": task.get("task_num"),
-                "task_description": task.get("description", ""),
-                "task_branch": task.get("branch", ""),
+                "task_num": task_info.get("task_num"),
+                "task_description": task_info.get("description", ""),
+                "task_branch": task_info.get("branch", ""),
                 "idle_seconds": info.get("idle_seconds", -1),
                 "maintenance": info.get("maintenance", False),
                 "last_heartbeat": info.get("last_heartbeat", ""),
+                "uptime_seconds": info.get("uptime_seconds", 0),
             })
-    # Task summary from TODO.md
-    task_summary = {"total": 0, "completed": 0, "pending": 0, "blocked": 0}
+
+            desc = task_info.get("description", "")
+            if desc and phase not in ("idle", "unknown"):
+                task_to_worker[desc] = wid
+
+    # Build detailed task list from TODO.md
+    completed_count = 0
+    task_list = []
     try:
+        pending_tasks = get_pending_tasks(REPO_DIR)
+        for t in pending_tasks:
+            desc = t.get("description", "")
+            worker = task_to_worker.get(desc)
+            worker_phase = None
+            if worker:
+                for w in workers:
+                    if w["worker_id"] == worker:
+                        worker_phase = w["phase"]
+                        break
+            status = "blocked" if t.get("blocked") else (
+                "in_progress" if worker else "pending"
+            )
+            task_list.append({
+                "description": desc,
+                "area": t.get("area"),
+                "blocked": t.get("blocked", False),
+                "blocked_by": t.get("blocked_by", []),
+                "worker": worker,
+                "phase": worker_phase,
+                "status": status,
+            })
+
         todo_path = os.path.join(REPO_DIR, "TODO.md")
         with open(todo_path, "r") as f:
-            content = f.read()
-        all_tasks, _completed_lines = _parse_all_tasks(content)
-        done = sum(1 for t in all_tasks if t["checked"])
-        pending_tasks = get_pending_tasks(REPO_DIR)
-        blocked = sum(1 for t in pending_tasks if t.get("blocked"))
-        task_summary = {
-            "total": len(all_tasks),
-            "completed": done,
-            "pending": len(all_tasks) - done,
-            "blocked": blocked,
-        }
+            for line in f:
+                if re.match(r"^\s*-\s+\[x\]", line):
+                    completed_count += 1
     except Exception:
         pass
 
-    return {"updated_at": now_str, "workers": workers, "tasks": task_summary}
+    in_progress = len([t for t in task_list if t["status"] == "in_progress"])
+    blocked = len([t for t in task_list if t["status"] == "blocked"])
+    pending = len([t for t in task_list if t["status"] == "pending"])
+    idle_workers = sum(1 for w in workers if w["status"] == "idle")
+    busy_workers = sum(1 for w in workers if w["status"] == "busy")
+
+    return {
+        "updated_at": now_str,
+        "workers": workers,
+        "tasks": task_list,
+        "summary": {
+            "total_tasks": completed_count + len(task_list),
+            "completed": completed_count,
+            "pending": pending,
+            "in_progress": in_progress,
+            "blocked": blocked,
+            "idle_workers": idle_workers,
+            "busy_workers": busy_workers,
+            "total_workers": len(workers),
+        },
+    }
 
 
 def _update_board():
