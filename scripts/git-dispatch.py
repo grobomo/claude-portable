@@ -115,6 +115,8 @@ _state = {
 _fleet_roster: dict = {}
 _fleet_roster_lock = threading.Lock()
 
+BOARD_FILE = os.environ.get("BOARD_FILE", "/data/board.json")
+
 # Workers launched by the dispatcher but not yet registered.
 # worker_name -> {launched_at: float}
 _launched_workers: dict = {}
@@ -1212,6 +1214,46 @@ def _fleet_monitor_tick(region: str):
         t.start()
 
 
+# ── Board aggregation ──────────────────────────────────────────────────────────
+
+
+def _build_board() -> dict:
+    """Build board.json from fleet roster. Called after each heartbeat."""
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workers = []
+    with _fleet_roster_lock:
+        for wid, info in _fleet_roster.items():
+            pipeline = info.get("pipeline", {})
+            task = info.get("task", {})
+            workers.append({
+                "worker_id": wid,
+                "status": info.get("status", "unknown"),
+                "healthy": info.get("healthy", True),
+                "phase": pipeline.get("stage", "idle"),
+                "phases_complete": pipeline.get("stages_complete", 0),
+                "task_num": task.get("task_num"),
+                "task_description": task.get("description", ""),
+                "task_branch": task.get("branch", ""),
+                "idle_seconds": info.get("idle_seconds", -1),
+                "maintenance": info.get("maintenance", False),
+                "last_heartbeat": info.get("last_heartbeat", ""),
+            })
+    return {"updated_at": now_str, "workers": workers}
+
+
+def _update_board():
+    """Write board.json to disk. Called after heartbeat updates roster."""
+    board = _build_board()
+    try:
+        board_dir = os.path.dirname(BOARD_FILE)
+        if board_dir:
+            os.makedirs(board_dir, exist_ok=True)
+        with open(BOARD_FILE, "w") as f:
+            json.dump(board, f, indent=2)
+    except Exception as e:
+        log.warning("Failed to write board.json: %s", e)
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1227,6 +1269,14 @@ class HealthHandler(BaseHTTPRequestHandler):
             with _leader_state_lock:
                 state["leader"] = dict(_leader_state)
             body = json.dumps(state, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/board":
+            board = _build_board()
+            body = json.dumps(board, indent=2).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -1459,6 +1509,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                     entry["status"] = "busy"
                 else:
                     entry["status"] = "idle"
+
+            # Update board.json after roster change
+            _update_board()
 
             resp = json.dumps({"status": "ok", "worker_id": worker_id}).encode()
             self.send_response(200)

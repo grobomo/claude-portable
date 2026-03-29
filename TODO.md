@@ -1,10 +1,11 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 208 tests passing. 59/75 tasks done.
-Completed this session: dispatcher dependency analysis (19 tests), conversation continuity
-test (6 tests), worker-pipeline.py CLI (19 tests), HTTP pipeline endpoints /status /phase
-/gate (9 tests), worker heartbeat loop + dispatcher /worker/heartbeat + staleness detection.
-Next unchecked: dispatcher board aggregation, ccc board, dispatcher interrupt, task templates. -->
+<!-- SESSION STATE (2026-03-29): 228 tests passing. 60/75 tasks done.
+Completed this session: worker heartbeat polling (16 tests), pipeline HTTP endpoints,
+worker-pipeline.py CLI, dispatcher dependency analysis, conversation continuity.
+Next unchecked: dispatcher board aggregation, ccc board, dispatcher interrupt, Neural Pipeline
+bootstrap, phase transition events, WHY phase, worker pushback, pipeline folder, reviewer,
+audit trail, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
