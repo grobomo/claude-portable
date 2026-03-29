@@ -349,9 +349,14 @@ class TestBoardEndpoint(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.port = 18083
-        gd.HEALTH_PORT = cls.port
-        cls.server = HTTPServer(("127.0.0.1", cls.port), gd.HealthHandler)
+        cls._orig_repo = gd.REPO_DIR
+        cls.tmpdir = tempfile.mkdtemp()
+        gd.REPO_DIR = cls.tmpdir
+        # Write a TODO.md so _build_board doesn't hang
+        with open(os.path.join(cls.tmpdir, "TODO.md"), "w") as f:
+            f.write("- [ ] Sample task\n")
+        cls.server = HTTPServer(("127.0.0.1", 0), gd.HealthHandler)
+        cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         time.sleep(0.1)
@@ -359,6 +364,9 @@ class TestBoardEndpoint(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.server.shutdown()
+        gd.REPO_DIR = cls._orig_repo
+        import shutil
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
     def setUp(self):
         with gd._fleet_roster_lock:

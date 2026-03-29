@@ -1,11 +1,11 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 228 tests passing. 60/75 tasks done.
-Completed this session: worker heartbeat polling (16 tests), pipeline HTTP endpoints,
-worker-pipeline.py CLI, dispatcher dependency analysis, conversation continuity.
-Next unchecked: dispatcher board aggregation, ccc board, dispatcher interrupt, Neural Pipeline
-bootstrap, phase transition events, WHY phase, worker pushback, pipeline folder, reviewer,
-audit trail, task templates. -->
+<!-- SESSION STATE (2026-03-29): 265 tests passing. 62/75 tasks done.
+Completed this session: board aggregation with full task/worker mapping (15 tests),
+ccc board command with color-coded phase display, enhanced _build_board with
+time_in_phase_s and per-task worker assignments.
+Next unchecked: dispatcher interrupt, Neural Pipeline bootstrap, phase transition events,
+WHY phase, worker pushback, pipeline folder, reviewer, audit trail, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
@@ -264,7 +264,7 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Dispatcher aggregates pipeline state from all workers into `/data/board.json`. Updated on every heartbeat received. Shows: all tasks, which worker has which task, what phase each is in, time in phase, blocked tasks, completed tasks.
   - PR title: "feat: dispatcher aggregates worker pipeline state into board"
 
-- [ ] `ccc board` command: reads board.json from dispatcher health endpoint (GET /board), renders a status bar showing each worker and its current phase. Inspired by Neural Pipeline TUI status bar. Color-coded: RESEARCH=blue, PLAN=cyan, TESTS=yellow, IMPLEMENT=green, VERIFY=magenta, PR=white, IDLE=gray.
+- [x] `ccc board` command: reads board.json from dispatcher health endpoint (GET /board), renders a status bar showing each worker and its current phase. Inspired by Neural Pipeline TUI status bar. Color-coded: RESEARCH=blue, PLAN=cyan, TESTS=yellow, IMPLEMENT=green, VERIFY=magenta, PR=white, IDLE=gray.
   - PR title: "feat: ccc board command with pipeline status visualization"
 
 - [ ] Dispatcher can interrupt workers via API: POST to worker's /interrupt endpoint. Used by `ccc interrupt worker-1` and by dispatcher when reprioritizing tasks.

@@ -1240,7 +1240,6 @@ def _build_board() -> dict:
             time_in_phase_s = None
             if phase_start:
                 try:
-                    import calendar
                     pt = calendar.timegm(time.strptime(phase_start, "%Y-%m-%dT%H:%M:%SZ"))
                     time_in_phase_s = int(now - pt)
                 except (ValueError, OverflowError):
@@ -1614,6 +1613,59 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 resp = json.dumps({"status": "not_found", "worker_id": worker_id}).encode()
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif self.path == "/worker/interrupt":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_id)
+            if not entry:
+                resp = json.dumps({"status": "not_found", "worker_id": worker_id}).encode()
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+            worker_ip = entry.get("ip", "")
+            if not worker_ip:
+                resp = json.dumps({"status": "no_ip", "worker_id": worker_id}).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+            # Forward interrupt to worker's health API
+            worker_port = 8081
+            forward_url = f"http://{worker_ip}:{worker_port}/interrupt"
+            try:
+                import urllib.request
+                fwd_req = urllib.request.Request(
+                    forward_url, data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(fwd_req, timeout=10) as fwd_resp:
+                    fwd_data = json.loads(fwd_resp.read().decode())
+                log.info("Interrupted worker %s via %s", worker_id, forward_url)
+                resp = json.dumps({
+                    "status": "interrupted",
+                    "worker_id": worker_id,
+                    "worker_response": fwd_data,
+                }).encode()
+                self.send_response(200)
+            except Exception as e:
+                log.warning("Failed to interrupt worker %s: %s", worker_id, e)
+                resp = json.dumps({
+                    "status": "error",
+                    "worker_id": worker_id,
+                    "error": str(e),
+                }).encode()
+                self.send_response(502)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(resp)))
             self.end_headers()
