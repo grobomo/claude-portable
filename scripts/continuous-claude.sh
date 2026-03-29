@@ -545,6 +545,13 @@ CRITICAL: Write the research summary to ${research_file} using the Write tool."
 
   run_stage_with_retry "RESEARCH" "1" "$research_prompt" "$stage_log" || return 1
 
+  # --- GATE 1: Research output must exist and be >500 chars ---
+  if [ ! -f "$research_file" ] || [ "$(wc -c < "$research_file" 2>/dev/null || echo 0)" -lt 500 ]; then
+    echo "  GATE 1 FAILED: Research output missing or too short (<500 chars)"
+    return 1
+  fi
+  echo "  GATE 1 PASSED: Research output exists ($(wc -c < "$research_file") chars)"
+
   # ===== STAGE 2: REVIEW =====
   local review_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
