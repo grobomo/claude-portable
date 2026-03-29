@@ -757,7 +757,7 @@ TDD pipeline stages completed:
 CRITICAL: You MUST merge the PR. If gh pr merge fails, try: gh pr merge --squash --delete-branch --admin
 CRITICAL: After merge, confirm with: git checkout ${BRANCH} && git pull origin ${BRANCH}"
 
-  run_stage_with_retry "PR" "6" "$pr_prompt" "$stage_log" || return 1
+  run_stage_with_retry "PR" "7" "$pr_prompt" "$stage_log" || return 1
 
   # Update meta: pipeline complete
   python3 -c "
