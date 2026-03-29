@@ -1404,6 +1404,42 @@ class HealthHandler(BaseHTTPRequestHandler):
             )
             t.start()
 
+        elif self.path == "/worker/heartbeat":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_id)
+                if entry is None:
+                    entry = _fleet_roster.setdefault(worker_id, {
+                        "status": "idle",
+                        "last_task": None,
+                        "completions": 0,
+                        "registered": True,
+                        "registered_at": now,
+                    })
+                entry["last_heartbeat"] = now
+                entry["last_report"] = now
+                entry["pipeline"] = payload.get("pipeline", {})
+                entry["task"] = payload.get("task", {})
+                entry["idle_seconds"] = payload.get("idle_seconds", -1)
+                entry["claude_running"] = payload.get("claude_running", False)
+                entry["maintenance"] = payload.get("maintenance", False)
+                pipeline = payload.get("pipeline", {})
+                stage = pipeline.get("stage", "idle")
+                if stage and stage not in ("idle", "unknown"):
+                    entry["status"] = "busy"
+                elif payload.get("claude_running"):
+                    entry["status"] = "busy"
+                else:
+                    entry["status"] = "idle"
+
+            resp = json.dumps({"status": "ok", "worker_id": worker_id}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         elif self.path == "/worker/deregister":
             worker_id = str(payload.get("worker_id", payload.get("name", "unknown")))
             with _fleet_roster_lock:
