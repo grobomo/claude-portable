@@ -1419,14 +1419,19 @@ class HealthHandler(BaseHTTPRequestHandler):
                     })
                 entry["last_heartbeat"] = now
                 entry["last_report"] = now
+                entry["missed_heartbeats"] = 0
+                entry["healthy"] = True
                 entry["pipeline"] = payload.get("pipeline", {})
                 entry["task"] = payload.get("task", {})
                 entry["idle_seconds"] = payload.get("idle_seconds", -1)
                 entry["claude_running"] = payload.get("claude_running", False)
                 entry["maintenance"] = payload.get("maintenance", False)
+                entry["uptime_seconds"] = payload.get("uptime_seconds", 0)
                 pipeline = payload.get("pipeline", {})
                 stage = pipeline.get("stage", "idle")
-                if stage and stage not in ("idle", "unknown"):
+                if payload.get("maintenance"):
+                    entry["status"] = "maintenance"
+                elif stage and stage not in ("idle", "unknown"):
                     entry["status"] = "busy"
                 elif payload.get("claude_running"):
                     entry["status"] = "busy"
