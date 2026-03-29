@@ -668,7 +668,7 @@ CRITICAL: Use the detected framework '${test_framework}'. If no framework was de
 
   run_stage_with_retry "TESTS" "4" "$tests_prompt" "$stage_log" || return 1
 
-  # ===== STAGE 4: IMPLEMENT =====
+  # ===== STAGE 5: IMPLEMENT =====
   local implement_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
