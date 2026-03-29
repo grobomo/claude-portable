@@ -1,0 +1,18 @@
+name: update_iam_api_keys
+description: Update API key
+method: PATCH
+endpoint: /v3.0/iam/apiKeys/{id}
+template: patch_update
+tags:
+- API Keys
+params:
+  required:
+  - name: id
+    type: string
+    description: The unique identifier of the API key
+  optional:
+  - name: If-Match
+    type: string
+    description: 'The ETag of the resource you want to update. Note: The resource
+      is updated only if the provided value matches the ETag of the resource.'
+template_config: {}

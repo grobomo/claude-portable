@@ -1,0 +1,21 @@
+name: list_container_security_amazon_ecs_image_occurrences
+description: Get image occurrences (Amazon ECS)
+method: GET
+endpoint: /v3.0/containerSecurity/amazonEcsImageOccurrences
+template: single_get
+tags:
+- Occurrences
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: "The filter for retrieving a subset of the ECS Images Occurrences\
+      \ List. Include this parameter in every request that generates paginated output\n\
+      \nSupported fields:\n  * `imageId` - The  The ID of the container image\n\n\
+      Supported operators:\n* `eq` - Operator \"equal to\"\n* `not` - Operator \"\
+      not\"\n* `or` - Operator \"or\"\n"
+  - name: null
+    type: string
+    description: ''
+template_config: {}

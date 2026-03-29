@@ -1,0 +1,11 @@
+name: oat_data_pipelines
+description: Registers a customer to the Observed Attack Techniques data pipeline.
+method: POST
+endpoint: /v3.0/oat/dataPipelines
+template: post_action
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

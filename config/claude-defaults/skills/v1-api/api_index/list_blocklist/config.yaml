@@ -1,0 +1,29 @@
+name: list_blocklist
+endpoint: /v3.0/threatintel/suspiciousObjects
+method: GET
+template: standard_list
+description: List suspicious objects blocklist
+params:
+  required: []
+  optional:
+  - name: ioc_type
+    type: str
+    description: 'Filter: domain, ip, url, sha1, sha256'
+    default: ''
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- threat_intel
+- ioc_management

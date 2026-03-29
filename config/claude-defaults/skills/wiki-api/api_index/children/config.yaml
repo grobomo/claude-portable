@@ -1,0 +1,17 @@
+name: children
+description: List child pages of a parent page
+method: GET
+endpoint: /rest/api/content/{page_id}/child/page
+template: children
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Parent page ID or URL
+
+template_config: {}
+
+tags:
+  - read
+  - navigation

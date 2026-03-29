@@ -1,0 +1,11 @@
+name: response_endpoint_run_script
+description: Run custom script
+method: POST
+endpoint: /v3.0/response/endpoints/runScript
+template: response_action
+tags:
+- Custom Script
+params:
+  required: []
+  optional: []
+template_config: {}

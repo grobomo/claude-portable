@@ -1,0 +1,17 @@
+name: delete_user_property
+description: Delete user property
+method: DELETE
+endpoint: /wiki/rest/api/user/{userId}/property/{key}
+template: delete
+tags:
+- User properties
+params:
+  required:
+  - name: userId
+    type: string
+    description: 'Path parameter: userId'
+  - name: key
+    type: string
+    description: 'Path parameter: key'
+  optional: []
+template_config: {}

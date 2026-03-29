@@ -1,0 +1,26 @@
+name: get_local_app_vulns
+endpoint: /v3.0/asrm/attackSurfaceLocalApplications/{app_id}/riskIndicators
+method: GET
+template: standard_list
+description: Get application vulnerabilities
+params:
+  required:
+  - name: app_id
+    type: str
+    description: Application ID
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 1000
+    type: int
+  date_params: null
+  filter_style: odata
+  order_by: latestRiskScore desc
+categories:
+- risk_management
+- asset_inventory

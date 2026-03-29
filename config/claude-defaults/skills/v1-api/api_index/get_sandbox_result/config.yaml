@@ -1,0 +1,18 @@
+name: get_sandbox_result
+endpoint: /v3.0/sandbox/analysisResults/{analysis_id}
+method: GET
+template: single_get
+description: Get sandbox analysis result
+params:
+  required:
+  - name: analysis_id
+    type: str
+    description: Analysis ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- threat_intel
+- malware_analysis

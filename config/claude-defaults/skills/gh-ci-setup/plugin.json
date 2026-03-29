@@ -1,0 +1,24 @@
+{
+  "name": "gh-ci-setup",
+  "version": "1.0.0",
+  "description": "GitHub Actions CI with auto-fix via Claude Code and email notification on failure",
+  "author": {
+    "name": "Joel Ginsberg"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ci",
+    "github-actions",
+    "testing",
+    "auto-fix",
+    "claude-code",
+    "screenshots",
+    "playwright",
+    "self-healing"
+  ],
+  "tags": [
+    "ci-cd",
+    "testing",
+    "automation"
+  ]
+}

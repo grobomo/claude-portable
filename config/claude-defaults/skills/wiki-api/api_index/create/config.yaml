@@ -1,0 +1,27 @@
+name: create
+description: Create a new Confluence page
+method: POST
+endpoint: /rest/api/content
+template: create
+
+params:
+  required:
+    - name: space_key
+      type: string
+      description: Space key (e.g., MYSPACE or ~username for personal space)
+    - name: title
+      type: string
+      description: Page title
+    - name: content
+      type: string
+      description: Page content (HTML or simple text)
+  optional:
+    - name: parent_id
+      type: string
+      description: Parent page ID for nested pages
+
+template_config: {}
+
+tags:
+  - write
+  - create

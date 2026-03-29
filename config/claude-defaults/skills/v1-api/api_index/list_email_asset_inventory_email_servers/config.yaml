@@ -1,0 +1,50 @@
+name: list_email_asset_inventory_email_servers
+description: Get managed email servers
+method: GET
+endpoint: /v3.0/emailAssetInventory/emailServers
+template: standard_list
+tags:
+- Email Asset Inventory
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of email servers returned on each page. Supported range:
+      10-1000
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter used to retrieve a subset of email servers from a generated
+      paginated list.
+
+
+      Supported fields:
+
+      | Field | Description | Supported values |
+
+      |-----|-----|-----|
+
+      | `onPremisesProtectionSolution` | The domain''s inbound configuration status.
+      | ''ScanMail for Microsoft Exchange'', ''Deep Discovery Email Inspector'', ''InterScan
+      Messaging Security Virtual Appliance'' |
+
+
+      Supported operators:
+
+      | Operator | Description | Notes |
+
+      |-----|-----|-----|
+
+      | `eq` | Operator "equal to" | - |
+
+
+      Only support `eq` operator.
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

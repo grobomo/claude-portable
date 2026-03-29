@@ -1,0 +1,17 @@
+name: get_content_restriction_by_operation
+description: Get restrictions for operation
+method: GET
+endpoint: /wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}
+template: read
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: operationKey
+    type: string
+    description: 'Path parameter: operationKey'
+  optional: []
+template_config: {}

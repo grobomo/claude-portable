@@ -1,0 +1,15 @@
+{
+  "name": "apex-central-api",
+  "version": "1.0.0",
+  "description": "Trend Micro Apex Central API for endpoint management, threat detection, and security operations",
+  "author": "joel",
+  "license": "MIT",
+  "tags": ["api", "apex-central", "trendmicro", "endpoint", "security", "edr"],
+  "repository": "https://github.com/${TMEMU_ACCOUNT}/skill-apex-central-api",
+  "dependencies": [],
+  "env": {
+    "APEX_CENTRAL_URL": "Apex Central server URL",
+    "APEX_CENTRAL_APP_ID": "Application ID from console",
+    "APEX_CENTRAL_API_KEY": "API Key from console"
+  }
+}

@@ -1,0 +1,11 @@
+name: response_tasks_cancel
+description: Cancel response task
+method: POST
+endpoint: /v3.0/response/tasks/cancel
+template: response_action
+tags:
+- Common
+params:
+  required: []
+  optional: []
+template_config: {}

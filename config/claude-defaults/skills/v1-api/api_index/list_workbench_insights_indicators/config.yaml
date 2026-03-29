@@ -1,0 +1,21 @@
+name: list_workbench_insights_indicators
+description: Get insight details (indicators)
+method: GET
+endpoint: /v3.0/workbench/insights/{id}/indicators
+template: standard_list
+tags:
+- Insight
+params:
+  required:
+  - name: id
+    type: string
+    description: The Workbench insight ID.
+  optional:
+  - name: top
+    type: integer
+    description: The number of records displayed on a page.
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

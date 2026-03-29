@@ -1,0 +1,11 @@
+name: cam_aws_accounts_generate_cfn_template_links
+description: Generate AWS CloudFormation template
+method: POST
+endpoint: /v3.0/cam/awsAccounts/generateCfnTemplateLinks
+template: post_action
+tags:
+- AWS accounts
+params:
+  required: []
+  optional: []
+template_config: {}

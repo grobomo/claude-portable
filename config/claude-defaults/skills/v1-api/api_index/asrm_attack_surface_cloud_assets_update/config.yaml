@@ -1,0 +1,11 @@
+name: asrm_attack_surface_cloud_assets_update
+description: Update cloud asset tags
+method: POST
+endpoint: /v3.0/asrm/attackSurfaceCloudAssets/update
+template: post_action
+tags:
+- Attack Surface Discovery
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: create_contentbody_convert_async_bulk_tasks
+description: Create asynchronous content body conversion tasks in bulk
+method: POST
+endpoint: /wiki/rest/api/contentbody/convert/async/bulk/tasks
+template: create
+tags:
+- Content body
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: update_dmm_exceptions
+description: Update a custom exception
+method: PATCH
+endpoint: /v3.0/dmm/exceptions/{id}
+template: patch_update
+tags:
+- Exceptions
+params:
+  required:
+  - name: id
+    type: string
+    description: The unique identifier of the exception
+  optional: []
+template_config: {}

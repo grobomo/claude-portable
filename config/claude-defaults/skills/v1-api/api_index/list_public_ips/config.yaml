@@ -1,0 +1,27 @@
+name: list_public_ips
+endpoint: /v3.0/asrm/attackSurfacePublicIps
+method: GET
+template: standard_list
+description: List public IP addresses
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 20
+  - name: risk_score
+    type: int
+    description: Min risk score
+    default: 0
+template_config:
+  pagination:
+    param: top
+    max: 1000
+    type: int
+  date_params: null
+  filter_style: odata
+  order_by: latestRiskScore desc
+categories:
+- risk_management
+- asset_inventory

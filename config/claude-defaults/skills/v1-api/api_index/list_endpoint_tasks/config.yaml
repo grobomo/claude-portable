@@ -1,0 +1,29 @@
+name: list_endpoint_tasks
+endpoint: /v3.0/endpointSecurity/tasks
+method: GET
+template: standard_list
+description: List endpoint tasks
+params:
+  required: []
+  optional:
+  - name: days
+    type: int
+    description: Look back N days
+    default: 7
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- endpoint_management
+- agent_management

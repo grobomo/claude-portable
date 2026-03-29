@@ -1,0 +1,14 @@
+name: list_content_state
+description: Get content state
+method: GET
+endpoint: /wiki/rest/api/content/{id}/state
+template: search
+tags:
+- Content states
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: update_dmm_models
+description: Enable or disable a detection model
+method: PATCH
+endpoint: /v3.0/dmm/models/{id}
+template: patch_update
+tags:
+- Detection Models
+params:
+  required:
+  - name: id
+    type: string
+    description: ''
+  optional: []
+template_config: {}

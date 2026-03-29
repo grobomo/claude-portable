@@ -1,0 +1,85 @@
+name: list_case_management_cases_contents
+description: Get case contents
+method: GET
+endpoint: /v3.0/caseManagement/cases/{id}/contents
+template: standard_list
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of case contents.
+
+
+      Supported fields:
+
+      |Field|Description|Possible values|
+
+      |---|---|---|
+
+      |creatorId|Creator Id of the case content|any string value|
+
+
+      Supported operators:
+
+      * ''eq'' - Abbreviation of the operator ''equal to''
+
+      * ''and'' - Logical operator ''and''
+
+      * ''or'' - Logical operator ''or''
+
+      * ''not'' - Logical operator ''not''
+
+      * ''( )'' - Symbols for grouping operands with their correct operator.
+
+      '
+  - name: top
+    type: integer
+    description: The number of case notes retrieved per page. If no value is specified,
+      the request retrieves a maximum of the top 50 notes.
+  - name: startDateTime
+    type: string
+    description: The date and time of the start of data retrieval in ISO 8601 format
+  - name: endDateTime
+    type: string
+    description: The date and time of the end of data retrieval in ISO 8601 format
+  - name: dateTimeTarget
+    type: string
+    description: A parameter that allows you to sort by either created date or updated
+      date
+  - name: orderBy
+    type: string
+    description: 'The fields by which the results are sorted. You can indicate multiple
+      fields separated by commas (`,`).
+
+
+      By default, the system returns records in descending order. To return records
+      in ascending order, add ''asc'' after the parameter name.
+
+
+      Available fields:
+
+      * createdDateTime
+
+
+      Supported operators:
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+      '
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

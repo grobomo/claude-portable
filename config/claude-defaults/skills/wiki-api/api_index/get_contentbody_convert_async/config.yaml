@@ -1,0 +1,15 @@
+name: get_contentbody_convert_async
+description: Get asynchronously converted content body from the id or the current
+  status of the task.
+method: GET
+endpoint: /wiki/rest/api/contentbody/convert/async/{id}
+template: read
+tags:
+- Content body
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

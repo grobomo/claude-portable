@@ -1,0 +1,11 @@
+name: delete_response_suspicious_objects_delete
+description: Remove from block list
+method: POST
+endpoint: /v3.0/response/suspiciousObjects/delete
+template: response_action
+tags:
+- Suspicious Objects
+params:
+  required: []
+  optional: []
+template_config: {}

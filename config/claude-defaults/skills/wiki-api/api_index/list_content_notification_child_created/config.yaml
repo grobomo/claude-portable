@@ -1,0 +1,14 @@
+name: list_content_notification_child_created
+description: Get watches for page
+method: GET
+endpoint: /wiki/rest/api/content/{id}/notification/child-created
+template: children
+tags:
+- Content watches
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

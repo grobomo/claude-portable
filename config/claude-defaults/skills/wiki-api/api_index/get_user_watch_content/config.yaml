@@ -1,0 +1,14 @@
+name: get_user_watch_content
+description: Get content watch status
+method: GET
+endpoint: /wiki/rest/api/user/watch/content/{contentId}
+template: read
+tags:
+- Content watches
+params:
+  required:
+  - name: contentId
+    type: string
+    description: 'Path parameter: contentId'
+  optional: []
+template_config: {}

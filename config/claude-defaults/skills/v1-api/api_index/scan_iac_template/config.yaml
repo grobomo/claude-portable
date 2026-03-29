@@ -1,0 +1,22 @@
+name: scan_iac_template
+endpoint: /v3.0/cloudPosture/templateScanner/scan
+method: POST
+template: post_action
+description: Scan IaC template for issues
+params:
+  required:
+  - name: template_type
+    type: str
+    description: 'Type: cloudformation-template, terraform-template'
+  - name: content
+    type: str
+    description: Template content
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+  body_builder: iac_scan
+categories:
+- cloud_security
+- compliance

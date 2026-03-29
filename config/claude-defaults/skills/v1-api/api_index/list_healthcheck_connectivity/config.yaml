@@ -1,0 +1,11 @@
+name: list_healthcheck_connectivity
+description: Check availability of API service
+method: GET
+endpoint: /v3.0/healthcheck/connectivity
+template: single_get
+tags:
+- Connectivity
+params:
+  required: []
+  optional: []
+template_config: {}

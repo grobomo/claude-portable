@@ -1,0 +1,11 @@
+name: list_audit_export
+description: Export audit records
+method: GET
+endpoint: /wiki/rest/api/audit/export
+template: search
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

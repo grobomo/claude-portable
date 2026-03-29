@@ -1,0 +1,11 @@
+name: update_settings_lookandfeel
+description: Select look and feel settings
+method: PUT
+endpoint: /wiki/rest/api/settings/lookandfeel
+template: update
+tags:
+- Settings
+params:
+  required: []
+  optional: []
+template_config: {}

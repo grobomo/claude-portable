@@ -1,0 +1,23 @@
+name: get_relation_to_from
+description: Find source entities related to a target entity
+method: GET
+endpoint: /wiki/rest/api/relation/{relationName}/to/{targetType}/{targetKey}/from/{sourceType}
+template: read
+tags:
+- Relation
+params:
+  required:
+  - name: relationName
+    type: string
+    description: 'Path parameter: relationName'
+  - name: targetType
+    type: string
+    description: 'Path parameter: targetType'
+  - name: targetKey
+    type: string
+    description: 'Path parameter: targetKey'
+  - name: sourceType
+    type: string
+    description: 'Path parameter: sourceType'
+  optional: []
+template_config: {}

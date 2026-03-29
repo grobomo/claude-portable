@@ -1,0 +1,14 @@
+name: get_iam_api_keys
+description: Get API key
+method: GET
+endpoint: /v3.0/iam/apiKeys/{id}
+template: single_get
+tags:
+- API Keys
+params:
+  required:
+  - name: id
+    type: string
+    description: The unique identifier of the API key
+  optional: []
+template_config: {}

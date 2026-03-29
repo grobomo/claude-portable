@@ -1,0 +1,53 @@
+name: list_sandbox_analysis_results
+description: Get list of analysis results
+method: GET
+endpoint: /v3.0/sandbox/analysisResults
+template: standard_list
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional:
+  - name: startDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the start of the data
+      retrieval time range.
+
+      If no value is specified, ''startDateTime'' defaults to 180 days before the
+      time the request is made.
+
+      '
+  - name: endDateTime
+    type: string
+    description: "Timestamp in ISO 8601 format that indicates the end of the data\
+      \ retrieval time range. \nIf no value is specified, 'endDateTime' defaults to\
+      \ the time the request is made.\n"
+  - name: orderBy
+    type: string
+    description: "Parameter that allows you to sort the retrieved elements in ascending\
+      \ or descending order. If no order is specified, the elements are shown in ascending\
+      \ order. Supported fields and operators: \n* analysisCompletionDateTime\n* riskLevel\n"
+  - name: filter
+    type: string
+    description: "Filter for retrieving a subset of the analysis results list. Supported\
+      \ fields and operators: \n* 'sha1' - SHA-1 hash value of an object \n* 'sha256'\
+      \ - SHA-256 hash value of an object \n* 'md5' - MD5 hash value of an object\
+      \ \n* 'riskLevel' - The risk level assigned to the object by the sandbox. Possible\
+      \ values: 'high', 'medium', 'low', 'noRisk'\n* 'type' - Object type. Possible\
+      \ values: 'file', 'url'\n* 'id' - Unique alphanumeric string that identifies\
+      \ the analysis results of a submission\n* 'eq' - Abbreviation of the operator\
+      \ 'equal to' \n* 'and' - Operator 'and' \n* 'or' - Operator 'or' \n* 'not' -\
+      \ Operator 'not' \n* '( )' - Symbols for grouping operands with their correct\
+      \ operator.\n"
+  - name: top
+    type: integer
+    description: Number of records displayed on a page.
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

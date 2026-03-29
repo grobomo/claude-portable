@@ -1,0 +1,11 @@
+name: endpoint_security_endpoint_export
+description: Export information about endpoints
+method: POST
+endpoint: /v3.0/endpointSecurity/endpoints/export
+template: post_action
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional: []
+template_config: {}

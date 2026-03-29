@@ -1,0 +1,17 @@
+name: get_workbench_alerts_notes
+description: Get alert note
+method: GET
+endpoint: /v3.0/workbench/alerts/{alertId}/notes/{id}
+template: single_get
+tags:
+- Workbench notes
+params:
+  required:
+  - name: alertId
+    type: string
+    description: Unique alphanumeric string that identifies a Workbench alert.
+  - name: id
+    type: integer
+    description: Numeric string that identifies a Workbench alert note.
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: delete_content_page_tree
+description: Delete page tree
+method: DELETE
+endpoint: /wiki/rest/api/content/{id}/pageTree
+template: delete
+tags:
+- Experimental
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

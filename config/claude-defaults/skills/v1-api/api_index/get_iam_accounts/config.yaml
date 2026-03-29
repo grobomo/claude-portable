@@ -1,0 +1,14 @@
+name: get_iam_accounts
+description: Get a specific user, group or invitation
+method: GET
+endpoint: /v3.0/iam/accounts/{id}
+template: single_get
+tags:
+- Accounts (Foundation Services release)
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

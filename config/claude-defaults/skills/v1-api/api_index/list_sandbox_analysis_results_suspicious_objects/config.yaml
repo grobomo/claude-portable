@@ -1,0 +1,14 @@
+name: list_sandbox_analysis_results_suspicious_objects
+description: Download suspicious object list
+method: GET
+endpoint: /v3.0/sandbox/analysisResults/{id}/suspiciousObjects
+template: single_get
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

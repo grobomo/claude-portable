@@ -1,0 +1,11 @@
+name: delete_threatintel_suspicious_object_exceptions_delete
+description: Remove from Exception list
+method: POST
+endpoint: /v3.0/threatintel/suspiciousObjectExceptions/delete
+template: post_action
+tags:
+- Suspicious Object Exception List
+params:
+  required: []
+  optional: []
+template_config: {}

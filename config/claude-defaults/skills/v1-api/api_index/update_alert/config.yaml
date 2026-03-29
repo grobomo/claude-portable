@@ -1,0 +1,27 @@
+name: update_alert
+endpoint: /v3.0/workbench/alerts/{alert_id}
+method: PATCH
+template: patch_update
+description: Update alert status
+params:
+  required:
+  - name: alert_id
+    type: str
+    description: Alert ID
+  - name: status
+    type: str
+    description: 'New status: New, In Progress, Closed'
+  optional:
+  - name: result
+    type: str
+    description: Investigation result
+    default: ''
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+  body_builder: alert_update
+categories:
+- alerts
+- investigation
+- soc_operations

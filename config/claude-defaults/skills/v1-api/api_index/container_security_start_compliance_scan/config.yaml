@@ -1,0 +1,11 @@
+name: container_security_start_compliance_scan
+description: Start a compliance scan
+method: POST
+endpoint: /v3.0/containerSecurity/startComplianceScan
+template: post_action
+tags:
+- Compliance Scans
+params:
+  required: []
+  optional: []
+template_config: {}

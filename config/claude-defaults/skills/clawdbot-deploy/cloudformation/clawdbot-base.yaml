@@ -1,0 +1,783 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Clawdbot Serverless Deployment - Cost-optimized Claude chat gateway
+
+  This template deploys:
+  - Lambda orchestrator for EC2 lifecycle management
+  - S3 bucket for persistent state across sessions
+  - EC2 Spot instance (launched on-demand by Lambda)
+  - CloudWatch schedules for active hours and idle detection
+  - Security group restricted to deployer's IP only
+
+  Estimated cost: $2-8/month depending on usage pattern
+
+# =============================================================================
+# PARAMETERS
+# =============================================================================
+Parameters:
+
+  # ---------------------------------------------------------------------------
+  # REQUIRED - User must provide
+  # ---------------------------------------------------------------------------
+  AllowedIP:
+    Type: String
+    Description: |
+      Your current public IP for SSH access (CIDR format).
+      Get your IP: curl -s ifconfig.me
+      Example: 203.0.113.50/32
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+    ConstraintDescription: Must be valid CIDR (e.g., 203.0.113.50/32)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair for SSH access
+
+  # ---------------------------------------------------------------------------
+  # OPTIONAL - Sensible defaults provided
+  # ---------------------------------------------------------------------------
+  InstanceType:
+    Type: String
+    Default: t4g.micro
+    Description: |
+      EC2 instance type. ARM (t4g) recommended for cost.
+      t4g.micro: 1GB RAM, 2 vCPU, ~$3/mo Spot
+      t4g.small: 2GB RAM, 2 vCPU, ~$6/mo Spot (if running heavy workloads)
+    AllowedValues:
+      - t4g.nano
+      - t4g.micro
+      - t4g.small
+      - t3.micro
+      - t3.small
+
+  UseSpotInstance:
+    Type: String
+    Default: 'true'
+    Description: Use Spot pricing (~70% cheaper, may be interrupted)
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  ActiveHoursStart:
+    Type: Number
+    Default: 7
+    MinValue: 0
+    MaxValue: 23
+    Description: Hour (UTC) to auto-start instance (0-23)
+
+  ActiveHoursEnd:
+    Type: Number
+    Default: 23
+    MinValue: 0
+    MaxValue: 23
+    Description: Hour (UTC) to auto-stop instance (0-23)
+
+  IdleTimeoutMinutes:
+    Type: Number
+    Default: 30
+    MinValue: 5
+    MaxValue: 120
+    Description: Minutes of idle before auto-shutdown
+
+  EnableScheduledStart:
+    Type: String
+    Default: 'true'
+    Description: Auto-start instance during active hours
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  VpcId:
+    Type: String
+    Default: ''
+    Description: VPC ID (leave empty to use default VPC)
+
+  SubnetId:
+    Type: String
+    Default: ''
+    Description: Subnet ID (leave empty to auto-select public subnet)
+
+# =============================================================================
+# CONDITIONS
+# =============================================================================
+Conditions:
+  UseDefaultVpc: !Equals [!Ref VpcId, '']
+  UseDefaultSubnet: !Equals [!Ref SubnetId, '']
+  EnableSchedule: !Equals [!Ref EnableScheduledStart, 'true']
+  UseSpot: !Equals [!Ref UseSpotInstance, 'true']
+
+# =============================================================================
+# RESOURCES
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # S3 BUCKET - Persistent storage across EC2 sessions
+  # ---------------------------------------------------------------------------
+  # Why S3?
+  # - EC2 Spot instances can be terminated anytime
+  # - State must survive instance replacement
+  # - Cheap: ~$0.02/GB/month, we use <100MB
+  # ---------------------------------------------------------------------------
+  StateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'clawdbot-state-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          # Clean up old conversation logs after 30 days
+          - Id: CleanupOldLogs
+            Status: Enabled
+            Prefix: logs/
+            ExpirationInDays: 30
+      Tags:
+        - Key: Purpose
+          Value: Clawdbot state persistence
+
+  # ---------------------------------------------------------------------------
+  # IAM ROLE - Lambda Orchestrator
+  # ---------------------------------------------------------------------------
+  # Permissions needed:
+  # - EC2: Start/stop/describe instances, request Spot
+  # - S3: Read bucket (for config validation)
+  # - SSM: Get parameters (for instance config)
+  # - CloudWatch: Put metrics (for monitoring)
+  # - Logs: Write Lambda logs
+  # ---------------------------------------------------------------------------
+  OrchestratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-orchestrator-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: OrchestratorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # EC2 lifecycle management
+              - Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:RequestSpotInstances
+                  - ec2:CancelSpotInstanceRequests
+                  - ec2:CreateTags
+                Resource: '*'
+              # Allow describe on all (needed for lookups)
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeSpotInstanceRequests
+                  - ec2:DescribeImages
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                Resource: '*'
+              # S3 state bucket access
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt StateBucket.Arn
+                  - !Sub '${StateBucket.Arn}/*'
+              # SSM parameter access - our config
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/clawdbot/*'
+              # SSM parameter access - public AWS AMI parameters
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*'
+              # IAM PassRole for EC2
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt InstanceRole.Arn
+              # Create EC2 Spot service-linked role (first-time Spot use)
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/*
+                Condition:
+                  StringLike:
+                    'iam:AWSServiceName': spot.amazonaws.com
+
+  # ---------------------------------------------------------------------------
+  # IAM ROLE - EC2 Instance
+  # ---------------------------------------------------------------------------
+  # Permissions needed:
+  # - S3: Read/write state bucket (config, conversations, integrations)
+  # - SSM: Session Manager access (backup SSH method)
+  # - CloudWatch: Put metrics (health monitoring)
+  # ---------------------------------------------------------------------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # SSM Session Manager (backup access method)
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: InstancePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 state bucket - full access to own prefix
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt StateBucket.Arn
+                  - !Sub '${StateBucket.Arn}/*'
+              # CloudWatch metrics
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'cloudwatch:namespace': 'Clawdbot'
+              # Spot interruption notice (for graceful shutdown)
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeSpotInstanceRequests
+                Resource: '*'
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-instance-profile'
+      Roles:
+        - !Ref InstanceRole
+
+  # ---------------------------------------------------------------------------
+  # SECURITY GROUP
+  # ---------------------------------------------------------------------------
+  # Why restricted:
+  # - SSH only from deployer's IP (security)
+  # - No inbound ports for Clawdbot (uses outbound connections)
+  # - Dashboard access via SSH tunnel only
+  # ---------------------------------------------------------------------------
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-sg'
+      GroupDescription: !Sub 'Clawdbot access - restricted to ${AllowedIP}'
+      # Note: Omit VpcId to use default VPC; specify VpcId parameter for custom VPC
+      VpcId: !If [UseDefaultVpc, !Ref 'AWS::NoValue', !Ref VpcId]
+      SecurityGroupIngress:
+        # SSH from allowed IP only
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedIP
+          Description: SSH from deployer IP
+      # Note: Default SG allows all outbound, no explicit egress needed
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-sg'
+
+  # ---------------------------------------------------------------------------
+  # SSM PARAMETERS - Instance configuration
+  # ---------------------------------------------------------------------------
+  # Why SSM?
+  # - Lambda needs to know instance config at runtime
+  # - Avoids hardcoding in Lambda code
+  # - Easy to update without redeploying Lambda
+  # ---------------------------------------------------------------------------
+  ConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /clawdbot/config
+      Type: String
+      Description: Clawdbot instance configuration
+      Value: !Sub |
+        {
+          "stack_name": "${AWS::StackName}",
+          "bucket": "${StateBucket}",
+          "instance_type": "${InstanceType}",
+          "use_spot": ${UseSpotInstance},
+          "security_group": "${SecurityGroup.GroupId}",
+          "instance_profile": "${InstanceProfile.Arn}",
+          "key_pair": "${KeyPairName}",
+          "idle_timeout_minutes": ${IdleTimeoutMinutes},
+          "allowed_ip": "${AllowedIP}"
+        }
+
+  # ---------------------------------------------------------------------------
+  # LAMBDA FUNCTION - Orchestrator
+  # ---------------------------------------------------------------------------
+  # Why Lambda?
+  # - Runs only when needed (schedule triggers, manual invocation)
+  # - No cost when idle
+  # - Can start/stop EC2 based on rules
+  # ---------------------------------------------------------------------------
+  OrchestratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-orchestrator'
+      Description: Manages Clawdbot EC2 instance lifecycle
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt OrchestratorRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          STACK_NAME: !Ref AWS::StackName
+          CONFIG_PARAM: /clawdbot/config
+          STATE_BUCKET: !Ref StateBucket
+      Code:
+        ZipFile: |
+          """
+          Clawdbot EC2 Orchestrator Lambda
+
+          Actions:
+          - start: Launch EC2 Spot instance
+          - stop: Gracefully terminate instance
+          - status: Return current state and IP
+          - scheduled_start: Called by CloudWatch for active hours
+          - scheduled_stop: Called by CloudWatch for end of active hours
+          - idle_check: Check CPU and shutdown if idle
+          """
+          import json
+          import os
+          import boto3
+          from datetime import datetime, timedelta
+
+          ec2 = boto3.client('ec2')
+          ssm = boto3.client('ssm')
+          s3 = boto3.client('s3')
+          cloudwatch = boto3.client('cloudwatch')
+
+          STACK_NAME = os.environ['STACK_NAME']
+          CONFIG_PARAM = os.environ['CONFIG_PARAM']
+          STATE_BUCKET = os.environ['STATE_BUCKET']
+
+          # Amazon Linux 2023 ARM64 AMI (latest)
+          AMI_SSM_PARAM = '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64'
+
+
+          def get_config():
+              """Load configuration from SSM Parameter Store."""
+              response = ssm.get_parameter(Name=CONFIG_PARAM)
+              return json.loads(response['Parameter']['Value'])
+
+
+          def get_instance():
+              """Find running Clawdbot instance."""
+              response = ec2.describe_instances(
+                  Filters=[
+                      {'Name': 'tag:ManagedBy', 'Values': [STACK_NAME]},
+                      {'Name': 'instance-state-name', 'Values': ['pending', 'running', 'stopping']}
+                  ]
+              )
+              for reservation in response['Reservations']:
+                  for instance in reservation['Instances']:
+                      return instance
+              return None
+
+
+          def get_ami_id():
+              """Get latest Amazon Linux 2023 ARM64 AMI."""
+              response = ssm.get_parameter(Name=AMI_SSM_PARAM)
+              return response['Parameter']['Value']
+
+
+          def get_userdata(config):
+              """Generate EC2 userdata script."""
+              return f'''#!/bin/bash
+          set -ex
+
+          # Log everything
+          exec > >(tee /var/log/clawdbot-bootstrap.log) 2>&1
+
+          echo "=== Clawdbot Bootstrap Starting ==="
+          date
+
+          # Install Node.js 22 (required for Clawdbot)
+          curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+          dnf install -y nodejs git jq
+
+          # Create clawdbot user
+          useradd -m -s /bin/bash clawdbot || true
+
+          # Install Clawdbot globally
+          npm install -g clawdbot@latest
+
+          # Create directories
+          mkdir -p /home/clawdbot/.clawdbot
+          chown -R clawdbot:clawdbot /home/clawdbot
+
+          # Sync config from S3
+          aws s3 sync s3://{config['bucket']}/config/ /home/clawdbot/.clawdbot/ --quiet || true
+          chown -R clawdbot:clawdbot /home/clawdbot/.clawdbot
+
+          # Run Clawdbot onboard to create initial config
+          sudo -u clawdbot clawdbot onboard --non-interactive --accept-risk --mode local || true
+
+          # Create systemd service (using gateway run, not start, to avoid systemd --user issues)
+          cat > /etc/systemd/system/clawdbot.service << 'EOFSERVICE'
+          [Unit]
+          Description=Clawdbot Gateway
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=clawdbot
+          WorkingDirectory=/home/clawdbot
+          ExecStart=/usr/bin/clawdbot gateway run --allow-unconfigured
+          ExecStopPost=/bin/bash -c 'aws s3 sync /home/clawdbot/.clawdbot/ s3://{config['bucket']}/config/'
+          Restart=always
+          RestartSec=10
+          Environment=NODE_ENV=production
+
+          [Install]
+          WantedBy=multi-user.target
+          EOFSERVICE
+
+          # Create cron.d directory (doesn't exist by default on AL2023)
+          mkdir -p /etc/cron.d
+
+          # Create S3 sync cron (every 5 minutes)
+          cat > /etc/cron.d/clawdbot-sync << 'EOFCRON'
+          */5 * * * * clawdbot aws s3 sync /home/clawdbot/.clawdbot/ s3://{config['bucket']}/config/ --quiet
+          EOFCRON
+
+          # Create shutdown hook for Spot interruption
+          cat > /usr/local/bin/clawdbot-shutdown.sh << 'EOFSHUTDOWN'
+          #!/bin/bash
+          echo "Syncing state to S3 before shutdown..."
+          sudo -u clawdbot aws s3 sync /home/clawdbot/.clawdbot/ s3://{config['bucket']}/config/
+          systemctl stop clawdbot
+          EOFSHUTDOWN
+          chmod +x /usr/local/bin/clawdbot-shutdown.sh
+
+          # Monitor for Spot interruption
+          cat > /etc/systemd/system/spot-interruption-handler.service << 'EOFSPOT'
+          [Unit]
+          Description=Spot Interruption Handler
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart=/bin/bash -c 'while true; do if curl -s -f http://169.254.169.254/latest/meta-data/spot/instance-action > /dev/null 2>&1; then /usr/local/bin/clawdbot-shutdown.sh; fi; sleep 5; done'
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOFSPOT
+
+          # Enable and start services
+          systemctl daemon-reload
+          systemctl enable clawdbot spot-interruption-handler
+          systemctl start spot-interruption-handler
+          systemctl start clawdbot
+
+          echo "=== Clawdbot Bootstrap Complete ==="
+          date
+          '''
+
+
+          def start_instance(config):
+              """Launch new EC2 instance."""
+              ami_id = get_ami_id()
+              userdata = get_userdata(config)
+
+              # Determine subnet (use provided or find default)
+              subnet_id = config.get('subnet_id')
+              if not subnet_id:
+                  # Find a public subnet in default VPC
+                  vpcs = ec2.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}])
+                  if vpcs['Vpcs']:
+                      vpc_id = vpcs['Vpcs'][0]['VpcId']
+                      subnets = ec2.describe_subnets(
+                          Filters=[
+                              {'Name': 'vpc-id', 'Values': [vpc_id]},
+                              {'Name': 'map-public-ip-on-launch', 'Values': ['true']}
+                          ]
+                      )
+                      if subnets['Subnets']:
+                          subnet_id = subnets['Subnets'][0]['SubnetId']
+
+              # Common instance params
+              instance_params = {
+                  'ImageId': ami_id,
+                  'InstanceType': config['instance_type'],
+                  'KeyName': config['key_pair'],
+                  'SecurityGroupIds': [config['security_group']],
+                  'IamInstanceProfile': {'Arn': config['instance_profile']},
+                  'UserData': userdata,
+                  'MinCount': 1,
+                  'MaxCount': 1,
+                  'TagSpecifications': [{
+                      'ResourceType': 'instance',
+                      'Tags': [
+                          {'Key': 'Name', 'Value': f'{STACK_NAME}-instance'},
+                          {'Key': 'ManagedBy', 'Value': STACK_NAME}
+                      ]
+                  }]
+              }
+
+              if subnet_id:
+                  instance_params['SubnetId'] = subnet_id
+
+              # Use Spot or On-Demand
+              if config.get('use_spot', True):
+                  instance_params['InstanceMarketOptions'] = {
+                      'MarketType': 'spot',
+                      'SpotOptions': {
+                          'SpotInstanceType': 'one-time',
+                          'InstanceInterruptionBehavior': 'terminate'
+                      }
+                  }
+
+              response = ec2.run_instances(**instance_params)
+              instance_id = response['Instances'][0]['InstanceId']
+
+              # Wait for public IP
+              waiter = ec2.get_waiter('instance_running')
+              waiter.wait(InstanceIds=[instance_id])
+
+              # Get public IP
+              instance = ec2.describe_instances(InstanceIds=[instance_id])
+              public_ip = instance['Reservations'][0]['Instances'][0].get('PublicIpAddress', 'pending')
+
+              return {
+                  'instance_id': instance_id,
+                  'public_ip': public_ip,
+                  'status': 'starting'
+              }
+
+
+          def stop_instance(instance):
+              """Terminate instance (after syncing state)."""
+              instance_id = instance['InstanceId']
+
+              # Instance will sync to S3 on shutdown via systemd ExecStopPost
+              ec2.terminate_instances(InstanceIds=[instance_id])
+
+              return {
+                  'instance_id': instance_id,
+                  'status': 'terminating'
+              }
+
+
+          def get_instance_metrics(instance_id):
+              """Get CloudWatch metrics for idle detection."""
+              response = cloudwatch.get_metric_statistics(
+                  Namespace='AWS/EC2',
+                  MetricName='CPUUtilization',
+                  Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+                  StartTime=datetime.utcnow() - timedelta(minutes=30),
+                  EndTime=datetime.utcnow(),
+                  Period=300,
+                  Statistics=['Average']
+              )
+              if response['Datapoints']:
+                  return sum(d['Average'] for d in response['Datapoints']) / len(response['Datapoints'])
+              return None
+
+
+          def handler(event, context):
+              """Main Lambda handler."""
+              action = event.get('action', 'status')
+              config = get_config()
+              instance = get_instance()
+
+              if action == 'start':
+                  if instance:
+                      return {
+                          'status': 'already_running',
+                          'instance_id': instance['InstanceId'],
+                          'public_ip': instance.get('PublicIpAddress', 'pending')
+                      }
+                  return start_instance(config)
+
+              elif action == 'stop':
+                  if not instance:
+                      return {'status': 'not_running'}
+                  return stop_instance(instance)
+
+              elif action == 'status':
+                  if not instance:
+                      return {'status': 'stopped'}
+                  return {
+                      'status': instance['State']['Name'],
+                      'instance_id': instance['InstanceId'],
+                      'public_ip': instance.get('PublicIpAddress', 'pending'),
+                      'launch_time': instance['LaunchTime'].isoformat()
+                  }
+
+              elif action == 'scheduled_start':
+                  if instance:
+                      return {'status': 'already_running'}
+                  return start_instance(config)
+
+              elif action == 'scheduled_stop':
+                  if not instance:
+                      return {'status': 'not_running'}
+                  return stop_instance(instance)
+
+              elif action == 'idle_check':
+                  if not instance:
+                      return {'status': 'not_running'}
+
+                  avg_cpu = get_instance_metrics(instance['InstanceId'])
+                  idle_threshold = 5.0  # 5% CPU
+
+                  if avg_cpu is not None and avg_cpu < idle_threshold:
+                      # Idle - shutdown
+                      return {
+                          'action': 'shutdown_idle',
+                          'avg_cpu': avg_cpu,
+                          **stop_instance(instance)
+                      }
+                  return {
+                      'status': 'active',
+                      'avg_cpu': avg_cpu
+                  }
+
+              else:
+                  return {'error': f'Unknown action: {action}'}
+      Tags:
+        - Key: Purpose
+          Value: Clawdbot lifecycle management
+
+  # ---------------------------------------------------------------------------
+  # CLOUDWATCH EVENTS - Scheduled operations
+  # ---------------------------------------------------------------------------
+  # Why schedules?
+  # - Auto-start during active hours (don't pay 24/7)
+  # - Auto-stop at end of day
+  # - Idle detection for forgotten instances
+  # ---------------------------------------------------------------------------
+
+  # Permission for CloudWatch to invoke Lambda
+  LambdaSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref OrchestratorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-*'
+
+  # Start at beginning of active hours
+  StartSchedule:
+    Type: AWS::Events::Rule
+    Condition: EnableSchedule
+    Properties:
+      Name: !Sub '${AWS::StackName}-start'
+      Description: Start Clawdbot at beginning of active hours
+      ScheduleExpression: !Sub 'cron(0 ${ActiveHoursStart} * * ? *)'
+      State: ENABLED
+      Targets:
+        - Id: StartClawdbot
+          Arn: !GetAtt OrchestratorFunction.Arn
+          Input: '{"action": "scheduled_start"}'
+
+  # Stop at end of active hours
+  StopSchedule:
+    Type: AWS::Events::Rule
+    Condition: EnableSchedule
+    Properties:
+      Name: !Sub '${AWS::StackName}-stop'
+      Description: Stop Clawdbot at end of active hours
+      ScheduleExpression: !Sub 'cron(0 ${ActiveHoursEnd} * * ? *)'
+      State: ENABLED
+      Targets:
+        - Id: StopClawdbot
+          Arn: !GetAtt OrchestratorFunction.Arn
+          Input: '{"action": "scheduled_stop"}'
+
+  # Idle check every 15 minutes
+  IdleCheckSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-idle-check'
+      Description: Check for idle Clawdbot instance
+      ScheduleExpression: 'rate(15 minutes)'
+      State: ENABLED
+      Targets:
+        - Id: IdleCheck
+          Arn: !GetAtt OrchestratorFunction.Arn
+          Input: '{"action": "idle_check"}'
+
+# =============================================================================
+# OUTPUTS
+# =============================================================================
+Outputs:
+  StateBucket:
+    Description: S3 bucket for Clawdbot state persistence
+    Value: !Ref StateBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-bucket'
+
+  OrchestratorFunction:
+    Description: Lambda function for EC2 lifecycle management
+    Value: !Ref OrchestratorFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-orchestrator'
+
+  SecurityGroup:
+    Description: Security group for Clawdbot EC2
+    Value: !Ref SecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-sg'
+
+  StartCommand:
+    Description: Command to start Clawdbot
+    Value: !Sub |
+      aws lambda invoke --function-name ${OrchestratorFunction} --payload '{"action": "start"}' /dev/stdout
+
+  StopCommand:
+    Description: Command to stop Clawdbot
+    Value: !Sub |
+      aws lambda invoke --function-name ${OrchestratorFunction} --payload '{"action": "stop"}' /dev/stdout
+
+  StatusCommand:
+    Description: Command to check Clawdbot status
+    Value: !Sub |
+      aws lambda invoke --function-name ${OrchestratorFunction} --payload '{"action": "status"}' /dev/stdout
+
+  SSHCommand:
+    Description: SSH command (get IP from status first)
+    Value: !Sub 'ssh -i ~/.aws/${KeyPairName}.pem ec2-user@<IP_FROM_STATUS>'
+
+  GetIPCommand:
+    Description: Get your current public IP for AllowedIP parameter
+    Value: 'curl -s ifconfig.me && echo "/32"'

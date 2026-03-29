@@ -1,0 +1,54 @@
+# doc-slugs.yaml - Maps V1 product features to docs.trendmicro.com article slugs
+#
+# Usage: python .claude/skills/trend-docs/executor.py "<slug>" --max-pages 2
+#
+# Slugs are the last path segment of docs.trendmicro.com URLs.
+# Example: https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-advanced-spam-protection
+#          slug: trend-vision-one-advanced-spam-protection
+
+cecp:
+  # Overview & Getting Started
+  overview: trend-vision-one-cemp-intro
+  how_works: trend-vision-one-how-works
+  getting_started: trend-vision-one-gettingstarted-ecs
+  whats_new: trend-vision-one-whats-new-cemp
+
+  # Policy Management
+  manage_policies: trend-vision-one-manage-policies-cecp
+  protection_modes: cloud-app-security-online-help-protection-modes-for
+
+  # Asset Inventory
+  email_asset_inventory: trend-vision-one-email-asset-inventory
+  email_accounts: trend-vision-one-email-accounts
+  email_domains: trend-vision-one-email-domains
+
+  # Scanning Modules
+  anti_spam: trend-vision-one-advanced-spam-protection
+  anti_malware: trend-vision-one-anti-malware-scanning
+  web_reputation: trend-vision-one-web-reputation
+  content_filtering: trend-vision-one-content-filtering
+  virtual_analyzer: trend-vision-one-virtual-analyzer-cemp
+
+  # DLP
+  dlp_overview: trend-vision-one-data-loss-prevention
+  dlp_config: trend-vision-one-configuring-dlp-policy
+  dlp_actions: trend-vision-one-data-loss-prevention-actions
+  dlp_templates: trend-vision-one-dlp-compliance-templates
+
+  # Quarantine & Logs
+  quarantine: trend-vision-one-quarantine-cemp
+  email_logs: trend-vision-one-email-message-tracking
+
+sep:
+  # Standard Endpoint Protection (future)
+  overview: null
+  scan_settings: null
+  firewall: null
+  web_reputation: null
+
+ztsa:
+  # Zero Trust Secure Access (future)
+  overview: null
+  access_rules: null
+  private_access: null
+  internet_access: null

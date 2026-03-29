@@ -1,0 +1,17 @@
+{
+  "name": "clawdbot-deploy",
+  "version": "1.0.0",
+  "description": "Cost-optimized Clawdbot deployment on AWS with Lambda-orchestrated EC2 Spot instances",
+  "author": "joel",
+  "license": "MIT",
+  "tags": ["aws", "clawdbot", "lambda", "ec2", "spot", "signal", "chatbot"],
+  "dependencies": [],
+  "claude": {
+    "minVersion": "1.0.0"
+  },
+  "aws": {
+    "services": ["cloudformation", "lambda", "s3", "ec2", "iam", "ssm", "cloudwatch"],
+    "estimatedCost": "$2-8/month"
+  },
+  "repository": "https://github.com/${TMEMU_ACCOUNT}/lab-worker"
+}

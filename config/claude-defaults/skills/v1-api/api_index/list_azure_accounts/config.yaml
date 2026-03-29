@@ -1,0 +1,22 @@
+name: list_azure_accounts
+endpoint: /v3.0/cam/azureSubscriptions
+method: GET
+template: standard_list
+description: List Azure subscriptions
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 5000
+    type: int
+  date_params: null
+  filter_style: odata
+categories:
+- cloud_security
+- cloud_accounts

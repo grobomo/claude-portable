@@ -1,0 +1,14 @@
+# V1 Policy Skill Configuration
+# Edit these settings to control how the skill interacts with V1 console.
+
+# Browser mode for V1 console
+# "incognito" - Open V1 in Chrome incognito (default, avoids work account conflicts)
+# "normal"    - Open V1 in regular browser window
+browser_mode: incognito
+
+# V1 console URL
+console_url: https://portal.xdr.trendmicro.com
+
+# Blueprint extension must be enabled for incognito mode:
+# chrome://extensions > Blueprint > "Allow in Incognito"
+# Without this, Blueprint cannot interact with incognito tabs.

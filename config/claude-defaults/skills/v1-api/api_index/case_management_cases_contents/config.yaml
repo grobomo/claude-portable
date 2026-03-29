@@ -1,0 +1,14 @@
+name: case_management_cases_contents
+description: Add content to a case
+method: POST
+endpoint: /v3.0/caseManagement/cases/{id}/contents
+template: post_action
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  optional: []
+template_config: {}

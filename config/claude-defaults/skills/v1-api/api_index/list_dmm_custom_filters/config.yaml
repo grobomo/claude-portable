@@ -1,0 +1,11 @@
+name: list_dmm_custom_filters
+description: Get all custom filters
+method: GET
+endpoint: /v3.0/dmm/customFilters
+template: single_get
+tags:
+- Detection Models
+params:
+  required: []
+  optional: []
+template_config: {}

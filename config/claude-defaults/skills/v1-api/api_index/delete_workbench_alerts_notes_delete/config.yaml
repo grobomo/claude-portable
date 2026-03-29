@@ -1,0 +1,14 @@
+name: delete_workbench_alerts_notes_delete
+description: Delete alert notes
+method: POST
+endpoint: /v3.0/workbench/alerts/{alertId}/notes/delete
+template: post_action
+tags:
+- Workbench notes
+params:
+  required:
+  - name: alertId
+    type: string
+    description: Unique alphanumeric string that identifies a Workbench alert.
+  optional: []
+template_config: {}

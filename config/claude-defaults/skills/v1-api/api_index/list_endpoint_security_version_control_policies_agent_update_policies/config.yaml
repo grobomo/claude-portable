@@ -1,0 +1,11 @@
+name: list_endpoint_security_version_control_policies_agent_update_policies
+description: Get agent update policies
+method: GET
+endpoint: /v3.0/endpointSecurity/versionControlPolicies/agentUpdatePolicies
+template: single_get
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional: []
+template_config: {}

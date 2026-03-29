@@ -1,0 +1,16 @@
+{
+  "msgraphLib": "/workspace/msgraph-lib",
+  "teamsChat": "/workspace/teams-chat\\teams_chat.py",
+  "projectRoot": "/workspace/recording-analyzer",
+  "scheduler": "/home/claude/.claude\\skills\\claude-scheduler\\scheduler.py",
+  "notesDirs": [
+    "/home/claude/Documents"
+  ],
+  "teamsTargets": {
+    "General Markets - SPG - Internal": "internal",
+    "GM- SPG - Squad 1": "squad",
+    "General Markets - SPG - External": "external"
+  },
+  "created": "2026-03-28T20:52:37.541Z",
+  "updated": "2026-03-28T20:52:37.549Z"
+}

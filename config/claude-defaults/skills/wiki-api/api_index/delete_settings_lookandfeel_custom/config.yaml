@@ -1,0 +1,11 @@
+name: delete_settings_lookandfeel_custom
+description: Reset look and feel settings
+method: DELETE
+endpoint: /wiki/rest/api/settings/lookandfeel/custom
+template: delete
+tags:
+- Settings
+params:
+  required: []
+  optional: []
+template_config: {}

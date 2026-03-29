@@ -1,0 +1,14 @@
+name: list_content_state_available
+description: Gets available content states for content.
+method: GET
+endpoint: /wiki/rest/api/content/{id}/state/available
+template: search
+tags:
+- Content states
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: update_content_blueprint_instance
+description: Publish shared draft
+method: PUT
+endpoint: /wiki/rest/api/content/blueprint/instance/{draftId}
+template: update
+tags:
+- Content
+params:
+  required:
+  - name: draftId
+    type: string
+    description: 'Path parameter: draftId'
+  optional: []
+template_config: {}

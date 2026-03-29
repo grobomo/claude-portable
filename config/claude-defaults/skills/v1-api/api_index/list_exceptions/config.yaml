@@ -1,0 +1,29 @@
+name: list_exceptions
+endpoint: /v3.0/threatintel/suspiciousObjectExceptions
+method: GET
+template: standard_list
+description: List exception (allow) list
+params:
+  required: []
+  optional:
+  - name: ioc_type
+    type: str
+    description: Filter by type
+    default: ''
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- threat_intel
+- ioc_management

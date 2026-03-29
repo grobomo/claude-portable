@@ -1,0 +1,11 @@
+name: delete_threatintel_intelligence_reports_delete
+description: Delete custom intelligence reports
+method: POST
+endpoint: /v3.0/threatintel/intelligenceReports/delete
+template: post_action
+tags:
+- Intelligence Reports
+params:
+  required: []
+  optional: []
+template_config: {}

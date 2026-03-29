@@ -1,0 +1,14 @@
+name: list_content_restriction
+description: Get restrictions
+method: GET
+endpoint: /wiki/rest/api/content/{id}/restriction
+template: search
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

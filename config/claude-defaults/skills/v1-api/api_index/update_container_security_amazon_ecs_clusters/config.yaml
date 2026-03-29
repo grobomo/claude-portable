@@ -1,0 +1,11 @@
+name: update_container_security_amazon_ecs_clusters
+description: Modify cluster settings (Amazon ECS)
+method: PATCH
+endpoint: /v3.0/containerSecurity/amazonEcsClusters/{id}
+template: patch_update
+tags:
+- Amazon ECS Clusters
+params:
+  required: []
+  optional: []
+template_config: {}

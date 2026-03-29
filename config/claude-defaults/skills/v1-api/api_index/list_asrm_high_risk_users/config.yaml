@@ -1,0 +1,105 @@
+name: list_asrm_high_risk_users
+description: Get at-risk users list.
+method: GET
+endpoint: /v3.0/asrm/highRiskUsers
+template: standard_list
+tags:
+- User Risk Profile
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the at-risk users list.
+
+
+      Supported fields and operators:
+
+      * ''id'' - The ID of a user on the Trend Vision One platform.
+
+      * ''riskScore'' - Risk score of a user.
+
+      * ''userPrincipalName'' - String that identifies an account.
+
+      * ''userName'' - User name.
+
+
+
+      Supported fields:
+
+
+      |Field |Description |
+
+      |---------|---------|
+
+      |`id` |The ID of a user on the Trend Vision One platform. |
+
+      |`riskScore` |The risk score of a user.|
+
+      |`userPrincipalName` |String that identifies an account.|
+
+      |`userName`|User name|
+
+
+      Supported operators:
+
+
+      |Operator  |Description |
+
+      |---------|---------|
+
+      |`eq`  |Operator ''equal to''. |
+
+      |`and` |Operator ''and''. |
+
+      |`or`  |Operator ''or''. |
+
+      |`not` |Operator ''not''. |
+
+      |`( )` |Symbols for grouping operands. |
+
+      |`gt`  |Operator ''greater than''. |
+
+      |`ge`  |Operator ''greater than or equal''. |
+
+      |`le`  |Operator ''less than or equal''. |
+
+      |`lt`  |Operator ''less than''. |
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available values:
+
+      * `riskScore`
+
+      * `userName`
+
+      * `asc` - Ascending order
+
+      * `desc` - Descending order
+
+
+      Default: `riskScore desc`
+
+      '
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

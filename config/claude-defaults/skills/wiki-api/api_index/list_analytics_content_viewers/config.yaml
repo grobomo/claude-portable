@@ -1,0 +1,14 @@
+name: list_analytics_content_viewers
+description: Get viewers
+method: GET
+endpoint: /wiki/rest/api/analytics/content/{contentId}/viewers
+template: search
+tags:
+- Analytics
+params:
+  required:
+  - name: contentId
+    type: string
+    description: 'Path parameter: contentId'
+  optional: []
+template_config: {}

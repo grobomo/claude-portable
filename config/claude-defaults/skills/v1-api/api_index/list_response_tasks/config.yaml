@@ -1,0 +1,94 @@
+name: list_response_tasks
+description: Get response tasks
+method: GET
+endpoint: /v3.0/response/tasks
+template: standard_list
+tags:
+- Common
+params:
+  required: []
+  optional:
+  - name: startDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the start of the data
+      retrieval range. You can retrieve data for response tasks that were created
+      no later than 180 days ago.
+
+
+      If no value is specified, ''startDateTime'' defaults to beginning of the retention
+      period of 180 days.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the end of the data
+      retrieval range.
+
+
+      If no value is specified, ''endDateTime'' defaults to the time you make the
+      request.
+
+      '
+  - name: dateTimeTarget
+    type: string
+    description: 'Parameter that allows you to filter the results.
+
+      '
+  - name: filter
+    type: string
+    description: 'Filter for retrieving a subset of the response task list.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |---------|---------|---------|
+
+      |id|The identifier of a response task|Any value|
+
+      |status|The status of a command sent to the management server|`queued`, `running`,
+      `succeeded`, `failed`, `canceled`, `pendingApproval`, `rejected`|
+
+      |action|The command sent to a target|`isolate`, `isolateForMultiple`, `restoreIsolate`,
+      `restoreIsolateForMultiple`, `collectFile`, `terminateProcess`, `block`, `restoreBlock`,
+      `quarantineMessage`, `restoreMessage`, `deleteMessage`, `remoteShell`, `investigationKit`,
+      `runCustomScript`, `runCustomScriptForMultiple`, `submitSandbox`, `dumpProcessMemory`,
+      `disableAccount`, `enableAccount`, `forceSignOut`, `resetPassword`, `collectNetworkAnalysisPackage`,
+      `collectEvidence`, `runOsquery`, `runOsqueryForMultiple`, `runYaraRules`, `runYaraForMultiple`,
+      `isolateContainer`, `restoreContainer`, `terminateContainer`, `malwareScanForMultiple`|
+
+      |account|The user that created the task|Any value|
+
+
+      Supported operators:
+
+      |Operator|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |`eq`|Operator ''equal to''| - |
+
+      |`and`|Operator ''and''| - |
+
+      |`or`|Operator ''or''| - |
+
+      |`not`|Operator ''not''| - |
+
+      |`()`|Symbols for grouping operands with their correct operator| - |
+
+      '
+  - name: top
+    type: integer
+    description: Number of records displayed on a page. If no value is specified,
+      'top' defaults to 50.
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

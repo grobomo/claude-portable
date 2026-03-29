@@ -1,0 +1,11 @@
+name: list_dmm_custom_models
+description: Get custom detection models
+method: GET
+endpoint: /v3.0/dmm/customModels
+template: single_get
+tags:
+- Detection Models
+params:
+  required: []
+  optional: []
+template_config: {}

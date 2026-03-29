@@ -1,0 +1,11 @@
+name: list_user_bulk
+description: Get multiple users using ids
+method: GET
+endpoint: /wiki/rest/api/user/bulk
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

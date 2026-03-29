@@ -1,0 +1,77 @@
+name: list_container_security_kubernetes_sensor_event_logs
+description: Get runtime sensor events (Kubernetes)
+method: GET
+endpoint: /v3.0/containerSecurity/kubernetesSensorEventLogs
+template: single_get
+tags:
+- Events
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The Filter for retrieving a subset of the sensor events of your
+      Kubernetes clusters. Include this parameter in every request that generates
+      paginated output.
+
+
+      Supported fields:
+
+      |Field |Description |Allowed values |
+
+      |------|------------|-----------------|
+
+      |`clusterId`   |The ID of the cluster in Container Security |Any value |
+
+      |`clusterName` |The name of the cluster |Any value |
+
+      |`policyId`    |The ID of the policy for an event |Any value |
+
+      |`policyName`  |The name of a policy for an event |Any value |
+
+      |`mitigation`|The mitigation action to take when a rule fails during runtime.
+      |Any value|
+
+      |`ruleName`|The name of the rule that the event triggers|Any|
+
+      |`ruleId`|The ID of the rule that the event triggers|Any|
+
+      |`eventType`|The event type of the sensor event|`malware`, `syscall`, `secretScan`|
+
+      |`ruleType`|The rule type of the sensor event|`managed`, `custom`|
+
+
+      Supported operators:
+
+      * `eq` - Operator "equal to"
+
+      * `and` - Operator "and"
+
+      * `or` - Operator "or"
+
+      * `contains` - Operator that allows you to search for a specified string in
+      a field
+
+      * `not` - Operator "not"
+
+      * `()` - Symbols for grouping operands
+
+      '
+  - name: startDateTime
+    type: string
+    description: 'The start of the data retrieval time range, in ISO 8601 format.
+
+
+      `startDateTime` cannot be set to more than 30 days prior to the time you make
+      the request.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'The end of the data retrieval time range, in ISO 8601 format.
+
+
+      `endDateTime` must be greater than than `startDateTime`.
+
+      '
+template_config: {}

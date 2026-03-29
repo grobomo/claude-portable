@@ -1,0 +1,11 @@
+name: list_content_states
+description: Get Custom Content States
+method: GET
+endpoint: /wiki/rest/api/content-states
+template: search
+tags:
+- Content states
+params:
+  required: []
+  optional: []
+template_config: {}

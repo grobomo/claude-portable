@@ -1,0 +1,14 @@
+name: create_space_permission_custom_content
+description: Add new custom content permission to space
+method: POST
+endpoint: /wiki/rest/api/space/{spaceKey}/permission/custom-content
+template: create
+tags:
+- Space permissions
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

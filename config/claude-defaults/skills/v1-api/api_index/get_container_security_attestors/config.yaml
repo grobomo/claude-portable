@@ -1,0 +1,11 @@
+name: get_container_security_attestors
+description: Get Container Security attestor
+method: GET
+endpoint: /v3.0/containerSecurity/attestors/{id}
+template: single_get
+tags:
+- Attestors
+params:
+  required: []
+  optional: []
+template_config: {}

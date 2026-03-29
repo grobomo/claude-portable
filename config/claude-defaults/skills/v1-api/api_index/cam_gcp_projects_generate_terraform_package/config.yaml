@@ -1,0 +1,11 @@
+name: cam_gcp_projects_generate_terraform_package
+description: Get Google Cloud project Terraform template package
+method: POST
+endpoint: /v3.0/cam/gcpProjects/generateTerraformPackage
+template: post_action
+tags:
+- Google Cloud projects
+params:
+  required: []
+  optional: []
+template_config: {}

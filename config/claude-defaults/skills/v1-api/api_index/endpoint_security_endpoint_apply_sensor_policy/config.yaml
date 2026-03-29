@@ -1,0 +1,11 @@
+name: endpoint_security_endpoint_apply_sensor_policy
+description: Override endpoint sensor policy
+method: POST
+endpoint: /v3.0/endpointSecurity/endpoints/applySensorPolicy
+template: post_action
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional: []
+template_config: {}

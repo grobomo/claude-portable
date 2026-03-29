@@ -1,0 +1,14 @@
+name: delete_cam_alibaba_accounts
+description: Remove Alibaba Cloud account
+method: DELETE
+endpoint: /v3.0/cam/alibabaAccounts/{id}
+template: patch_update
+tags:
+- Alibaba Cloud accounts
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

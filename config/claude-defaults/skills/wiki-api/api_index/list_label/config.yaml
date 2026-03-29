@@ -1,0 +1,11 @@
+name: list_label
+description: Get label information
+method: GET
+endpoint: /wiki/rest/api/label
+template: search
+tags:
+- Label info
+params:
+  required: []
+  optional: []
+template_config: {}

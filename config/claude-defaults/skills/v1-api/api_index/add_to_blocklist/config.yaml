@@ -1,0 +1,33 @@
+name: add_to_blocklist
+endpoint: /v3.0/threatintel/suspiciousObjects
+method: POST
+template: response_action
+description: Add IOC (IP, domain, URL, hash) to suspicious objects blocklist
+params:
+  required:
+  - name: ioc_type
+    type: str
+    description: 'Type: domain, ip, url, sha1, sha256'
+  - name: value
+    type: str
+    description: IOC value to block
+  optional:
+  - name: risk_level
+    type: str
+    default: high
+    description: 'Risk level: high, medium, low'
+  - name: description
+    type: str
+    default: ''
+    description: Description of why IOC is blocked
+  - name: days_to_expiration
+    type: int
+    default: 0
+    description: Days until expiry (0=never)
+template_config:
+  body_style: array
+  body_builder: blocklist_add
+categories:
+- threat_intel
+- response_actions
+- ioc_management

@@ -1,0 +1,11 @@
+name: list_group
+description: Get groups
+method: GET
+endpoint: /wiki/rest/api/group
+template: search
+tags:
+- Group
+params:
+  required: []
+  optional: []
+template_config: {}

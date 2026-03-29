@@ -1,0 +1,44 @@
+name: list_container_security_kubernetes_image_occurrences
+description: Get image occurrences (Kubernetes)
+method: GET
+endpoint: /v3.0/containerSecurity/kubernetesImageOccurrences
+template: single_get
+tags:
+- Occurrences
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the Kubernetes image occurences
+      list. Include this parameter in every request that generates paginated output
+
+
+      Supported fields:
+
+      | Field        | Description                           |
+
+      | ------------ | ------------------------------------- |
+
+      | `clusterid`  | The ID of the Kubernetes cluster      |
+
+      | `imageid`    | The  The ID of the container image         |
+
+
+      Supported operators:
+
+      * `eq` - Operator "equal to"
+
+      * `and` - Operator "and"
+
+      * `or` - Operator "or"
+
+      * `not` - Operator "not"
+
+      * `()` - Symbols for grouping operands
+
+      '
+  - name: null
+    type: string
+    description: ''
+template_config: {}

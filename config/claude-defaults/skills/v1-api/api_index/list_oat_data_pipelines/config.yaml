@@ -1,0 +1,13 @@
+name: list_oat_data_pipelines
+description: 'Get active data pipelines
+
+  '
+method: GET
+endpoint: /v3.0/oat/dataPipelines
+template: single_get
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

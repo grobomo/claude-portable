@@ -1,0 +1,17 @@
+name: delete_content_version
+description: Delete content version
+method: DELETE
+endpoint: /wiki/rest/api/content/{id}/version/{versionNumber}
+template: delete
+tags:
+- Content versions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: versionNumber
+    type: string
+    description: 'Path parameter: versionNumber'
+  optional: []
+template_config: {}

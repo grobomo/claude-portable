@@ -1,0 +1,17 @@
+name: get_case_management_cases_attachments
+description: Download attachment by attachment ID
+method: GET
+endpoint: /v3.0/caseManagement/cases/{id}/attachments/{attachmentId}
+template: single_get
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  - name: attachmentId
+    type: string
+    description: The attachment ID
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: container_security_custom_rulesets
+description: Create Container Security custom ruleset
+method: POST
+endpoint: /v3.0/containerSecurity/customRulesets
+template: post_action
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

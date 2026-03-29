@@ -1,0 +1,11 @@
+name: update_response_setting_status
+description: Update endpoint response settings
+method: PATCH
+endpoint: /v3.0/response/settingStatus
+template: patch_update
+tags:
+- Endpoint
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: delete_space_label
+description: Remove label from a space
+method: DELETE
+endpoint: /wiki/rest/api/space/{spaceKey}/label
+template: delete
+tags:
+- Experimental
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: security_playbooks_playbooks_run
+description: Run playbooks
+method: POST
+endpoint: /v3.0/securityPlaybooks/playbooks/run
+template: post_action
+tags:
+- Playbooks
+params:
+  required: []
+  optional: []
+template_config: {}

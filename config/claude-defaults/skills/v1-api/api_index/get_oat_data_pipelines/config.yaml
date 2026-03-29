@@ -1,0 +1,14 @@
+name: get_oat_data_pipelines
+description: Get pipeline settings
+method: GET
+endpoint: /v3.0/oat/dataPipelines/{id}
+template: single_get
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of a data pipeline.
+  optional: []
+template_config: {}

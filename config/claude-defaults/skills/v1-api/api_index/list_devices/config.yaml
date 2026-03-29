@@ -1,0 +1,27 @@
+name: list_devices
+endpoint: /v3.0/asrm/attackSurfaceDevices
+method: GET
+template: standard_list
+description: List attack surface devices
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 20
+  - name: risk_score
+    type: int
+    description: Min risk score (0-100)
+    default: 0
+template_config:
+  pagination:
+    param: top
+    max: 1000
+    type: int
+  date_params: null
+  filter_style: odata
+  order_by: latestRiskScore desc
+categories:
+- risk_management
+- asset_inventory

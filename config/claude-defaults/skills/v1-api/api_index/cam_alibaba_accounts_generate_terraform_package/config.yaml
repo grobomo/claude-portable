@@ -1,0 +1,11 @@
+name: cam_alibaba_accounts_generate_terraform_package
+description: Get Alibaba Cloud Terraform template
+method: POST
+endpoint: /v3.0/cam/alibabaAccounts/generateTerraformPackage
+template: post_action
+tags:
+- Alibaba Cloud accounts
+params:
+  required: []
+  optional: []
+template_config: {}

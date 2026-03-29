@@ -1,0 +1,11 @@
+name: container_security_rulesets
+description: Create a Container Security ruleset
+method: POST
+endpoint: /v3.0/containerSecurity/rulesets
+template: post_action
+tags:
+- Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

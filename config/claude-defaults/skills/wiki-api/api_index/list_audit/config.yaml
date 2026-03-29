@@ -1,0 +1,11 @@
+name: list_audit
+description: Get audit records
+method: GET
+endpoint: /wiki/rest/api/audit
+template: search
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

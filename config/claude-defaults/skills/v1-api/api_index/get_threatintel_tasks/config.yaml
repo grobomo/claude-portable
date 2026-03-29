@@ -1,0 +1,14 @@
+name: get_threatintel_tasks
+description: Get task results
+method: GET
+endpoint: /v3.0/threatintel/tasks/{id}
+template: single_get
+tags:
+- Intelligence Reports
+params:
+  required:
+  - name: id
+    type: string
+    description: ''
+  optional: []
+template_config: {}

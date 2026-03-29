@@ -1,0 +1,11 @@
+name: dmm_exceptions
+description: Create an exception
+method: POST
+endpoint: /v3.0/dmm/exceptions
+template: post_action
+tags:
+- Exceptions
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,18 @@
+name: get_aws_account
+endpoint: /v3.0/cam/awsAccounts/{account_id}
+method: GET
+template: single_get
+description: Get AWS account details
+params:
+  required:
+  - name: account_id
+    type: str
+    description: AWS account ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- cloud_security
+- cloud_accounts

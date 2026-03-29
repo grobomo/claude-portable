@@ -14,3 +14,4 @@ rules/mcp-repo-layout.md
 __pycache__/
 .mcp.json
 reports/
+config/bundles/

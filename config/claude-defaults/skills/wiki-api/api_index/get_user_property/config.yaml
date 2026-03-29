@@ -1,0 +1,17 @@
+name: get_user_property
+description: Get user property
+method: GET
+endpoint: /wiki/rest/api/user/{userId}/property/{key}
+template: read
+tags:
+- User properties
+params:
+  required:
+  - name: userId
+    type: string
+    description: 'Path parameter: userId'
+  - name: key
+    type: string
+    description: 'Path parameter: key'
+  optional: []
+template_config: {}

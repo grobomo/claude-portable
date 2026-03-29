@@ -1,0 +1,42 @@
+{
+  "analyze-effectiveness": {
+    "consecutive_errors": 0,
+    "stopped": false,
+    "stopped_reason": null,
+    "last_error": null,
+    "last_run": "2026-03-28T02:19:01.906960",
+    "last_result": "warnings",
+    "total_runs": 2,
+    "total_errors": 0
+  },
+  "source-poller": {
+    "consecutive_errors": 0,
+    "stopped": false,
+    "stopped_reason": null,
+    "last_error": null,
+    "last_run": "2026-03-28T18:19:02.494009",
+    "last_result": "success",
+    "total_runs": 8,
+    "total_errors": 0
+  },
+  "recording-pipeline": {
+    "consecutive_errors": 1,
+    "stopped": false,
+    "stopped_reason": null,
+    "last_error": "Command timed out (300s)",
+    "last_run": "2026-03-28T16:00:08.356347",
+    "last_result": "timeout",
+    "total_runs": 0,
+    "total_errors": 1
+  },
+  "weekly-data-poller": {
+    "consecutive_errors": 0,
+    "stopped": false,
+    "stopped_reason": null,
+    "last_error": null,
+    "last_run": "2026-03-28T18:19:41.588941",
+    "last_result": "success",
+    "total_runs": 3,
+    "total_errors": 0
+  }
+}

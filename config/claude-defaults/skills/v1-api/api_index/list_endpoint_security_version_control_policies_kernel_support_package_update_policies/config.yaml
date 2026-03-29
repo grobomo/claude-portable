@@ -1,0 +1,57 @@
+name: list_endpoint_security_version_control_policies_kernel_support_package_update_policies
+description: Get kernel support package versions
+method: GET
+endpoint: /v3.0/endpointSecurity/versionControlPolicies/kernelSupportPackageUpdatePolicies
+template: standard_list
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the kernel support package
+      version list.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |-----|-----------|----------------|
+
+      | version | The version of the kernel support package list | Any value |
+
+
+      Supported operators:
+
+      |Operator|Description                    |Notes|
+
+      |--------|-------------------------------|-----|
+
+      | `eq`   | Operator ''equal to''           | -   |
+
+      | `and`  | Operator `and`.               | -   |
+
+      | `or`   | Operator `or`.                | -   |
+
+      | `not`  | Operator `not`.               | -   |
+
+      | `( )`  | Symbols for grouping operands.| -   |
+
+      '
+  - name: orderBy
+    type: string
+    description: "The field by which the results are sorted.             \n  \nTo\
+      \ display records in ascending or descending order, add the phrase `asc` or\
+      \ `desc` after the parameter name.\n  \nAvailable values: \n  \n* `version`\n\
+      * `versionType`\n* `asc` - Ascending order\n* `desc` - Descending order\n"
+  - name: top
+    type: integer
+    description: "The number of records displayed on a page. \n      \nDefault: `10`\n"
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

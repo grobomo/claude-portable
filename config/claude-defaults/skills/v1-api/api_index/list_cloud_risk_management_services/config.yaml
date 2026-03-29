@@ -1,0 +1,49 @@
+name: list_cloud_risk_management_services
+description: List supported cloud services
+method: GET
+endpoint: /v3.0/cloudRiskManagement/services
+template: standard_list
+tags:
+- Services
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page.
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of services.
+
+
+      Supported field values:
+
+
+      | Field       | Description                 | Possible values                                   |
+
+      | ----------- | --------------------------- | -------------------------------------------------
+      |
+
+      | `provider`  | The cloud service provider  | `aws`, `azure`, `gcp`, `alibabaCloud`,
+      `oci`      |
+
+
+      Supported operators:
+
+
+      | Operator | Description         |
+
+      | -------- | ------------------- |
+
+      | `eq`     | Operator ''equal to'' |
+
+      | `or`     | Operator ''or''       |
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

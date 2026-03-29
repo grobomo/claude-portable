@@ -1,0 +1,21 @@
+name: comments
+description: Get or add comments on a Confluence page
+method: GET
+endpoint: /rest/api/content/{page_id}/child/comment
+template: comments
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Page ID or URL
+  optional:
+    - name: add
+      type: string
+      description: Comment text to add (if empty, lists comments)
+
+template_config: {}
+
+tags:
+  - metadata
+  - comments

@@ -1,0 +1,22 @@
+name: list_intel_reports
+endpoint: /v3.0/threatintel/intelligenceReports
+method: GET
+template: standard_list
+description: List intelligence reports
+params:
+  required: []
+  optional:
+  - name: days
+    type: int
+    description: Look back N days
+    default: 30
+template_config:
+  pagination: null
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- threat_intel
+- ioc_management

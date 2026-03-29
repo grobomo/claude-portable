@@ -1,0 +1,11 @@
+name: list_user_current
+description: Get current user
+method: GET
+endpoint: /wiki/rest/api/user/current
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

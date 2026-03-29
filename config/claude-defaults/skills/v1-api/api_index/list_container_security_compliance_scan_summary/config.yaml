@@ -1,0 +1,11 @@
+name: list_container_security_compliance_scan_summary
+description: Get compliance scan summary
+method: GET
+endpoint: /v3.0/containerSecurity/complianceScanSummary
+template: single_get
+tags:
+- Compliance Scans
+params:
+  required: []
+  optional: []
+template_config: {}

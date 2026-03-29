@@ -1,0 +1,22 @@
+name: delete_email
+endpoint: /v3.0/response/emails/delete
+method: POST
+template: response_action
+description: Delete email message
+params:
+  required:
+  - name: message_id
+    type: str
+    description: Email message ID
+  - name: mailbox
+    type: str
+    description: Mailbox address
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+  body_builder: email_action
+categories:
+- response_actions
+- incident_response

@@ -1,0 +1,40 @@
+{
+  "tasks": [
+    {
+      "id": "analyze-effectiveness",
+      "name": "Hook Effectiveness Analysis",
+      "command": "python ~/.claude/super-manager/super_manager.py analyze",
+      "interval_minutes": 10080,
+      "enabled": true,
+      "max_retries": 3,
+      "notify_on_failure": true
+    },
+    {
+      "id": "source-poller",
+      "name": "source-poller",
+      "command": "node /workspace/recording-analyzer/tools/poll-sources.js",
+      "interval_minutes": 15,
+      "enabled": true,
+      "max_retries": 3,
+      "notify_on_failure": true
+    },
+    {
+      "id": "weekly-data-poller",
+      "name": "weekly-data-poller",
+      "command": "node /home/claude/.claude\\skills\\weekly-data\\poll-sources.js",
+      "interval_minutes": 15,
+      "enabled": true,
+      "max_retries": 3,
+      "notify_on_failure": true
+    },
+    {
+      "id": "recording-pipeline",
+      "name": "recording-pipeline",
+      "command": "bash \"/c/Users/${USER_NAME}/Documents/ProjectsCL1/recording-analyzer/tools/pipeline.sh\"",
+      "interval_minutes": 240,
+      "enabled": true,
+      "max_retries": 3,
+      "notify_on_failure": true
+    }
+  ]
+}

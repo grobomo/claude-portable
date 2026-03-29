@@ -1,0 +1,26 @@
+name: list_asrm_vulnerabilities_affected_cloud_vms
+description: Get cloud VMs affected by CVEs
+method: GET
+endpoint: /v3.0/asrm/vulnerabilities/{id}/affectedCloudVms
+template: standard_list
+tags:
+- Threat and Exposure Management
+params:
+  required:
+  - name: id
+    type: string
+    description: The CVE ID
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

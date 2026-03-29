@@ -1,0 +1,14 @@
+name: get_longtask
+description: Get long-running task
+method: GET
+endpoint: /wiki/rest/api/longtask/{id}
+template: read
+tags:
+- Long-running task
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

@@ -1,0 +1,118 @@
+# Trend Docs Slug Index
+# Maps topic keywords to known OLH article slugs.
+# Used by executor.py --topic "keyword" to skip WebSearch for known pages.
+#
+# Format:
+#   Single page:  topic_keyword: article-slug
+#   Bundle (list): topic_keyword:
+#                    - slug-1
+#                    - slug-2
+
+# ============ BUNDLES (fetch all pages in one call) ============
+
+sep policy:
+  - trend-vision-one-endpoint-security-policies
+  - trend-vision-one-intro-endpoint-security-policies
+  - trend-vision-one-get-started-endpoint-policies
+  - trend-vision-one-create-endpoint-security-policy
+  - trend-vision-one-policy-configuration
+  - trend-vision-one-configure-security-features
+  - trend-vision-one-policy-assignments
+
+sep anti-malware:
+  - trend-vision-one-policies-anti-malware
+  - trend-vision-one-anti-malware-policy-settings
+  - trend-vision-one-configuring-real-time-scan-settings
+  - trend-vision-one-configuring-scheduled-scan-settings
+  - trend-vision-one-scan-actions
+  - trend-vision-one-behavior-monitoring
+  - trend-vision-one-predictive-machine-learning
+
+sep web reputation:
+  - trend-vision-one-policies-web-reputation
+  - trend-vision-one-configuring-web-reputation-settings
+
+sep firewall:
+  - trend-vision-one-set-up-firewall
+  - trend-vision-one-firewall-overview
+
+sep application control:
+  - trend-vision-one-application-control-overview
+  - trend-vision-one-application-control-policy-settings
+  - trend-vision-one-config-appcon-settings-agent
+
+sep enrollment:
+  - trend-vision-one-before-you-enroll-policies
+  - trend-vision-one-enroll-endpoint-groups
+  - trend-vision-one-endpoint-policies-troubleshooting
+
+data security:
+  - trend-vision-one-sensitive-data-overview
+  - trend-vision-one-data-loss-prevention
+
+detection models:
+  - trend-vision-one-detection-model-management
+  - trend-vision-one-custom-filters
+  - trend-vision-one-creating-custom-filter
+  - trend-vision-one-custom-filter-data
+
+oat custom filters:
+  - trend-vision-one-custom-filters
+  - trend-vision-one-creating-custom-filter
+  - trend-vision-one-custom-filter-data
+
+# ============ V1 Unified Endpoint Policies (New) - Single Pages ============
+endpoint security policies: trend-vision-one-endpoint-security-policies
+configure security features: trend-vision-one-configure-security-features
+msp endpoint policy template: trend-vision-one-for-msp-endpoint-policy-settings-template
+anti-malware monitoring level: trend-vision-one-anti-malware-monitoring-level
+anti-malware policy settings: trend-vision-one-anti-malware-policy-settings
+anti-malware scans: trend-vision-one-anti-malware-policy-settings
+scan method types: trend-vision-one-scan-method-types
+manual scan: trend-vision-one-manual-scan
+real-time scan: trend-vision-one-real-time-scan-epp
+scan now: trend-vision-one-scan-now
+scheduled scan: trend-vision-one-scheduled-scan
+scan actions: trend-vision-one-scan-actions-define
+scan exclusion support: trend-vision-one-scan-exclusion-support
+edit policy modules: trend-vision-one-edit-a-policy-and-security-modules
+endpoint policy overview: trend-vision-one-endpoint-security-policy-overview
+policy resources: trend-vision-one-policy-resources
+web reputation policy: trend-vision-one-web-reputation-policy-settings
+intrusion prevention policy: trend-vision-one-intrusion-prevention-policy-settings
+application control policy: trend-vision-one-application-control-policy-settings
+device control policy: trend-vision-one-device-control-policy-settings
+firewall policy: trend-vision-one-firewall-policy-settings
+log inspection policy: trend-vision-one-log-inspection-policy-settings
+integrity monitoring policy: trend-vision-one-integrity-monitoring-policy-settings
+advanced risk telemetry: trend-vision-one-advanced-risk-telemetry-policy-settings
+endpoint sensor: trend-vision-one-endpoint-sensor-policy-settings
+sandbox submission: trend-vision-one-sandbox-submission-policy-settings
+browser extension: trend-vision-one-browser-extension-policy-settings
+agent interface: trend-vision-one-agent-interface-policy-settings
+exclusions policy: trend-vision-one-exclusions-policy-settings
+
+# ============ V1 Old Policies (Apex-style) ============
+policy management apex overview: trend-vision-one-policy-management-apex-overview
+apex policies anti-malware: trend-vision-one-policies-anti-malware
+apex scan methods: trend-vision-one-scan-methods
+apex real-time scan: trend-vision-one-configuring-real-time-scan-settings
+apex manual scan: trend-vision-one-configuring-manual-scan-settings
+apex scheduled scan: trend-vision-one-configuring-scheduled-scan-settings
+apex scan actions: trend-vision-one-scan-actions
+apex web reputation: trend-vision-one-configuring-web-reputation-settings
+apex behavior monitoring: trend-vision-one-behavior-monitoring
+apex predictive ml: trend-vision-one-predictive-machine-learning
+apex device control: trend-vision-one-device-control
+apex application control: trend-vision-one-application-control
+apex vulnerability protection: trend-vision-one-vulnerability-protection
+apex firewall: trend-vision-one-firewall-overview
+apex dlp: trend-vision-one-data-loss-prevention
+apex suspicious connections: trend-vision-one-suspicious-connection-settings
+
+# ============ General V1 ============
+v1 endpoint overview: trend-vision-one-endpoint-security
+v1 agent deployment: trend-vision-one-agent-deployment
+v1 workbench: trend-vision-one-workbench
+v1 xdr: trend-vision-one-extended-detection-response
+v1 api keys: trend-vision-one-api-keys

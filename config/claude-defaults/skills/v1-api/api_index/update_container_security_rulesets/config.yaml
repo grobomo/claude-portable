@@ -1,0 +1,11 @@
+name: update_container_security_rulesets
+description: Modify a ruleset
+method: PATCH
+endpoint: /v3.0/containerSecurity/rulesets/{id}
+template: patch_update
+tags:
+- Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: get_container_security_policies
+description: Get Container Security policy
+method: GET
+endpoint: /v3.0/containerSecurity/policies/{id}
+template: single_get
+tags:
+- Policies
+params:
+  required: []
+  optional: []
+template_config: {}

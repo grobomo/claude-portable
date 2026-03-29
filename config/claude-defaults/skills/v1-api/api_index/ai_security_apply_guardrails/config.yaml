@@ -1,0 +1,28 @@
+name: ai_security_apply_guardrails
+description: Get AI guard evaluation for chats
+method: POST
+endpoint: /v3.0/aiSecurity/applyGuardrails
+template: post_action
+tags:
+- Guard
+params:
+  required:
+  - name: TMV1-Application-Name
+    type: string
+    description: 'The name of the AI application whose prompts are being evaluated
+
+      '
+  optional:
+  - name: TMV1-Request-Type
+    type: string
+    description: 'The type of request being evaluated
+
+      '
+  - name: Prefer
+    type: string
+    description: 'If `return=representation`, AI Guard includes a detailed evaluation
+      of the given prompt in the response. If `return=minimal`, AI guard returns a
+      shorter response.
+
+      '
+template_config: {}

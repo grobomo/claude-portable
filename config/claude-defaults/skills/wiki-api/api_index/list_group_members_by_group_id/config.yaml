@@ -1,0 +1,14 @@
+name: list_group_members_by_group_id
+description: Get group members
+method: GET
+endpoint: /wiki/rest/api/group/{groupId}/membersByGroupId
+template: search
+tags:
+- Group
+params:
+  required:
+  - name: groupId
+    type: string
+    description: 'Path parameter: groupId'
+  optional: []
+template_config: {}

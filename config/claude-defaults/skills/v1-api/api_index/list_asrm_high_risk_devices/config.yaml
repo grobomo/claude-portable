@@ -1,0 +1,97 @@
+name: list_asrm_high_risk_devices
+description: Get at-risk devices list
+method: GET
+endpoint: /v3.0/asrm/highRiskDevices
+template: standard_list
+tags:
+- Device Risk Profile
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the at-risk devices list.
+
+
+      Supported fields:
+
+
+      |Field |Description |
+
+      |---------|---------|
+
+      |`id` |The ID of the device on the Trend Vision One platform. |
+
+      |`deviceName` |The name of the device |
+
+      |`ip` |The IP addresses of the device. |
+
+      |`os` |The operating system of the device.|
+
+      |`riskScore` |The risk score of a user.|
+
+      |`lastLogonUser` |The user who last signed into the device.|
+
+
+      Supported operators:
+
+
+      |Operator  |Description |
+
+      |---------|---------|
+
+      |`eq`  |Operator ''equal to''. |
+
+      |`and` |Operator ''and''. |
+
+      |`or`  |Operator ''or''. |
+
+      |`not` |Operator ''not''. |
+
+      |`( )` |Symbols for grouping operands. |
+
+      |`gt`  |Operator ''greater than''. |
+
+      |`ge`  |Operator ''greater than or equal''. |
+
+      |`le`  |Operator ''less than or equal''. |
+
+      |`lt`  |Operator ''less than''. |
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available values:
+
+      * `riskScore`
+
+      * `deviceName`
+
+      * `asc` - Ascending order
+
+      * `desc` - Descending order
+
+
+      Default: `riskScore desc`
+
+      '
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

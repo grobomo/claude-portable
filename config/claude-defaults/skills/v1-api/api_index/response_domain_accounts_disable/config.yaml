@@ -1,0 +1,11 @@
+name: response_domain_accounts_disable
+description: Disable user account
+method: POST
+endpoint: /v3.0/response/domainAccounts/disable
+template: response_action
+tags:
+- Domain Account
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,44 @@
+# Example API operation config
+# Copy this folder and rename for each operation
+
+name: example_operation
+description: Example operation - update this description
+method: GET
+endpoint: /api/v1/resources/{id}
+template: get_single
+
+# Templates available:
+# - get_single: GET single resource by ID
+# - get_list: GET paginated list
+# - get_search: GET with search query
+# - post_create: POST to create resource
+# - post_action: POST to trigger action
+# - put_update: PUT to fully update
+# - patch_update: PATCH to partially update
+# - delete: DELETE resource
+
+params:
+  required:
+    - name: id
+      type: string
+      description: Resource ID (substituted into {id} in endpoint)
+  optional:
+    - name: format
+      type: string
+      default: json
+      description: Response format
+
+# Template-specific configuration
+template_config:
+  # For get_list:
+  # pagination:
+  #   param: limit
+  #   max: 100
+
+  # For get_search:
+  # search_param: query
+
+# Tags for organization (optional)
+tags:
+  - example
+  - template

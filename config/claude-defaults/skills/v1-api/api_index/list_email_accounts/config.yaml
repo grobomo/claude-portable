@@ -1,0 +1,25 @@
+name: list_email_accounts
+endpoint: /v3.0/email/accounts
+method: GET
+template: standard_list
+description: List email accounts
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- email_security
+- cecp

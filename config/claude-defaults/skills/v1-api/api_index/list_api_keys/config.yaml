@@ -1,0 +1,26 @@
+name: list_api_keys
+endpoint: /v3.0/iam/apiKeys
+method: GET
+template: standard_list
+description: List API keys
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    values:
+    - 50
+    - 100
+    - 200
+    type: enum
+  date_params: null
+  filter_style: odata
+categories:
+- admin
+- iam
+- user_management

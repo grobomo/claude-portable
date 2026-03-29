@@ -1,0 +1,19 @@
+name: get_alert
+endpoint: /v3.0/workbench/alerts/{alert_id}
+method: GET
+template: single_get
+description: Get alert details
+params:
+  required:
+  - name: alert_id
+    type: str
+    description: Alert ID (e.g., WB-12345)
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- alerts
+- investigation
+- soc_operations

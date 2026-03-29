@@ -1,0 +1,11 @@
+name: list_contentbody_convert_async_bulk_tasks
+description: Get asynchronous content body conversion task result in bulk
+method: GET
+endpoint: /wiki/rest/api/contentbody/convert/async/bulk/tasks
+template: search
+tags:
+- Content body
+params:
+  required: []
+  optional: []
+template_config: {}

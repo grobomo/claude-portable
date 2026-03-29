@@ -1,0 +1,14 @@
+name: get_case_management_cases
+description: Get case details
+method: GET
+endpoint: /v3.0/caseManagement/cases/{id}
+template: single_get
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: Case ID
+  optional: []
+template_config: {}

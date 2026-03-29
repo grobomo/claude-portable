@@ -1,0 +1,14 @@
+name: list_space_state_settings
+description: Get content state settings for space
+method: GET
+endpoint: /wiki/rest/api/space/{spaceKey}/state/settings
+template: search
+tags:
+- Content states
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

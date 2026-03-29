@@ -1,0 +1,11 @@
+name: sandbox_urls_analyze
+description: Submit URLs to sandbox
+method: POST
+endpoint: /v3.0/sandbox/urls/analyze
+template: post_action
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional: []
+template_config: {}

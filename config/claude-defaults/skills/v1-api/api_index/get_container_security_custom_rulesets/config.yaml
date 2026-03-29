@@ -1,0 +1,11 @@
+name: get_container_security_custom_rulesets
+description: Get ruleset details
+method: GET
+endpoint: /v3.0/containerSecurity/customRulesets/{id}
+template: single_get
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: delete_content_state
+description: Removes the content state of a content and publishes a new version.
+method: DELETE
+endpoint: /wiki/rest/api/content/{id}/state
+template: delete
+tags:
+- Content states
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

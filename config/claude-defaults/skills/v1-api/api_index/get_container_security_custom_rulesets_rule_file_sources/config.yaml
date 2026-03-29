@@ -1,0 +1,11 @@
+name: get_container_security_custom_rulesets_rule_file_sources
+description: Fetch custom ruleset file content
+method: GET
+endpoint: /v3.0/containerSecurity/customRulesets/{id}/ruleFileSources/{ruleFileSourceId}
+template: single_get
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

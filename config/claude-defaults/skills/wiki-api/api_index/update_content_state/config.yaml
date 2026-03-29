@@ -1,0 +1,15 @@
+name: update_content_state
+description: Set the content state of a content and publishes a new version of the
+  content.
+method: PUT
+endpoint: /wiki/rest/api/content/{id}/state
+template: update
+tags:
+- Content states
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

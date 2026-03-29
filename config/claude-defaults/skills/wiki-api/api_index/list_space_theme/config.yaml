@@ -1,0 +1,14 @@
+name: list_space_theme
+description: Get space theme
+method: GET
+endpoint: /wiki/rest/api/space/{spaceKey}/theme
+template: search
+tags:
+- Themes
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

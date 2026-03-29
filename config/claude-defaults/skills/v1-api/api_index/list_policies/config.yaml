@@ -1,0 +1,15 @@
+name: list_policies
+endpoint: /v3.0/endpointSecurity/versionControlPolicies
+method: GET
+template: simple_list
+description: List version control policies
+params:
+  required: []
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- endpoint_management
+- agent_management

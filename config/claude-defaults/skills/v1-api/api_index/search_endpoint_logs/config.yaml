@@ -1,0 +1,40 @@
+name: search_endpoint_logs
+endpoint: /v3.0/search/endpointActivities
+method: GET
+template: search
+description: Search endpoint activity logs (process, file, network events)
+params:
+  required: []
+  optional:
+  - name: hours
+    type: int
+    default: 24
+    description: Look back N hours
+  - name: limit
+    type: int
+    default: 100
+    description: Max results
+  - name: endpoint_name
+    type: str
+    default: ''
+    description: Filter by endpoint name
+  - name: filter
+    type: str
+    default: ''
+    description: Custom search filter (TMV1-Query syntax)
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: hours
+  filter_style: header
+  default_filter: '*'
+categories:
+- logs
+- endpoint_activity
+- investigation
+- threat_hunting

@@ -1,0 +1,11 @@
+name: response_domain_accounts_reset_password
+description: Force password reset
+method: POST
+endpoint: /v3.0/response/domainAccounts/resetPassword
+template: response_action
+tags:
+- Domain Account
+params:
+  required: []
+  optional: []
+template_config: {}

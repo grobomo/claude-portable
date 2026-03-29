@@ -1,0 +1,11 @@
+name: response_endpoint_action_exceptions_register
+description: Exclude endpoints from response actions
+method: POST
+endpoint: /v3.0/response/endpointActionExceptions/register
+template: response_action
+tags:
+- Endpoint
+params:
+  required: []
+  optional: []
+template_config: {}

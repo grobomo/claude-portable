@@ -1,0 +1,23 @@
+name: update
+description: Update an existing Confluence page
+method: PUT
+endpoint: /rest/api/content/{page_id}
+template: update
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Page ID or URL
+    - name: title
+      type: string
+      description: New page title
+    - name: content
+      type: string
+      description: New page content (HTML)
+
+template_config: {}
+
+tags:
+  - write
+  - update

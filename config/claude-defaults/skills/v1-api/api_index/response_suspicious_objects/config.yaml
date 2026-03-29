@@ -1,0 +1,11 @@
+name: response_suspicious_objects
+description: Add to block list
+method: POST
+endpoint: /v3.0/response/suspiciousObjects
+template: response_action
+tags:
+- Suspicious Objects
+params:
+  required: []
+  optional: []
+template_config: {}

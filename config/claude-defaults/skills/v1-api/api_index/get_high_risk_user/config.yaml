@@ -1,0 +1,18 @@
+name: get_high_risk_user
+endpoint: /v3.0/asrm/attackSurfaceHighRiskUsers/{user_id}
+method: GET
+template: single_get
+description: Get high-risk user details
+params:
+  required:
+  - name: user_id
+    type: str
+    description: User ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- risk_management
+- asset_inventory

@@ -1,0 +1,11 @@
+name: container_security_attestors
+description: Create Container Security attestor
+method: POST
+endpoint: /v3.0/containerSecurity/attestors
+template: post_action
+tags:
+- Attestors
+params:
+  required: []
+  optional: []
+template_config: {}

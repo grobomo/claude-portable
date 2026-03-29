@@ -1,0 +1,26 @@
+name: update_oat_data_pipelines
+description: Modify data pipeline settings
+method: PATCH
+endpoint: /v3.0/oat/dataPipelines/{id}
+template: patch_update
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of a data pipeline.
+  optional:
+  - name: If-Match
+    type: string
+    description: 'Parameter that allows you to update an existing resource.
+
+
+      > **Note**
+
+      >
+
+      > To get an ETag, send a GET request to the API.
+
+      '
+template_config: {}

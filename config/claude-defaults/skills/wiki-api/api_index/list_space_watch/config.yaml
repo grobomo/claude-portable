@@ -1,0 +1,14 @@
+name: list_space_watch
+description: Get space watchers
+method: GET
+endpoint: /wiki/rest/api/space/{spaceKey}/watch
+template: search
+tags:
+- Content watches
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

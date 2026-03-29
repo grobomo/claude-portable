@@ -1,0 +1,11 @@
+name: asrm_attack_surface_devices_update
+description: Update device tags
+method: POST
+endpoint: /v3.0/asrm/attackSurfaceDevices/update
+template: post_action
+tags:
+- Attack Surface Discovery
+params:
+  required: []
+  optional: []
+template_config: {}

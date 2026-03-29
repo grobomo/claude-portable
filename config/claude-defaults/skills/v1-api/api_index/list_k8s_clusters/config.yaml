@@ -1,0 +1,19 @@
+name: list_k8s_clusters
+endpoint: /v3.0/containerSecurity/kubernetesClusters
+method: GET
+template: standard_list
+description: List Kubernetes clusters
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: header
+categories:
+- cloud_security
+- container_security

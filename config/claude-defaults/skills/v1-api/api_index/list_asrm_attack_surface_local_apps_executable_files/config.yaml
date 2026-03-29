@@ -1,0 +1,121 @@
+name: list_asrm_attack_surface_local_apps_executable_files
+description: Get the local app's executable files
+method: GET
+endpoint: /v3.0/asrm/attackSurfaceLocalApps/{id}/executableFiles
+template: standard_list
+tags:
+- Attack Surface Discovery
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the local application on the Trend Vision One platform
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available fields:
+
+      * `lastDetectedDateTime`
+
+
+      Available modifiers:
+
+      * `asc` - Displays the results in ascending order
+
+      * `desc` - Displays the results in descending order
+
+
+      Default: `lastDetectedDateTime desc`
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the executable file information
+      list.
+
+
+      Supported fields:
+
+
+      | Field                | Description                                                      |
+      Supported values |
+
+      |----------------------|------------------------------------------------------------------|------------------|
+
+      | name                 | The name of the executable file                                  |
+      Any value        |
+
+      | productName          | The name of the product associated with the executable
+      file      | Any value        |
+
+      | language             | The language of the executable file                              |
+      Any value        |
+
+      | firstSeenDateTime    | The first time the executable file was detected, ISO
+      8601 format | Any value        |
+
+      | lastDetectedDateTime | The last time the executable file was detected, ISO
+      8601 format  | Any value        |
+
+
+      Supported operators:
+
+
+      | Operator | Description                                               | Notes                                                          |
+
+      |----------|-----------------------------------------------------------|----------------------------------------------------------------|
+
+      | `eq`     | Operator ''equal to''                                       | -                                                              |
+
+      | `and`    | Operator ''and''                                            | -                                                              |
+
+      | `or`     | Operator ''or''                                             | -                                                              |
+
+      | `not`    | Operator ''not''                                            | -                                                              |
+
+      | `()`     | Symbols for grouping operands with their correct operator | -                                                              |
+
+      | `gt`     | Operator ''greater than''                                   | Only
+      applicable to `firstSeenDateTime`, `lastDetectedDateTime` |
+
+      | `ge`     | Operator ''greater than or equal''                          | Only
+      applicable to `firstSeenDateTime`, `lastDetectedDateTime` |
+
+      | `le`     | Operator ''less than or equal''                             | Only
+      applicable to `firstSeenDateTime`, `lastDetectedDateTime` |
+
+      | `lt`     | Operator ''less than''                                      | Only
+      applicable to `firstSeenDateTime`, `lastDetectedDateTime` |
+
+
+      Additional functions:
+
+
+      | Function   | Description                                       | Notes                       |
+
+      |------------|---------------------------------------------------|-----------------------------|
+
+      | contains() | Checks if the string contains the specified value | Applicable
+      to `productName` only |
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

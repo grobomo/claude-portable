@@ -1,0 +1,11 @@
+name: delete_oat_data_pipelines_delete
+description: Unregister from data pipeline
+method: POST
+endpoint: /v3.0/oat/dataPipelines/delete
+template: post_action
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

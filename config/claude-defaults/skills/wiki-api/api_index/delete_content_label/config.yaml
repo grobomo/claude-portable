@@ -1,0 +1,17 @@
+name: delete_content_label
+description: Remove label from content
+method: DELETE
+endpoint: /wiki/rest/api/content/{id}/label/{label}
+template: delete
+tags:
+- Content labels
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: label
+    type: string
+    description: 'Path parameter: label'
+  optional: []
+template_config: {}

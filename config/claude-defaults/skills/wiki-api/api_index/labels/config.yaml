@@ -1,0 +1,21 @@
+name: labels
+description: Get or add labels on a Confluence page
+method: GET
+endpoint: /rest/api/content/{page_id}/label
+template: labels
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Page ID or URL
+  optional:
+    - name: add
+      type: string
+      description: Label to add (if empty, lists labels)
+
+template_config: {}
+
+tags:
+  - metadata
+  - labels

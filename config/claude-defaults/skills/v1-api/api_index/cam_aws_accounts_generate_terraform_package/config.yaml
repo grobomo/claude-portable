@@ -1,0 +1,11 @@
+name: cam_aws_accounts_generate_terraform_package
+description: Generate AWS Terraform template
+method: POST
+endpoint: /v3.0/cam/awsAccounts/generateTerraformPackage
+template: post_action
+tags:
+- AWS accounts
+params:
+  required: []
+  optional: []
+template_config: {}

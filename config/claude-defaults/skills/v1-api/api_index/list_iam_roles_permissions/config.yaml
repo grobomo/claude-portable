@@ -1,0 +1,14 @@
+name: list_iam_roles_permissions
+description: Get permissions of a specific role
+method: GET
+endpoint: /v3.0/iam/roles/{id}/permissions
+template: single_get
+tags:
+- Roles (Foundation Services release)
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

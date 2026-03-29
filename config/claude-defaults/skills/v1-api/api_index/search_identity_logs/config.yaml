@@ -1,0 +1,31 @@
+name: search_identity_logs
+endpoint: /v3.0/search/identityActivities
+method: GET
+template: search
+description: Search identity activity logs
+params:
+  required: []
+  optional:
+  - name: hours
+    type: int
+    description: Look back N hours
+    default: 24
+  - name: limit
+    type: int
+    description: Max results
+    default: 100
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: hours
+  filter_style: header
+  default_filter: '*'
+categories:
+- logs
+- investigation
+- threat_hunting

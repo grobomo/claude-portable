@@ -1,0 +1,14 @@
+name: list_content_restriction_by_operation
+description: Get restrictions by operation
+method: GET
+endpoint: /wiki/rest/api/content/{id}/restriction/byOperation
+template: search
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

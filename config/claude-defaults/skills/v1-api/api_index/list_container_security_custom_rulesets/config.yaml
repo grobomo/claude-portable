@@ -1,0 +1,76 @@
+name: list_container_security_custom_rulesets
+description: Get Container Security custom rulesets
+method: GET
+endpoint: /v3.0/containerSecurity/customRulesets
+template: single_get
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the custom rulesets list.
+      Include this parameter in every request that generates paginated output.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |-----|-----------|----------------|
+
+      |name|The name of the custom ruleset|Any value|
+
+      |type|The type of the custom ruleset|`userManaged`, `clusterManaged`|
+
+
+      Supported operators:
+
+
+      |Operator|Description|Notes|
+
+      |--------|-----------|-----|
+
+      |`eq`|Operator ''equal to''| - |
+
+      |`and`|Operator ''and''| - |
+
+      |`or`|Operator ''or''| - |
+
+      |`not`|Operator ''not''| - |
+
+
+      Additional functions:
+
+
+      |Function|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |contains|Operator that allows you to search for a specified string in a field|Only
+      applicable to `name`|
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The fields by which the results are sorted. You can indicate multiple
+      fields separated by commas (`,`).
+
+
+      To return records in descending order, add the keyword `desc` after the parameter
+      name.
+
+
+      Available fields:
+
+      * `createdDateTime`
+
+      * `updatedDateTime`
+
+      '
+template_config: {}

@@ -1,0 +1,11 @@
+name: update_template
+description: Update content template
+method: PUT
+endpoint: /wiki/rest/api/template
+template: update
+tags:
+- Template
+params:
+  required: []
+  optional: []
+template_config: {}

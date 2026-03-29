@@ -1,0 +1,11 @@
+name: list_settings_lookandfeel
+description: Get look and feel settings
+method: GET
+endpoint: /wiki/rest/api/settings/lookandfeel
+template: search
+tags:
+- Settings
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,17 @@
+name: get_case_management_cases_contents
+description: Get case item
+method: GET
+endpoint: /v3.0/caseManagement/cases/{id}/contents/{contentId}
+template: single_get
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  - name: contentId
+    type: string
+    description: The content ID
+  optional: []
+template_config: {}

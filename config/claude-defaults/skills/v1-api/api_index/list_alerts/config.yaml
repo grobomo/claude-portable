@@ -1,0 +1,38 @@
+name: list_alerts
+endpoint: /v3.0/workbench/alerts
+method: GET
+template: standard_list
+description: List workbench alerts with filtering by severity, status, and date range
+params:
+  required: []
+  optional:
+  - name: days
+    type: int
+    default: 7
+    description: Look back N days
+  - name: severity
+    type: str
+    default: ''
+    description: 'Filter: critical, high, medium, low'
+  - name: status
+    type: str
+    default: ''
+    description: 'Filter: New, In Progress, Closed'
+  - name: limit
+    type: int
+    default: 20
+    description: Max results (max 50)
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- alerts
+- investigation
+- soc_operations

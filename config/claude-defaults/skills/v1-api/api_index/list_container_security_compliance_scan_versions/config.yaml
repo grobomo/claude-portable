@@ -1,0 +1,11 @@
+name: list_container_security_compliance_scan_versions
+description: Get status of compliance scan benchmarks
+method: GET
+endpoint: /v3.0/containerSecurity/complianceScanVersions
+template: single_get
+tags:
+- Compliance Scans
+params:
+  required: []
+  optional: []
+template_config: {}

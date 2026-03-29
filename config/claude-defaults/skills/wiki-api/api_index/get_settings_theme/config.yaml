@@ -1,0 +1,14 @@
+name: get_settings_theme
+description: Get theme
+method: GET
+endpoint: /wiki/rest/api/settings/theme/{themeKey}
+template: read
+tags:
+- Themes
+params:
+  required:
+  - name: themeKey
+    type: string
+    description: 'Path parameter: themeKey'
+  optional: []
+template_config: {}

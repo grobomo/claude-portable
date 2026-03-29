@@ -1,0 +1,51 @@
+name: list_response_endpoint_action_exceptions
+description: Get endpoint response action exclusion list
+method: GET
+endpoint: /v3.0/response/endpointActionExceptions
+template: single_get
+tags:
+- Endpoint
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the endpoint response action exclusion
+      list.
+
+
+      Supported fields:
+
+
+      |Field            |Description             |Supported values                                                                                 |
+
+      |-----------------|------------------------|-------------------------------------------------------------------------------------------------|
+
+      |action           |The response action name.|`isolate`, `runCustomScript`, `remoteShell`,
+      `collectFile`, `dumpProcessMemory`|
+
+      |endpointName     |The endpoint host name.  |Any valid host name                                                                              |
+
+      |endpointAgentGuid|The endpoint GUID.       |Any valid GUID                                                                                   |
+
+
+
+      Supported operators:
+
+
+      |Operator|Description|
+
+      |-----|-----------|
+
+      |`eq` |Operator ''equal to''|
+
+      |`and`|Operator ''and''|
+
+      |`or` |Operator ''or''|
+
+      |`not`|Operator ''not''|
+
+      |`()` |Symbols for grouping operands with their correct operator|
+
+      '
+template_config: {}

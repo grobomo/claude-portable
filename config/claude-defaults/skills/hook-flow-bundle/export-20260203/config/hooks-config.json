@@ -1,0 +1,99 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/skill-mcp-claudemd-injector.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/auto-gsd.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/preference-learner.js\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/gsd-check-update.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/gsd-intel-session.js\""
+          },
+          {
+            "type": "command",
+            "command": "TRIGGER=SessionStart bash \"$HOME/.claude/skills/claude-backup/backup.sh\"",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "echo 1 > \"$HOME/.claude/hooks/autonomous_mode.state\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TRIGGER=SessionEnd bash \"$HOME/.claude/skills/claude-backup/backup.sh\"",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/gsd-intel-index.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/gsd-verifier-check.js\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/gsd-gate.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${HOME}/.claude/hooks/autonomous-decision.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

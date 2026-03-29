@@ -1,0 +1,18 @@
+name: get_azure_account
+endpoint: /v3.0/cam/azureSubscriptions/{account_id}
+method: GET
+template: single_get
+description: Get Azure subscription details
+params:
+  required:
+  - name: account_id
+    type: str
+    description: Azure subscription ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- cloud_security
+- cloud_accounts

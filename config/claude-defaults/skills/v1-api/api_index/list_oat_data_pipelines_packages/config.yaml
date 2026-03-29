@@ -1,0 +1,77 @@
+name: list_oat_data_pipelines_packages
+description: Get Observed Attack Techniques event packages
+method: GET
+endpoint: /v3.0/oat/dataPipelines/{id}/packages
+template: standard_list
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of a data pipeline.
+  optional:
+  - name: startDateTime
+    type: string
+    description: 'The start of the data retrieval time range, in ISO 8601 format
+
+
+      You can retrieve data that was saved no earlier than 7 days ago.
+
+
+      Default: 15 minutes before you make the request
+
+
+      > **Tip**
+
+      >
+
+      > If you have requested data before, Trend Micro recommends using **latestPackageCreatedDateTime**
+      as the value for **startDateTime** for subsequent requests.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'The end of the data retrieval time range, in ISO 8601 format
+
+
+      Default: The time you make the request
+
+
+      > **Note**
+
+      >
+
+      > * The difference between ''startDateTime'' and ''endDateTime'' cannot be greater
+      than 3600 seconds.
+
+      > * Due to processing time limitations, ensure "endDateTime" is set to at least
+      30 seconds before the request execution time.
+
+      '
+  - name: top
+    type: integer
+    description: 'Number of records displayed on a page. If no value is specified,
+      ''top'' defaults to 500.
+
+
+      Available values:
+
+      * 50
+
+      * 100
+
+      * 200
+
+      * 500
+
+      '
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

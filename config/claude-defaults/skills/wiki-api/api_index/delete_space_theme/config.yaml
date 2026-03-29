@@ -1,0 +1,14 @@
+name: delete_space_theme
+description: Reset space theme
+method: DELETE
+endpoint: /wiki/rest/api/space/{spaceKey}/theme
+template: delete
+tags:
+- Themes
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

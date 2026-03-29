@@ -1,0 +1,17 @@
+name: update_cam_alibaba_accounts
+description: Modify Alibaba Cloud account details
+method: PATCH
+endpoint: /v3.0/cam/alibabaAccounts/{id}
+template: patch_update
+tags:
+- Alibaba Cloud accounts
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+template_config: {}

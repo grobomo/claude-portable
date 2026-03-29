@@ -1,0 +1,17 @@
+name: create_content_child_attachment_data
+description: Update attachment data
+method: POST
+endpoint: /wiki/rest/api/content/{id}/child/attachment/{attachmentId}/data
+template: create
+tags:
+- Content - attachments
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: attachmentId
+    type: string
+    description: 'Path parameter: attachmentId'
+  optional: []
+template_config: {}

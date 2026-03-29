@@ -1,0 +1,25 @@
+name: search
+description: Search Confluence pages by text or CQL query
+method: GET
+endpoint: /rest/api/content/search
+template: search
+
+params:
+  required:
+    - name: query
+      type: string
+      description: Search text or CQL query (e.g., "API docs" or "type=page AND space=MYSPACE")
+  optional:
+    - name: space
+      type: string
+      description: Space key to limit search
+    - name: limit
+      type: integer
+      default: 10
+      description: Max results (default 10)
+
+template_config: {}
+
+tags:
+  - search
+  - read

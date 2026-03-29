@@ -1,0 +1,17 @@
+name: update_content_restriction_by_operation_user
+description: Add user to content restriction
+method: PUT
+endpoint: /wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/user
+template: update
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: operationKey
+    type: string
+    description: 'Path parameter: operationKey'
+  optional: []
+template_config: {}

@@ -1,0 +1,27 @@
+name: list_custom_tags
+endpoint: /v3.0/asrm/customTags
+method: GET
+template: standard_list
+description: List custom asset tags
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+  - name: key
+    type: str
+    description: Filter by tag key
+    default: ''
+template_config:
+  pagination:
+    param: top
+    max: 1000
+    type: int
+  date_params: null
+  filter_style: odata
+  order_by: latestRiskScore desc
+categories:
+- risk_management
+- asset_inventory

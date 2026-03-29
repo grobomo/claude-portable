@@ -1,0 +1,14 @@
+name: update_endpoint_security_version_control_policy_priorities
+description: Modify version control policy priority
+method: PATCH
+endpoint: /v3.0/endpointSecurity/versionControlPolicyPriorities/{id}
+template: patch_update
+tags:
+- Endpoint Security
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the policy priority
+  optional: []
+template_config: {}

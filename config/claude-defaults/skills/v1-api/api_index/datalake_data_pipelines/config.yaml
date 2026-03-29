@@ -1,0 +1,13 @@
+name: datalake_data_pipelines
+description: 'Bind a data type to a pipeline
+
+  '
+method: POST
+endpoint: /v3.0/datalake/dataPipelines
+template: post_action
+tags:
+- Datalake Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

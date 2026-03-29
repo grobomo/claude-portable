@@ -1,0 +1,14 @@
+name: list_sandbox_analysis_results_investigation_package
+description: Download Investigation Package
+method: GET
+endpoint: /v3.0/sandbox/analysisResults/{id}/investigationPackage
+template: single_get
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

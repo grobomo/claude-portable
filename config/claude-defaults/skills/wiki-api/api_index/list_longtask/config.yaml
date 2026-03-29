@@ -1,0 +1,11 @@
+name: list_longtask
+description: Get long-running tasks
+method: GET
+endpoint: /wiki/rest/api/longtask
+template: search
+tags:
+- Long-running task
+params:
+  required: []
+  optional: []
+template_config: {}

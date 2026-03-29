@@ -1,0 +1,18 @@
+name: get_datalake_data_pipelines
+description: 'Get pipeline information
+
+  '
+method: GET
+endpoint: /v3.0/datalake/dataPipelines/{id}
+template: single_get
+tags:
+- Datalake Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: 'The ID of a data pipeline.
+
+      '
+  optional: []
+template_config: {}

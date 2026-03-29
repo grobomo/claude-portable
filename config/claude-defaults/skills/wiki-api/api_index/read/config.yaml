@@ -1,0 +1,21 @@
+name: read
+description: Read a Confluence page by ID or URL
+method: GET
+endpoint: /rest/api/content/{page_id}
+template: read
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Page ID or full Confluence URL
+  optional:
+    - name: format
+      type: string
+      default: text
+      description: Output format - text, html, or json
+
+template_config: {}
+
+tags:
+  - read

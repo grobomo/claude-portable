@@ -1,0 +1,22 @@
+name: get_asrm_high_risk_devices
+description: Get device risk profile
+method: GET
+endpoint: /v3.0/asrm/highRiskDevices/{id}
+template: single_get
+tags:
+- Device Risk Profile
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the device on the Trend Vision One platform
+  optional:
+  - name: riskyEventScore
+    type: integer
+    description: 'The minimum risk score of the risk events this API endpoint returns.
+
+
+      Default: `70`
+
+      '
+template_config: {}

@@ -1,0 +1,14 @@
+name: list_content_descendant
+description: Get content descendants
+method: GET
+endpoint: /wiki/rest/api/content/{id}/descendant
+template: search
+tags:
+- Content - children and descendants
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

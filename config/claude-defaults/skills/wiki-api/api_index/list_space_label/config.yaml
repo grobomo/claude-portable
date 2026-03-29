@@ -1,0 +1,14 @@
+name: list_space_label
+description: Get Space Labels
+method: GET
+endpoint: /wiki/rest/api/space/{spaceKey}/label
+template: search
+tags:
+- Experimental
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

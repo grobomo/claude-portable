@@ -1,0 +1,17 @@
+name: update_user_property
+description: Update user property
+method: PUT
+endpoint: /wiki/rest/api/user/{userId}/property/{key}
+template: update
+tags:
+- User properties
+params:
+  required:
+  - name: userId
+    type: string
+    description: 'Path parameter: userId'
+  - name: key
+    type: string
+    description: 'Path parameter: key'
+  optional: []
+template_config: {}

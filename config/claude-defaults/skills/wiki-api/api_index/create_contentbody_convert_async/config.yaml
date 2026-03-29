@@ -1,0 +1,14 @@
+name: create_contentbody_convert_async
+description: Asynchronously convert content body
+method: POST
+endpoint: /wiki/rest/api/contentbody/convert/async/{to}
+template: create
+tags:
+- Content body
+params:
+  required:
+  - name: to
+    type: string
+    description: 'Path parameter: to'
+  optional: []
+template_config: {}

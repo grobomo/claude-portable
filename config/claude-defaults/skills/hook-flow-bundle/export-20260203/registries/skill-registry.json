@@ -1,0 +1,312 @@
+{
+  "skills": [
+    {
+      "id": "weekly-update",
+      "name": "Weekly Update PowerPoint",
+      "keywords": [
+        "weekly update",
+        "weekly status",
+        "squad update",
+        "fill out slides",
+        "ta slides",
+        "se slides",
+        "sales rep slides",
+        "customer health slide",
+        "platform adoption",
+        "sales motions"
+      ],
+      "skillPath": "${HOME}/.claude/skills/weekly-update/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "pptx",
+      "name": "PowerPoint Skill",
+      "keywords": [
+        "pptx",
+        "powerpoint",
+        "presentation",
+        "slides",
+        "slide deck"
+      ],
+      "skillPath": "${HOME}/.claude/plugins/marketplaces/anthropic-agent-skills/skills/pptx/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "hooks",
+      "name": "Claude Code Hooks Skill",
+      "keywords": [
+        "hook",
+        "hooks",
+        "pretooluse",
+        "posttooluse",
+        "userpromptsubmit",
+        "sessionstart",
+        "sessionend",
+        "stop hook",
+        "subagentsop",
+        "precompact",
+        "permissionrequest",
+        "notification hook",
+        "setup hook"
+      ],
+      "skillPath": "${HOME}/.claude/skills/hooks/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "claude-backup",
+      "name": "Claude Backup Skill",
+      "keywords": [
+        "backup",
+        "restore",
+        "backup hooks",
+        "restore hooks",
+        "backup settings",
+        "reinstall claude",
+        "corrupt"
+      ],
+      "skillPath": "${HOME}/.claude/skills/claude-backup/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "project-sync",
+      "name": "Project Sync Skill",
+      "keywords": [
+        "/project",
+        "project init",
+        "project sync",
+        "project status",
+        "create repo",
+        "setup repo",
+        "publish project"
+      ],
+      "skillPath": "${HOME}/.claude/skills/project-sync/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "double-space-fixer",
+      "name": "Double-Space Fixer",
+      "keywords": [
+        "double-space",
+        "double space",
+        "text expander",
+        "iphone typing"
+      ],
+      "skillPath": "${HOME}/.claude/skills/double-space-fixer/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "aws",
+      "name": "AWS Skill",
+      "keywords": [
+        "aws",
+        "deploy",
+        "s3",
+        "cloudfront",
+        "ec2",
+        "lambda",
+        "cost",
+        "billing",
+        "bucket",
+        "instance",
+        "serverless"
+      ],
+      "skillPath": "${HOME}/.claude/skills/aws/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "auto-gsd",
+      "name": "Auto-GSD Task Tracking",
+      "keywords": [
+        "auto-gsd",
+        "completion criteria",
+        "plan before implement",
+        "gsd gate",
+        "task tracking"
+      ],
+      "skillPath": "${HOME}/.claude/skills/auto-gsd/SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "memo-edit",
+      "name": "Memo Edit",
+      "keywords": [
+        "memo-edit",
+        "memo edit"
+      ],
+      "skillPath": "/home/claude/.claude\\skills\\memo-edit\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "apex-central-api",
+      "name": "Apex Central Api",
+      "keywords": [
+        "apex-central-api",
+        "apex central api"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\apex-central-api\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "clawdbot-deploy",
+      "name": "Clawdbot Deploy",
+      "keywords": [
+        "clawdbot-deploy",
+        "clawdbot deploy"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\clawdbot-deploy\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "diff-view",
+      "name": "Diff View",
+      "keywords": [
+        "diff-view",
+        "diff view"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\diff-view\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "hook-maker",
+      "name": "Hook Maker",
+      "keywords": [
+        "hook-maker",
+        "hook maker"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\hook-maker\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "network-scan",
+      "name": "Network Scan",
+      "keywords": [
+        "network-scan",
+        "network scan"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\network-scan\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "open-notepad",
+      "name": "Open Notepad",
+      "keywords": [
+        "open-notepad",
+        "open notepad"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\open-notepad\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "pr-review",
+      "name": "Pr Review",
+      "keywords": [
+        "pr-review",
+        "pr review"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\pr-review\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "project-maker",
+      "name": "Project Maker",
+      "keywords": [
+        "project-maker",
+        "project maker"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\project-maker\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "security-scan",
+      "name": "Security Scan",
+      "keywords": [
+        "security-scan",
+        "security scan"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\security-scan\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "skill-maker",
+      "name": "Skill Maker",
+      "keywords": [
+        "skill-maker",
+        "skill maker"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\skill-maker\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "skill-marketplace",
+      "name": "Skill Marketplace",
+      "keywords": [
+        "skill-marketplace",
+        "skill marketplace"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\skill-marketplace\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "v1-api",
+      "name": "V1 Api",
+      "keywords": [
+        "v1-api",
+        "v1 api",
+        "vision one",
+        "visionone",
+        "xdr",
+        "workbench",
+        "alert",
+        "endpoint",
+        "oat",
+        "observed attack",
+        "threat",
+        "blocklist",
+        "detection",
+        "indicator",
+        "v1 query"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\v1-api\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "wiki-api",
+      "name": "Wiki Api",
+      "keywords": [
+        "wiki-api",
+        "wiki api"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\wiki-api\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "claude-report",
+      "name": "Claude Report",
+      "keywords": [
+        "claude-report",
+        "claude report",
+        "inventory",
+        "audit hooks",
+        "audit skills",
+        "audit mcps",
+        "mcp inventory",
+        "skill inventory",
+        "hook inventory"
+      ],
+      "skillPath": "/home/claude/OneDrive - TrendMicro\\Documents\\ProjectsCL\\lab-worker\\.claude\\skills\\claude-report\\SKILL.md",
+      "enabled": true
+    },
+    {
+      "id": "injector-manager",
+      "name": "Injector Manager",
+      "keywords": [
+        "injector",
+        "injector-setup",
+        "verify injector",
+        "check injector"
+      ],
+      "skillPath": "${HOME}/.claude/skills/injector-manager/SKILL.md",
+      "enabled": true
+    }
+  ]
+}

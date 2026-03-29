@@ -1,0 +1,14 @@
+name: get_user_watch_label
+description: Get label watch status
+method: GET
+endpoint: /wiki/rest/api/user/watch/label/{labelName}
+template: read
+tags:
+- Content watches
+params:
+  required:
+  - name: labelName
+    type: string
+    description: 'Path parameter: labelName'
+  optional: []
+template_config: {}

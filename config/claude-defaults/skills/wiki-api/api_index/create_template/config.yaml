@@ -1,0 +1,11 @@
+name: create_template
+description: Create content template
+method: POST
+endpoint: /wiki/rest/api/template
+template: create
+tags:
+- Template
+params:
+  required: []
+  optional: []
+template_config: {}

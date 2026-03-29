@@ -1,0 +1,11 @@
+name: get_container_security_managed_rules
+description: Get runtime rule details
+method: GET
+endpoint: /v3.0/containerSecurity/managedRules/{id}
+template: single_get
+tags:
+- Rules
+params:
+  required: []
+  optional: []
+template_config: {}

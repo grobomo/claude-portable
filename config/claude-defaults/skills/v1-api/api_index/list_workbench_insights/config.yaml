@@ -1,0 +1,97 @@
+name: list_workbench_insights
+description: Get insights list
+method: GET
+endpoint: /v3.0/workbench/insights
+template: standard_list
+tags:
+- Insight
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the insight list.
+
+
+      Supported fields:
+
+      |Field    |Description |Possible values|
+
+      |---------|------------|--------------|
+
+      |id |The unique identifier of an insight |Any value|
+
+      |caseId |The unique identifier of a case |Any value|
+
+      |inProcess |Whether the insight graph is in process |`true`, `false`|
+
+      |createdDateTime | The date and time when the insight was created |Datetime
+      in ISO 8601 format (yyyy-MM-ddThh:mm:ssZ in UTC)|
+
+      |updatedDateTime | The date and time when the insight was last updated |Datetime
+      in ISO 8601 format (yyyy-MM-ddThh:mm:ssZ in UTC)|
+
+
+      Supported operators:
+
+      |Operator |Description |Notes |
+
+      |---------|------------|------|
+
+      |`eq`|Operator ''equal to''.|-|
+
+      |`gt`| Operator ''greater than''.|Only applicable to `createdDateTime` and `updatedDateTime`
+      |
+
+      |`ge`| Operator ''greater than or equal''.| Only applicable to `createdDateTime`
+      and `updatedDateTime` |
+
+      |`le`| Operator ''less than or equal''.| Only applicable to `createdDateTime`
+      and `updatedDateTime` |
+
+      |`lt`| Operator ''less than''.| Only applicable to `createdDateTime` and `updatedDateTime`
+      |
+
+      |`and`|Operator ''and''.|-|
+
+      |`or`|Operator ''or''.|-|
+
+      |`not`|Operator ''not''.|-|
+
+      |`( )`|Symbols for grouping operands with their correct operator.|-|
+
+
+      Note: Include this parameter in every request that generates paginated output.
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field that specifies the order in which the results are sorted.
+
+
+      Records are returned in descending order by default. To return records in ascending
+      order, add the phrase `asc` after the parameter name.
+
+
+      You can specify multiple fields separated by commas.
+
+
+      Available values:
+
+      * caseId
+
+      * score
+
+      * createdDateTime
+
+      * updatedDateTime
+
+      '
+  - name: top
+    type: integer
+    description: The number of records displayed on a page.
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

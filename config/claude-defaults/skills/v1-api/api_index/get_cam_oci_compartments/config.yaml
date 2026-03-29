@@ -1,0 +1,14 @@
+name: get_cam_oci_compartments
+description: Show OCI compartment details
+method: GET
+endpoint: /v3.0/cam/ociCompartments/{id}
+template: single_get
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

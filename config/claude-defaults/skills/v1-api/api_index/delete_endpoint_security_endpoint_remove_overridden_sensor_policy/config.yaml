@@ -1,0 +1,11 @@
+name: delete_endpoint_security_endpoint_remove_overridden_sensor_policy
+description: Remove overriden endpoint security policy settings
+method: POST
+endpoint: /v3.0/endpointSecurity/endpoints/removeOverriddenSensorPolicy
+template: post_action
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional: []
+template_config: {}

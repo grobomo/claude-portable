@@ -1,0 +1,23 @@
+name: list_container_vulns
+endpoint: /v3.0/containerSecurity/vulnerabilities
+method: GET
+template: standard_list
+description: List container vulnerabilities
+params:
+  required: []
+  optional:
+  - name: risk_level
+    type: str
+    description: 'Filter: high, medium, low'
+    default: ''
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: header
+categories:
+- cloud_security
+- container_security

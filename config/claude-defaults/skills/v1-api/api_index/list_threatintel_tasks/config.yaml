@@ -1,0 +1,72 @@
+name: list_threatintel_tasks
+description: List tasks
+method: GET
+endpoint: /v3.0/threatintel/tasks
+template: single_get
+tags:
+- Intelligence Reports
+params:
+  required: []
+  optional:
+  - name: orderBy
+    type: string
+    description: 'The parameter that allows you to sort the retrieved search results
+      in ascending or descending order. If no order is specified, the results are
+      shown in ascending order.
+
+
+      Supported fields and operators:
+
+
+      * ''lastActionDateTime''
+
+      * ''asc'' - Ascending order
+
+      * ''desc'' - Descending order
+
+      '
+  - name: filter
+    type: string
+    description: 'Filter for retrieving a subset of the sweeping task list. Supported
+      fields and operators:
+
+      * id - Unique alphanumeric string that identifies a sweeping task
+
+      * sweepType - Type of sweeping task. Possible values: "schedule", "manual" and
+      "stixShifter"
+
+      * isHit - States whether indicators were matched during a sweeping task (boolean)
+
+      * status - Status of a sweeping task. Possible values: "notstarted", "running",
+      "succeeded", and "failed"
+
+
+      * ''eq'' - Abbreviation of the operator "equal to"
+
+      * ''and'' - Operator "and"
+
+      * ''or'' - Operator "or"
+
+      * ''not'' - Operator "not"
+
+      * ''( )'' - Symbols for grouping operands with their correct operator.
+
+      '
+  - name: startDateTime
+    type: string
+    description: 'The timestamp in ISO 8601 format that indicates the start of the
+      data retrieval time range. If no value is specified, ''startDateTime'' defaults
+      to the earliest available value for ''createdDateTime''.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'The timestamp in ISO 8601 format that indicates the end of the data
+      retrieval time range. If no value is specified, ''endDateTime'' defaults to
+      the time the request is made.
+
+      '
+  - name: null
+    type: string
+    description: ''
+template_config: {}

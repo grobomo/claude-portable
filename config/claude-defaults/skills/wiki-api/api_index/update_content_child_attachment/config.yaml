@@ -1,0 +1,17 @@
+name: update_content_child_attachment
+description: Update attachment properties
+method: PUT
+endpoint: /wiki/rest/api/content/{id}/child/attachment/{attachmentId}
+template: update
+tags:
+- Content - attachments
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: attachmentId
+    type: string
+    description: 'Path parameter: attachmentId'
+  optional: []
+template_config: {}

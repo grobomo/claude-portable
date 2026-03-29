@@ -1,0 +1,14 @@
+name: get_sandbox_tasks
+description: Get submission status
+method: GET
+endpoint: /v3.0/sandbox/tasks/{id}
+template: single_get
+tags:
+- Sandbox Analysis
+params:
+  required:
+  - name: id
+    type: string
+    description: Displays information about the specified submission
+  optional: []
+template_config: {}

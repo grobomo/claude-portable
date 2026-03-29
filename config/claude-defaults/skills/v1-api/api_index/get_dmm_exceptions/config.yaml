@@ -1,0 +1,14 @@
+name: get_dmm_exceptions
+description: Get a custom exception
+method: GET
+endpoint: /v3.0/dmm/exceptions/{id}
+template: single_get
+tags:
+- Exceptions
+params:
+  required:
+  - name: id
+    type: string
+    description: The unique identifier of the exception
+  optional: []
+template_config: {}

@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Clawdbot Signal Integration Add-on
+
+  This add-on enables Signal messaging for Clawdbot:
+  - Installs signal-cli on EC2 instance
+  - Configures Clawdbot Signal channel
+  - Persists Signal keys to S3
+
+  Prerequisites:
+  - Base Clawdbot stack deployed
+  - Dedicated phone number for Signal bot (separate from personal)
+
+Parameters:
+  BaseStackName:
+    Type: String
+    Default: clawdbot
+    Description: Name of the base Clawdbot stack
+
+  SignalPhoneNumber:
+    Type: String
+    Description: |
+      Phone number for Signal bot (E.164 format: +1XXXXXXXXXX)
+      IMPORTANT: Use a SEPARATE number from your personal Signal
+    AllowedPattern: ^\+[1-9]\d{1,14}$
+    ConstraintDescription: Must be E.164 format (e.g., +15551234567)
+
+  AllowedSenders:
+    Type: CommaDelimitedList
+    Description: |
+      Phone numbers allowed to message the bot (comma-separated, E.164 format)
+      Example: +15551234567,+15559876543
+
+  DmPolicy:
+    Type: String
+    Default: pairing
+    Description: |
+      How to handle DM requests:
+      - pairing: Require pairing code approval
+      - open: Allow anyone (not recommended)
+      - closed: Only pre-approved numbers
+    AllowedValues:
+      - pairing
+      - open
+      - closed
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # SSM PARAMETER - Signal configuration
+  # ---------------------------------------------------------------------------
+  # Stored in SSM so EC2 userdata can retrieve during bootstrap
+  # ---------------------------------------------------------------------------
+  SignalConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /clawdbot/addons/signal
+      Type: String
+      Description: Signal integration configuration
+      Value: !Sub
+        - |
+          {
+            "enabled": true,
+            "phone_number": "${SignalPhoneNumber}",
+            "allowed_senders": ${AllowedSendersJson},
+            "dm_policy": "${DmPolicy}",
+            "signal_cli_version": "0.13.4"
+          }
+        - AllowedSendersJson: !Join
+            - ''
+            - - '["'
+              - !Join ['", "', !Ref AllowedSenders]
+              - '"]'
+
+  # ---------------------------------------------------------------------------
+  # CUSTOM RESOURCE - Update base stack config
+  # ---------------------------------------------------------------------------
+  # Adds Signal addon flag to base config so EC2 knows to install signal-cli
+  # ---------------------------------------------------------------------------
+  UpdateConfigFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-update-config'
+      Description: Updates base Clawdbot config with Signal addon
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 30
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${BaseStackName}-orchestrator-role'
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+
+          ssm = boto3.client('ssm')
+          s3 = boto3.client('s3')
+
+          def handler(event, context):
+              try:
+                  if event['RequestType'] == 'Delete':
+                      # Remove signal addon flag
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+
+                  base_stack = event['ResourceProperties']['BaseStackName']
+                  bucket = event['ResourceProperties']['Bucket']
+
+                  # Create signal install script in S3
+                  install_script = '''#!/bin/bash
+          set -ex
+
+          echo "=== Installing Signal Integration ==="
+
+          # Get signal config from SSM
+          SIGNAL_CONFIG=$(aws ssm get-parameter --name /clawdbot/addons/signal --query 'Parameter.Value' --output text)
+          SIGNAL_CLI_VERSION=$(echo $SIGNAL_CONFIG | jq -r '.signal_cli_version')
+          PHONE_NUMBER=$(echo $SIGNAL_CONFIG | jq -r '.phone_number')
+
+          # Install Java (required for signal-cli)
+          dnf install -y java-21-amazon-corretto-headless
+
+          # Install signal-cli
+          curl -LO "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux.tar.gz"
+          tar xf signal-cli-*.tar.gz -C /opt
+          ln -sf /opt/signal-cli-*/bin/signal-cli /usr/local/bin/signal-cli
+          rm signal-cli-*.tar.gz
+
+          # Restore Signal keys from S3 if they exist
+          aws s3 sync s3://{bucket}/integrations/signal/ /home/clawdbot/.local/share/signal-cli/ --quiet || true
+          chown -R clawdbot:clawdbot /home/clawdbot/.local || true
+
+          # Create Signal sync cron
+          cat >> /etc/cron.d/clawdbot-sync << 'EOFCRON'
+          */5 * * * * clawdbot aws s3 sync /home/clawdbot/.local/share/signal-cli/ s3://{bucket}/integrations/signal/ --quiet
+          EOFCRON
+
+          # Update clawdbot config with Signal channel
+          ALLOWED_SENDERS=$(echo $SIGNAL_CONFIG | jq -c '.allowed_senders')
+          DM_POLICY=$(echo $SIGNAL_CONFIG | jq -r '.dm_policy')
+
+          sudo -u clawdbot clawdbot config set channels.signal.enabled true
+          sudo -u clawdbot clawdbot config set channels.signal.account "$PHONE_NUMBER"
+          sudo -u clawdbot clawdbot config set channels.signal.allowFrom "$ALLOWED_SENDERS"
+          sudo -u clawdbot clawdbot config set channels.signal.dmPolicy "$DM_POLICY"
+
+          # Restart clawdbot to pick up new config
+          systemctl restart clawdbot
+
+          echo "=== Signal Integration Complete ==="
+          echo "NOTE: Run 'signal-cli link -n Clawdbot' to link your Signal account"
+          '''.replace('{bucket}', bucket)
+
+                  s3.put_object(
+                      Bucket=bucket,
+                      Key='addons/signal/install.sh',
+                      Body=install_script,
+                      ContentType='text/x-shellscript'
+                  )
+
+                  # Create addon manifest
+                  manifest = {
+                      'name': 'signal',
+                      'version': '1.0.0',
+                      'install_script': 'addons/signal/install.sh',
+                      'dependencies': ['java-21-amazon-corretto-headless']
+                  }
+                  s3.put_object(
+                      Bucket=bucket,
+                      Key='addons/signal/manifest.json',
+                      Body=json.dumps(manifest, indent=2),
+                      ContentType='application/json'
+                  )
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                      'Message': 'Signal addon configured'
+                  })
+              except Exception as e:
+                  print(f"Error: {e}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {
+                      'Error': str(e)
+                  })
+
+  UpdateConfig:
+    Type: Custom::UpdateConfig
+    Properties:
+      ServiceToken: !GetAtt UpdateConfigFunction.Arn
+      BaseStackName: !Ref BaseStackName
+      Bucket: !ImportValue
+        Fn::Sub: '${BaseStackName}-bucket'
+
+Outputs:
+  SignalPhoneNumber:
+    Description: Signal bot phone number
+    Value: !Ref SignalPhoneNumber
+
+  LinkCommand:
+    Description: Command to link Signal account (run on EC2 after first boot)
+    Value: !Sub |
+      sudo -u clawdbot signal-cli link -n "Clawdbot"
+      # Then scan QR code with Signal app
+
+  VerifyCommand:
+    Description: Command to verify Signal is working
+    Value: !Sub |
+      sudo -u clawdbot signal-cli -a ${SignalPhoneNumber} receive --timeout 5
+
+  InstallScriptPath:
+    Description: S3 path to Signal install script
+    Value: !Sub
+      - 's3://${Bucket}/addons/signal/install.sh'
+      - Bucket: !ImportValue
+          Fn::Sub: '${BaseStackName}-bucket'

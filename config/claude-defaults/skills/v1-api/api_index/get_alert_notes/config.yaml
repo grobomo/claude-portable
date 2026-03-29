@@ -1,0 +1,19 @@
+name: get_alert_notes
+endpoint: /v3.0/workbench/alerts/{alert_id}/notes
+method: GET
+template: single_get
+description: Get notes on an alert
+params:
+  required:
+  - name: alert_id
+    type: str
+    description: Alert ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+categories:
+- alerts
+- investigation
+- soc_operations

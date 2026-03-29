@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "exported": "2026-02-03T00:13:33.523Z",
+  "components": {
+    "hooks": [
+      "skill-mcp-claudemd-injector.js",
+      "auto-gsd.js",
+      "hook-logger.js",
+      "preference-learner.js",
+      "gsd-check-update.js",
+      "gsd-gate.js",
+      "gsd-intel-session.js",
+      "gsd-statusline.js"
+    ],
+    "registries": [
+      "skill-registry.json"
+    ],
+    "config": [
+      "hooks-config.json"
+    ],
+    "skills": [
+      "injector-manager"
+    ]
+  }
+}

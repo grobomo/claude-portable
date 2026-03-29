@@ -1,0 +1,13 @@
+name: delete_datalake_data_pipelines_delete
+description: 'Unbind data type from pipeline.
+
+  '
+method: POST
+endpoint: /v3.0/datalake/dataPipelines/delete
+template: post_action
+tags:
+- Datalake Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

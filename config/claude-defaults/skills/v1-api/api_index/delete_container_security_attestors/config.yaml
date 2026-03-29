@@ -1,0 +1,11 @@
+name: delete_container_security_attestors
+description: Delete a Container Security attestor
+method: DELETE
+endpoint: /v3.0/containerSecurity/attestors/{id}
+template: patch_update
+tags:
+- Attestors
+params:
+  required: []
+  optional: []
+template_config: {}

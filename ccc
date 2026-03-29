@@ -2239,6 +2239,14 @@ def main():
     p_maint.add_argument("--off", action="store_true", help="Resume task pickup (exit maintenance)")
     p_work = sub.add_parser("work", help="Show what each worker is doing: branch, PR status, task progress")
 
+    p_bundle = sub.add_parser("bundle", help="Config bundle: scrape, build, deploy, status, patch, simulate")
+    p_bundle.add_argument("action", nargs="?", default="status",
+                          choices=["scrape", "build", "deploy", "status", "patch", "simulate"],
+                          help="Bundle action (default: status)")
+    p_bundle.add_argument("--name", help="Target worker name")
+    p_bundle.add_argument("--all", action="store_true", help="Target all workers")
+    p_bundle.add_argument("files", nargs="*", help="Files to patch (for 'patch' action)")
+
     args = parser.parse_args()
 
     global VERBOSE
@@ -2275,6 +2283,18 @@ def main():
         cmd_maintenance(args)
     elif args.command == "work":
         cmd_work(args)
+    elif args.command == "bundle":
+        # Delegate to config-bundle.py
+        bundle_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "scripts", "config-bundle.py")
+        cmd = [sys.executable, bundle_script, args.action]
+        if hasattr(args, "name") and args.name:
+            cmd.extend(["--name", args.name])
+        if hasattr(args, "all") and args.all:
+            cmd.append("--all")
+        if args.action == "patch" and args.files:
+            cmd.extend(args.files)
+        subprocess.run(cmd)
     else:
         cmd_connect(args)
 

@@ -1,0 +1,56 @@
+name: list_container_security_kubernetes_audit_event_logs
+description: Get runtime audit events (Kubernetes)
+method: GET
+endpoint: /v3.0/containerSecurity/kubernetesAuditEventLogs
+template: single_get
+tags:
+- Events
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the audit events of your Kubernetes
+      clusters. Include this parameter in every request that generates paginated output.
+
+
+      Supported fields:
+
+      * `clusterId` - The ID of the cluster in Container Security
+
+      * `priority` - The priority level for the event.
+
+      * `source`  - The service that the request was made to.
+
+
+      Supported operators:
+
+      * `eq` - Operator "equal to"
+
+      * `and` - Operator "and"
+
+      * `or` - Operator "or"
+
+      * `not` - Operator "not"
+
+      * `()` - Symbols for grouping operands
+
+      '
+  - name: startDateTime
+    type: string
+    description: 'The start of the data retrieval time range, in ISO 8601 format.
+
+
+      `startDateTime` cannot be set to more than 30 days prior to the time you make
+      the request.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'The end of the data retrieval time range, in ISO 8601 format.
+
+
+      `endDateTime` must be greater than than `startDateTime`.
+
+      '
+template_config: {}

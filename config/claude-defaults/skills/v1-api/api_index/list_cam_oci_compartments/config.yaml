@@ -1,0 +1,17 @@
+name: list_cam_oci_compartments
+description: Show connected OCI compartments
+method: GET
+endpoint: /v3.0/cam/ociCompartments
+template: single_get
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+template_config: {}

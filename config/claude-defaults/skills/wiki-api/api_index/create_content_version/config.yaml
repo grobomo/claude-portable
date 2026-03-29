@@ -1,0 +1,14 @@
+name: create_content_version
+description: Restore content version
+method: POST
+endpoint: /wiki/rest/api/content/{id}/version
+template: create
+tags:
+- Content versions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

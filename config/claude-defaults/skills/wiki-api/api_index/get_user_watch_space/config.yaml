@@ -1,0 +1,14 @@
+name: get_user_watch_space
+description: Get space watch status
+method: GET
+endpoint: /wiki/rest/api/user/watch/space/{spaceKey}
+template: read
+tags:
+- Content watches
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

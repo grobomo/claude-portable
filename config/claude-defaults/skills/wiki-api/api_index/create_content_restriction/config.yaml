@@ -1,0 +1,14 @@
+name: create_content_restriction
+description: Add restrictions
+method: POST
+endpoint: /wiki/rest/api/content/{id}/restriction
+template: create
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

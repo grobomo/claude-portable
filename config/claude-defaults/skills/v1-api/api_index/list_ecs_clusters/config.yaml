@@ -1,0 +1,19 @@
+name: list_ecs_clusters
+endpoint: /v3.0/containerSecurity/ecsClusters
+method: GET
+template: standard_list
+description: List ECS clusters
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: header
+categories:
+- cloud_security
+- container_security

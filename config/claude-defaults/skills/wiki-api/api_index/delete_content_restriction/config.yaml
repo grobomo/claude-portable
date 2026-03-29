@@ -1,0 +1,14 @@
+name: delete_content_restriction
+description: Delete restrictions
+method: DELETE
+endpoint: /wiki/rest/api/content/{id}/restriction
+template: delete
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

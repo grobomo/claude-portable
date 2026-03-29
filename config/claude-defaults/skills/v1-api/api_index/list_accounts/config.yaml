@@ -1,0 +1,27 @@
+name: list_accounts
+endpoint: /v3.0/iam/accounts
+method: GET
+template: standard_list
+description: List IAM accounts (users with V1 console access)
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    default: 50
+    description: Max results
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: enum
+    values:
+    - 50
+    - 100
+    - 200
+  date_params: null
+  filter_style: odata
+categories:
+- admin
+- iam
+- user_management

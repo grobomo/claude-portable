@@ -1,0 +1,11 @@
+name: create_group
+description: Create new user group
+method: POST
+endpoint: /wiki/rest/api/group
+template: create
+tags:
+- Group
+params:
+  required: []
+  optional: []
+template_config: {}

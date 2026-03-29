@@ -1,0 +1,11 @@
+name: list_audit_since
+description: Get audit records for time period
+method: GET
+endpoint: /wiki/rest/api/audit/since
+template: search
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

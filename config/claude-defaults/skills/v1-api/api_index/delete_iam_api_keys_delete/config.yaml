@@ -1,0 +1,11 @@
+name: delete_iam_api_keys_delete
+description: Delete API keys
+method: POST
+endpoint: /v3.0/iam/apiKeys/delete
+template: post_action
+tags:
+- API Keys
+params:
+  required: []
+  optional: []
+template_config: {}

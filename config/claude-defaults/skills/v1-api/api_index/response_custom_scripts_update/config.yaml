@@ -1,0 +1,14 @@
+name: response_custom_scripts_update
+description: Update custom script
+method: POST
+endpoint: /v3.0/response/customScripts/{id}/update
+template: response_action
+tags:
+- Custom Script
+params:
+  required:
+  - name: id
+    type: string
+    description: Unique alphanumeric string that identifies a script file
+  optional: []
+template_config: {}

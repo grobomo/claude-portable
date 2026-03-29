@@ -1,0 +1,14 @@
+name: delete_cam_oci_compartments
+description: Remove OCI compartment
+method: DELETE
+endpoint: /v3.0/cam/ociCompartments/{id}
+template: patch_update
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

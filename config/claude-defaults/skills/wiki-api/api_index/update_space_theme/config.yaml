@@ -1,0 +1,14 @@
+name: update_space_theme
+description: Set space theme
+method: PUT
+endpoint: /wiki/rest/api/space/{spaceKey}/theme
+template: update
+tags:
+- Themes
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

@@ -1,0 +1,64 @@
+name: list_asrm_account_compromise_indicators
+description: Get account compromise indicators
+method: GET
+endpoint: /v3.0/asrm/accountCompromiseIndicators
+template: standard_list
+tags:
+- Risk Factors
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of account compromise indicators.
+
+
+      Supported fields and operators:
+
+      * ''id'' - The ID of a user account on the Trend Vision One platform.
+
+      * ''account'' - The name of the user account.
+
+      * ''name'' - The name of the risk event.
+
+      * ''riskLevel'' - Risk level of the risk event. Supported values: "high", "medium",
+      "low".
+
+      * ''eq'' - Abbreviation of the operator ''equal to''.
+
+      * ''and'' - Operator ''and''.
+
+      * ''or'' - Operator ''or''.
+
+      * ''not'' - Operator ''not''.
+
+      * ''( )'' - Symbols for grouping operands.
+
+      '
+  - name: top
+    type: integer
+    description: 'Number of records displayed on a page.
+
+
+      Default: The top 100 at-risk accounts.
+
+      '
+  - name: orderBy
+    type: string
+    description: 'Specifies the field by which the results are sorted.
+
+
+      Supported fields and operators:
+
+      * ''detectedDateTime''
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

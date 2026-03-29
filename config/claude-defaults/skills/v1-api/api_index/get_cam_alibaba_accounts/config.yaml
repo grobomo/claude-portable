@@ -1,0 +1,14 @@
+name: get_cam_alibaba_accounts
+description: Show Alibaba Cloud account details
+method: GET
+endpoint: /v3.0/cam/alibabaAccounts/{id}
+template: single_get
+tags:
+- Alibaba Cloud accounts
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

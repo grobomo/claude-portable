@@ -1,0 +1,20 @@
+name: update_content_restriction_by_operation_by_group_id
+description: Add group to content restriction
+method: PUT
+endpoint: /wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/byGroupId/{groupId}
+template: update
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: operationKey
+    type: string
+    description: 'Path parameter: operationKey'
+  - name: groupId
+    type: string
+    description: 'Path parameter: groupId'
+  optional: []
+template_config: {}

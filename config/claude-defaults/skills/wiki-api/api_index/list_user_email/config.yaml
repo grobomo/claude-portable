@@ -1,0 +1,11 @@
+name: list_user_email
+description: Get user email address
+method: GET
+endpoint: /wiki/rest/api/user/email
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

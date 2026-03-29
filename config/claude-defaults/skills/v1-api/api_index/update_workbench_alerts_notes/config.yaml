@@ -1,0 +1,21 @@
+name: update_workbench_alerts_notes
+description: Edit alert note
+method: PATCH
+endpoint: /v3.0/workbench/alerts/{alertId}/notes/{id}
+template: patch_update
+tags:
+- Workbench notes
+params:
+  required:
+  - name: alertId
+    type: string
+    description: Unique alphanumeric string that identifies a Workbench alert.
+  - name: id
+    type: integer
+    description: Numeric string that identifies a Workbench alert note.
+  optional:
+  - name: If-Match
+    type: string
+    description: Parameter that allows you to specify the version of the resource
+      to be updated.
+template_config: {}

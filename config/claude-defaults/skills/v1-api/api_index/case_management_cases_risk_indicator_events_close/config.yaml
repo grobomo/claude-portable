@@ -1,0 +1,14 @@
+name: case_management_cases_risk_indicator_events_close
+description: Close risk events related to case
+method: POST
+endpoint: /v3.0/caseManagement/cases/{id}/riskIndicatorEvents/close
+template: post_action
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the case
+  optional: []
+template_config: {}

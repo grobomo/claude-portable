@@ -1,0 +1,11 @@
+name: container_security_generate_service_gateway_password
+description: Generate service gateway authentication password
+method: POST
+endpoint: /v3.0/containerSecurity/generateServiceGatewayPassword
+template: post_action
+tags:
+- Service Gateway Authentication
+params:
+  required: []
+  optional: []
+template_config: {}

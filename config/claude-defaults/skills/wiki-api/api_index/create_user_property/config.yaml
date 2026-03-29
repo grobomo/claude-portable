@@ -1,0 +1,17 @@
+name: create_user_property
+description: Create user property by key
+method: POST
+endpoint: /wiki/rest/api/user/{userId}/property/{key}
+template: create
+tags:
+- User properties
+params:
+  required:
+  - name: userId
+    type: string
+    description: 'Path parameter: userId'
+  - name: key
+    type: string
+    description: 'Path parameter: key'
+  optional: []
+template_config: {}

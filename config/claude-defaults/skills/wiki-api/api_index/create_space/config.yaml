@@ -1,0 +1,11 @@
+name: create_space
+description: Create space
+method: POST
+endpoint: /wiki/rest/api/space
+template: create
+tags:
+- Space
+params:
+  required: []
+  optional: []
+template_config: {}

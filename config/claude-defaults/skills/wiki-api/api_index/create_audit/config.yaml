@@ -1,0 +1,11 @@
+name: create_audit
+description: Create audit record
+method: POST
+endpoint: /wiki/rest/api/audit
+template: create
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

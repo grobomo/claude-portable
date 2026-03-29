@@ -1,0 +1,14 @@
+name: create_content_child_attachment
+description: Create attachment
+method: POST
+endpoint: /wiki/rest/api/content/{id}/child/attachment
+template: create
+tags:
+- Content - attachments
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

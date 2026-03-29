@@ -1,0 +1,11 @@
+name: list_group_by_id
+description: Get group
+method: GET
+endpoint: /wiki/rest/api/group/by-id
+template: search
+tags:
+- Group
+params:
+  required: []
+  optional: []
+template_config: {}

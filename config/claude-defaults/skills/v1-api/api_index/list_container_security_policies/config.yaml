@@ -1,0 +1,62 @@
+name: list_container_security_policies
+description: Get Container Security policies
+method: GET
+endpoint: /v3.0/containerSecurity/policies
+template: single_get
+tags:
+- Policies
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the policies list. Include
+      this parameter in every request that generates paginated output.
+
+
+      Supported fields:
+
+      * `name` -  The name of the policy
+
+      * `xdrEnabled` - Whether XDR telemetry is enabled
+
+      * `type` - The type of the policy. Supported values:  `userManaged`, `clusterManaged`
+
+
+      Supported operators:
+
+      * `eq` - Operator "equal to"
+
+      * `and` - Operator "and"
+
+      * `or` - Operator "or"
+
+      * `not` - Operator "not"
+
+      * `contains` - Operator that allows you to search for a specified string in
+      a field
+
+      * `()` - Symbols for grouping operands
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The fields by which the results are sorted. You can indicate multiple
+      fields separated by commas (`,`).
+
+
+      To return records in descending order, add the keyword `desc` after the parameter
+      name.
+
+
+      Available fields:
+
+      * `createdDateTime`
+
+      * `updatedDateTime`
+
+      '
+template_config: {}

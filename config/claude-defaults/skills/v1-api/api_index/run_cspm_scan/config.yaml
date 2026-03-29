@@ -1,0 +1,19 @@
+name: run_cspm_scan
+endpoint: /v3.0/cloudPosture/accounts/{account_id}/scan
+method: POST
+template: post_action
+description: Trigger CSPM scan
+params:
+  required:
+  - name: account_id
+    type: str
+    description: CSPM account ID
+  optional: []
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+  body_builder: empty
+categories:
+- cloud_security
+- compliance

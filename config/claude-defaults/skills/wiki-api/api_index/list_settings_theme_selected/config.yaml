@@ -1,0 +1,11 @@
+name: list_settings_theme_selected
+description: Get global theme
+method: GET
+endpoint: /wiki/rest/api/settings/theme/selected
+template: search
+tags:
+- Themes
+params:
+  required: []
+  optional: []
+template_config: {}

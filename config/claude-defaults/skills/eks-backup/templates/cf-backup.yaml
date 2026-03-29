@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Backup infrastructure for {{NAMESPACE}}.
+  S3 bucket + Secrets Manager + scoped IAM user.
+
+Resources:
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "{{BUCKET_PREFIX}}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+          - Id: DeleteOldBackups
+            Status: Enabled
+            Prefix: "archive/"
+            ExpirationInDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: {{NAMESPACE}}
+
+  TokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: {{SECRET_NAME}}
+      Description: Credentials for {{NAMESPACE}}
+      SecretString: '{"refresh_token": "PLACEHOLDER"}'
+      Tags:
+        - Key: Project
+          Value: {{NAMESPACE}}
+
+  BackupUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: {{NAMESPACE}}-backup
+      Tags:
+        - Key: Project
+          Value: {{NAMESPACE}}
+
+  BackupPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: {{NAMESPACE}}-backup-policy
+      Users:
+        - !Ref BackupUser
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:ListBucket
+              - s3:DeleteObject
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub "${BackupBucket.Arn}/*"
+          - Sid: SecretsAccess
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:PutSecretValue
+              - secretsmanager:UpdateSecret
+            Resource: !Ref TokenSecret
+
+  BackupAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref BackupUser
+
+Outputs:
+  BucketName:
+    Value: !Ref BackupBucket
+  SecretArn:
+    Value: !Ref TokenSecret
+  AccessKeyId:
+    Value: !Ref BackupAccessKey
+  SecretAccessKey:
+    Value: !GetAtt BackupAccessKey.SecretAccessKey

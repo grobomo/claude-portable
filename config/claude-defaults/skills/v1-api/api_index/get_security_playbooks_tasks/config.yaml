@@ -1,0 +1,14 @@
+name: get_security_playbooks_tasks
+description: Get task details
+method: GET
+endpoint: /v3.0/securityPlaybooks/tasks/{id}
+template: single_get
+tags:
+- Execution Results
+params:
+  required:
+  - name: id
+    type: string
+    description: ''
+  optional: []
+template_config: {}

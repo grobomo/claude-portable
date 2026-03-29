@@ -1,0 +1,11 @@
+name: list_user_email_bulk
+description: Get user email addresses in batch
+method: GET
+endpoint: /wiki/rest/api/user/email/bulk
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

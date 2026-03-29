@@ -1,0 +1,11 @@
+name: list_sandbox_submission_usage
+description: Get daily reserve
+method: GET
+endpoint: /v3.0/sandbox/submissionUsage
+template: single_get
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional: []
+template_config: {}

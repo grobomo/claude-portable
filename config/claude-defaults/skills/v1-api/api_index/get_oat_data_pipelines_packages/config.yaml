@@ -1,0 +1,17 @@
+name: get_oat_data_pipelines_packages
+description: Get Observed Attack Techniques package
+method: GET
+endpoint: /v3.0/oat/dataPipelines/{id}/packages/{packageId}
+template: single_get
+tags:
+- Observed Attack Techniques Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of a data pipeline.
+  - name: packageId
+    type: string
+    description: The ID of a package stored in a data pipeline.
+  optional: []
+template_config: {}

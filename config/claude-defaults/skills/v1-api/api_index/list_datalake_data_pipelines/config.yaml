@@ -1,0 +1,13 @@
+name: list_datalake_data_pipelines
+description: 'Get bound data pipelines
+
+  '
+method: GET
+endpoint: /v3.0/datalake/dataPipelines
+template: single_get
+tags:
+- Datalake Pipeline
+params:
+  required: []
+  optional: []
+template_config: {}

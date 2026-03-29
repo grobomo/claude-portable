@@ -1,0 +1,17 @@
+name: update_case_management_cases
+description: Update a case
+method: PATCH
+endpoint: /v3.0/caseManagement/cases/{id}
+template: patch_update
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  optional:
+  - name: If-Match
+    type: string
+    description: Provide the ETag of the resource to be updated
+template_config: {}

@@ -1,0 +1,11 @@
+name: container_security_custom_rulesets_update
+description: Updates Container Security custom ruleset
+method: POST
+endpoint: /v3.0/containerSecurity/customRulesets/{id}/update
+template: post_action
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

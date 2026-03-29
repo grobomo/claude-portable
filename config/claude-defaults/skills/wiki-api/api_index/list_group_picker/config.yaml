@@ -1,0 +1,11 @@
+name: list_group_picker
+description: Search groups by partial query
+method: GET
+endpoint: /wiki/rest/api/group/picker
+template: search
+tags:
+- Group
+params:
+  required: []
+  optional: []
+template_config: {}

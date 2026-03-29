@@ -1,0 +1,22 @@
+name: isolate_endpoint
+endpoint: /v3.0/response/endpoints/isolate
+method: POST
+template: response_action
+description: Isolate endpoint from network (containment action)
+params:
+  required:
+  - name: endpoint_guid
+    type: str
+    description: Endpoint agent GUID (from list_endpoints)
+  optional:
+  - name: description
+    type: str
+    default: Isolated via MCP
+    description: Reason for isolation
+template_config:
+  body_style: array
+  body_builder: endpoint_action
+categories:
+- response_actions
+- containment
+- incident_response

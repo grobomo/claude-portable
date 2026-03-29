@@ -1,0 +1,11 @@
+name: container_security_policies
+description: Create a Container Security policy
+method: POST
+endpoint: /v3.0/containerSecurity/policies
+template: post_action
+tags:
+- Policies
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,20 @@
+name: get_content_history_macro_id
+description: Get macro body by macro ID
+method: GET
+endpoint: /wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}
+template: read
+tags:
+- Content - macro body
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: version
+    type: string
+    description: 'Path parameter: version'
+  - name: macroId
+    type: string
+    description: 'Path parameter: macroId'
+  optional: []
+template_config: {}

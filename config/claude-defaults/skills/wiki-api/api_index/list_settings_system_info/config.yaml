@@ -1,0 +1,11 @@
+name: list_settings_system_info
+description: Get system info
+method: GET
+endpoint: /wiki/rest/api/settings/systemInfo
+template: search
+tags:
+- Settings
+params:
+  required: []
+  optional: []
+template_config: {}

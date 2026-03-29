@@ -1,0 +1,111 @@
+name: list_audit_logs
+description: Get entries from audit logs
+method: GET
+endpoint: /v3.0/audit/logs
+template: standard_list
+tags:
+- Audit Logs
+params:
+  required: []
+  optional:
+  - name: Accept
+    type: string
+    description: ''
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the Audit Logs list. Supported
+      fields and operators:
+
+
+      * ''loggedUser ''- The account that was used to perform the activity.
+
+      * ''loggedRole'' - Role of the account
+
+      * ''accessType'' - Source of the activity. Possible values: ''Console'', ''API''.
+
+      * ''category'' - Category of the activity. Possible values: _See Response Code
+      200 description_.
+
+      * ''activity'' - The activity that was performed. The ''category'' needs to
+      be determined to set this parameter. Possible values: _See Response Code 200
+      description_.
+
+      * ''result'' - Outcome of the activity. Possible values: ''Successful'', ''Unsuccessful''.
+
+      * ''eq'' - Abbreviation of the operator "equal to"
+
+      * ''and'' - Operator "and"
+
+      * ''or'' - Operator "or"
+
+      * ''not'' - Operator "not"
+
+      * ''( )'' - Symbols for grouping operands with their correct operator.
+
+      '
+  - name: startDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the start of the data
+      retrieval range. You can retrieve data for response tasks that were created
+      no later than 180 days ago.
+
+
+      If no value is specified, ''startDateTime'' defaults to the start of the beginning
+      of the retention period of 180 days.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the end of the data
+      retrieval range.
+
+
+      If no value is specified, ''endDateTime'' defaults to the time the request is
+      made.
+
+      '
+  - name: dateTimeTarget
+    type: string
+    description: "The timestamp to be used for retrieving the target audit log. \n\
+      \nAvailable values : loggedDateTime, ingestedDateTime \n\nDefault value : loggedDateTime\n"
+  - name: orderBy
+    type: string
+    description: 'Parameter that allows you to sort the retrieved search results in
+      ascending or descending order. If no order is specified, the results are shown
+      in ascending order. Supported fields and operators:
+
+      * ''loggedDateTime''
+
+      * ''accessType''
+
+      * ''ingestedDateTime''
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+      '
+  - name: top
+    type: integer
+    description: Number of records displayed on a page.
+  - name: labels
+    type: string
+    description: 'Parameter that allows you to retrieve the specified elements from
+      the "details" field. Possible values:
+
+      * ''none'' - Retrieves no elements.
+
+      * ''matched'' - Retrieves the specified elements in the "details" object.
+
+      * ''all" - Retrieves all available elements.
+
+      '
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

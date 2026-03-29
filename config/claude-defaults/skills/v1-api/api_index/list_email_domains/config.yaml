@@ -1,0 +1,25 @@
+name: list_email_domains
+endpoint: /v3.0/email/domains
+method: GET
+template: standard_list
+description: List email domains
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination:
+    param: top
+    max: 200
+    type: int
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  filter_style: odata
+categories:
+- email_security
+- cecp

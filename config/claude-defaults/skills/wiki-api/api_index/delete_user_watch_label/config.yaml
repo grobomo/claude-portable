@@ -1,0 +1,14 @@
+name: delete_user_watch_label
+description: Remove label watcher
+method: DELETE
+endpoint: /wiki/rest/api/user/watch/label/{labelName}
+template: delete
+tags:
+- Content watches
+params:
+  required:
+  - name: labelName
+    type: string
+    description: 'Path parameter: labelName'
+  optional: []
+template_config: {}

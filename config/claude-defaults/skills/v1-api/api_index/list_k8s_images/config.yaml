@@ -1,0 +1,19 @@
+name: list_k8s_images
+endpoint: /v3.0/containerSecurity/kubernetesImages
+method: GET
+template: standard_list
+description: List container images
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 50
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: header
+categories:
+- cloud_security
+- container_security

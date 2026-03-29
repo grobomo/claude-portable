@@ -1,0 +1,11 @@
+name: response_endpoint_run_yara_rules
+description: Run YARA rules
+method: POST
+endpoint: /v3.0/response/endpoints/runYaraRules
+template: response_action
+tags:
+- YARA Rule
+params:
+  required: []
+  optional: []
+template_config: {}

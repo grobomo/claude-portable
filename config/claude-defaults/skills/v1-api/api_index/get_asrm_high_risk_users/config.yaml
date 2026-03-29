@@ -1,0 +1,14 @@
+name: get_asrm_high_risk_users
+description: Get user risk profile
+method: GET
+endpoint: /v3.0/asrm/highRiskUsers/{id}
+template: single_get
+tags:
+- User Risk Profile
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of a user on the Trend Vision One platform.
+  optional: []
+template_config: {}

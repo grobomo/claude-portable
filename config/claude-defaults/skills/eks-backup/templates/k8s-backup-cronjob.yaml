@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: namespace-backup
+  namespace: {{NAMESPACE}}
+spec:
+  schedule: "{{BACKUP_SCHEDULE}}"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: amazon/aws-cli:2.22.35
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  yum install -y python3 > /dev/null 2>&1
+                  python3 /scripts/backup.py
+              env:
+                - name: DATA_DIR
+                  value: /data
+                - name: AWS_PROFILES
+                  value: "{{AWS_PROFILES}}"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: script
+                  mountPath: /scripts
+                - name: aws-creds
+                  mountPath: /root/.aws
+                  readOnly: true
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{PVC_NAME}}
+            - name: script
+              configMap:
+                name: namespace-backup-script
+            - name: aws-creds
+              secret:
+                secretName: aws-credentials

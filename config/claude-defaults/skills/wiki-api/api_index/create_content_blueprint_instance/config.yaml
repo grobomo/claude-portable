@@ -1,0 +1,14 @@
+name: create_content_blueprint_instance
+description: Publish legacy draft
+method: POST
+endpoint: /wiki/rest/api/content/blueprint/instance/{draftId}
+template: create
+tags:
+- Content
+params:
+  required:
+  - name: draftId
+    type: string
+    description: 'Path parameter: draftId'
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: create_settings_lookandfeel_custom
+description: Update look and feel settings
+method: POST
+endpoint: /wiki/rest/api/settings/lookandfeel/custom
+template: create
+tags:
+- Settings
+params:
+  required: []
+  optional: []
+template_config: {}

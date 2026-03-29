@@ -1,0 +1,12 @@
+name: list_threatintel_feeds_filter_definition
+description: Retrieve supported filter keys and values for Trend Threat Intelligence
+  Feed queries.
+method: GET
+endpoint: /v3.0/threatintel/feeds/filterDefinition
+template: single_get
+tags:
+- Trend Threat Intelligence Feed
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: list_search
+description: Search content
+method: GET
+endpoint: /wiki/rest/api/search
+template: search
+tags:
+- Search
+params:
+  required: []
+  optional: []
+template_config: {}

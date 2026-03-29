@@ -1,0 +1,106 @@
+name: list_asrm_attack_surface_cloud_assets_risk_indicator_events
+description: Get cloud asset risk indicators
+method: GET
+endpoint: /v3.0/asrm/attackSurfaceCloudAssets/{id}/riskIndicatorEvents
+template: standard_list
+tags:
+- Attack Surface Discovery
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the cloud asset on the Trend Vision One platform
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available values:
+
+      * ''detectedDateTime''
+
+      * `asc` - Ascending order
+
+      * `desc` - Descending order
+
+
+      Default: `detectedDateTime desc`
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the cloud asset information
+      list.
+
+
+      Supported fields:
+
+
+      | Field            | Description                           | Supported values                                                        |
+
+      |------------------|---------------------------------------|-------------------------------------------------------------------------|
+
+      | id               | The ID of a risk event                | Any value                                                               |
+
+      | riskLevel        | The risk level of the risk event      | `high`, `medium`,
+      `low`                                                 |
+
+      | riskFactor       | The risk factor of the risk event     | `Threat detection`,
+      `Security configuration`, `System configuration`, `Vulnerability detection`,
+      `Anomaly detection`, `Account compromise`, `Cloud app activity`, `XDR detection`
+      |
+
+      | status           | The status of the risk event          | `new`, `inProgress`,
+      `remediated`, `dismissed`, `accepted`, `mitigated` |
+
+      | detectedDateTime | The time the event was detected       | Any value                                                               |
+
+
+      Supported operators:
+
+
+      | Operator | Description                                               | Notes                                 |
+
+      |----------|-----------------------------------------------------------|---------------------------------------|
+
+      | `eq`     | Operator ''equal to''                                       | -                                     |
+
+      | `and`    | Operator ''and''                                            | -                                     |
+
+      | `or`     | Operator ''or''                                             | -                                     |
+
+      | `not`    | Operator ''not''                                            | -                                     |
+
+      | `()`     | Symbols for grouping operands with their correct operator | -                                     |
+
+      | `gt`     | Operator ''greater than''                                   | Only
+      applicable to `detectedDateTime` |
+
+      | `ge`     | Operator ''greater than or equal''                          | Only
+      applicable to `detectedDateTime` |
+
+      | `le`     | Operator ''less than or equal''                             | Only
+      applicable to `detectedDateTime` |
+
+      | `lt`     | Operator ''less than''                                      | Only
+      applicable to `detectedDateTime` |
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

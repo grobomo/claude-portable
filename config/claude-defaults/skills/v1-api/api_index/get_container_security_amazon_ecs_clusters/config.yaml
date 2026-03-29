@@ -1,0 +1,11 @@
+name: get_container_security_amazon_ecs_clusters
+description: Get cluster details (Amazon ECS)
+method: GET
+endpoint: /v3.0/containerSecurity/amazonEcsClusters/{id}
+template: single_get
+tags:
+- Amazon ECS Clusters
+params:
+  required: []
+  optional: []
+template_config: {}

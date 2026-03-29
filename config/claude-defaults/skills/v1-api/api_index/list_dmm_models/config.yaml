@@ -1,0 +1,107 @@
+name: list_dmm_models
+description: List detection models
+method: GET
+endpoint: /v3.0/dmm/models
+template: standard_list
+tags:
+- Detection Models
+params:
+  required: []
+  optional:
+  - name: startDateTime
+    type: string
+    description: 'The start of the data retrieval range, in ISO 8601 format.
+
+
+      Default: The oldest available record.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'The end of the data retrieval range, in ISO 8601 format.
+
+
+      Default: The time you make the request.
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      Data is displayed in ascending order by default.
+
+
+
+      Supported fields:
+
+      * ''lastUpdatedDateTime''
+
+      * ''riskLevel''
+
+
+      Supported operators:
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+      '
+  - name: filter
+    type: string
+    description: 'Filter for retrieving a subset of the detection model list.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |---------|---------|---------|
+
+      |riskLevel| The severity assigned to the model |`Critical`, `High`, `Medium`,
+      `Low`|
+
+      |enabled| The status of the model |`true`,`false`|
+
+      |modelType| The type of the model |`sae`, `ti`|
+
+      |requiredProducts| The products that use the detection model | Any value |
+
+
+      Supported operators:
+
+      | Operator | Description | Notes |
+
+      |----------|-----------|---------|
+
+      |`eq`|Operator ''equal to'' | - |
+
+      |`and`|Operator ''and'' | - |
+
+      |`or`|Operator ''or'' | - |
+
+      |`not`|Operator ''not'' | - |
+
+      |`()`|Symbols for grouping operands with their correct operator | - |
+
+      | `hassubset`| Filter for arrays |hassubset(requiredProducts,[''xes'']) |
+
+      '
+  - name: top
+    type: integer
+    description: 'Number of records displayed on a page.
+
+
+      Default: 50
+
+      '
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

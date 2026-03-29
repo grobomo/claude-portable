@@ -1,0 +1,11 @@
+name: response_domain_accounts_sign_out
+description: Force sign out
+method: POST
+endpoint: /v3.0/response/domainAccounts/signOut
+template: response_action
+tags:
+- Domain Account
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: delete_container_security_custom_rulesets
+description: Delete Container Security custom ruleset
+method: DELETE
+endpoint: /v3.0/containerSecurity/customRulesets/{id}
+template: patch_update
+tags:
+- Custom Rulesets
+params:
+  required: []
+  optional: []
+template_config: {}

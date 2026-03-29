@@ -1,0 +1,14 @@
+name: list_content_notification_created
+description: Get watches for space
+method: GET
+endpoint: /wiki/rest/api/content/{id}/notification/created
+template: search
+tags:
+- Content watches
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

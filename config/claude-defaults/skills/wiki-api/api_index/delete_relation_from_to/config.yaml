@@ -1,0 +1,26 @@
+name: delete_relation_from_to
+description: Delete relationship
+method: DELETE
+endpoint: /wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}
+template: delete
+tags:
+- Relation
+params:
+  required:
+  - name: relationName
+    type: string
+    description: 'Path parameter: relationName'
+  - name: sourceType
+    type: string
+    description: 'Path parameter: sourceType'
+  - name: sourceKey
+    type: string
+    description: 'Path parameter: sourceKey'
+  - name: targetType
+    type: string
+    description: 'Path parameter: targetType'
+  - name: targetKey
+    type: string
+    description: 'Path parameter: targetKey'
+  optional: []
+template_config: {}

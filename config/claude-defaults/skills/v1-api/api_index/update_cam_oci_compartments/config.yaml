@@ -1,0 +1,17 @@
+name: update_cam_oci_compartments
+description: Modify OCI compartment details
+method: PATCH
+endpoint: /v3.0/cam/ociCompartments/{id}
+template: patch_update
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+template_config: {}

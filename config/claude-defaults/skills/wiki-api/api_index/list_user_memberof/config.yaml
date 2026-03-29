@@ -1,0 +1,11 @@
+name: list_user_memberof
+description: Get group memberships for user
+method: GET
+endpoint: /wiki/rest/api/user/memberof
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

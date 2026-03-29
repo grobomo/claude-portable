@@ -1,0 +1,11 @@
+name: list_template_blueprint
+description: Get blueprint templates
+method: GET
+endpoint: /wiki/rest/api/template/blueprint
+template: search
+tags:
+- Template
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: update_container_security_policies
+description: Modify a Container Security policy
+method: PATCH
+endpoint: /v3.0/containerSecurity/policies/{id}
+template: patch_update
+tags:
+- Policies
+params:
+  required: []
+  optional: []
+template_config: {}

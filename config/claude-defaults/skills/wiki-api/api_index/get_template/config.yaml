@@ -1,0 +1,14 @@
+name: get_template
+description: Get content template
+method: GET
+endpoint: /wiki/rest/api/template/{contentTemplateId}
+template: read
+tags:
+- Template
+params:
+  required:
+  - name: contentTemplateId
+    type: string
+    description: 'Path parameter: contentTemplateId'
+  optional: []
+template_config: {}

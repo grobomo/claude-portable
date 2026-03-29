@@ -1,0 +1,11 @@
+name: list_cam_aws_accounts_features
+description: Get feature list
+method: GET
+endpoint: /v3.0/cam/awsAccounts/features
+template: single_get
+tags:
+- AWS accounts
+params:
+  required: []
+  optional: []
+template_config: {}

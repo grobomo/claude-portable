@@ -1,0 +1,11 @@
+name: response_isolated_traffic_exceptions_register
+description: Configure network traffic exceptions
+method: POST
+endpoint: /v3.0/response/isolatedTrafficExceptions/register
+template: response_action
+tags:
+- Endpoint
+params:
+  required: []
+  optional: []
+template_config: {}

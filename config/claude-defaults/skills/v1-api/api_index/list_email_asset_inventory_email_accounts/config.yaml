@@ -1,0 +1,59 @@
+name: list_email_asset_inventory_email_accounts
+description: Get managed email accounts
+method: GET
+endpoint: /v3.0/emailAssetInventory/emailAccounts
+template: standard_list
+tags:
+- Email Asset Inventory
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of email accounts returned on each page. Supported range:
+      10-1000
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter used to retrieve a subset of email accounts from a generated
+      paginated list.
+
+
+      Supported fields:
+
+
+      | Field | Description | Supported values |
+
+      |-----|-----|-----|
+
+      | sensorDetectionStatus | The account''s email sensor detection status. | Enabled,
+      Disabled |
+
+      | protectionPolicyStatus | The account''s Cloud Email and Collaboration Protection
+      policy status. | ''Disabled'', ''Fully enabled'', ''Partially enabled'' |
+
+      | mailService | The account''s mail service (iam) type. | ''Exchange Online'',
+      ''Gmail'', ''Unknown'' |
+
+
+      Supported operators:
+
+
+      | Operator | Description | Notes |
+
+      |-----|-----|-----|
+
+      | `eq` | Operator "equal to" | - |
+
+      | `and` | Operator "and" | - |
+
+
+      Only support `eq`, `and` operators.
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

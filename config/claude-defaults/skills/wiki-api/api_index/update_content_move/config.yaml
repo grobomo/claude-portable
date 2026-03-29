@@ -1,0 +1,20 @@
+name: update_content_move
+description: Move a page to a new location relative to a target page
+method: PUT
+endpoint: /wiki/rest/api/content/{pageId}/move/{position}/{targetId}
+template: update
+tags:
+- Content - children and descendants
+params:
+  required:
+  - name: pageId
+    type: string
+    description: 'Path parameter: pageId'
+  - name: position
+    type: string
+    description: 'Path parameter: position'
+  - name: targetId
+    type: string
+    description: 'Path parameter: targetId'
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: create_user_watch_content
+description: Add content watcher
+method: POST
+endpoint: /wiki/rest/api/user/watch/content/{contentId}
+template: create
+tags:
+- Content watches
+params:
+  required:
+  - name: contentId
+    type: string
+    description: 'Path parameter: contentId'
+  optional: []
+template_config: {}

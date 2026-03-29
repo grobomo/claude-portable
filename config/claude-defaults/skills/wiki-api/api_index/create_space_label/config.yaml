@@ -1,0 +1,14 @@
+name: create_space_label
+description: Add labels to a space
+method: POST
+endpoint: /wiki/rest/api/space/{spaceKey}/label
+template: create
+tags:
+- Experimental
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

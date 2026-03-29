@@ -1,0 +1,23 @@
+name: get_content_history_macro_id_convert_async
+description: Get macro body by macro ID and convert representation Asynchronously
+method: GET
+endpoint: /wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}/convert/async/{to}
+template: read
+tags:
+- Content - macro body
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: version
+    type: string
+    description: 'Path parameter: version'
+  - name: macroId
+    type: string
+    description: 'Path parameter: macroId'
+  - name: to
+    type: string
+    description: 'Path parameter: to'
+  optional: []
+template_config: {}

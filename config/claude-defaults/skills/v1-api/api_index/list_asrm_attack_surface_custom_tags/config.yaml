@@ -1,0 +1,79 @@
+name: list_asrm_attack_surface_custom_tags
+description: Get tag definitions
+method: GET
+endpoint: /v3.0/asrm/attackSurfaceCustomTags
+template: standard_list
+tags:
+- Attack Surface Discovery
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the cloud asset information
+      list.
+
+
+      Supported fields:
+
+
+      | Field  | Description                                     | Supported values     |
+
+      | ------ | ------------------------------------------------| --------------------
+      |
+
+      |id      |The tag ID of each asset in `assetCustomTags`    | Any value in field   |
+
+      |key     |The key of each asset in `assetCustomTags`       | Any value in field   |
+
+      |value   |The tag value of each asset in `assetCustomTags` | Any value in field   |
+
+      Supported operators:
+
+
+      | Operator | Description                                               |
+
+      | -------- | --------------------------------------------------------- |
+
+      | `eq`     | Operator ''equal to''                                       |
+
+      | `and`    | Operator ''and''                                            |
+
+      | `or`     | Operator ''or''                                             |
+
+      | `not`    | Operator ''not''                                            |
+
+      | `()`     | Symbols for grouping operands with their correct operator |
+
+      '
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available values:
+
+      * `key`
+
+      * `asc` - Ascending order
+
+      * `desc` - Descending order
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

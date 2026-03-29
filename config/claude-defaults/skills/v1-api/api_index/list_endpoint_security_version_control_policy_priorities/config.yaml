@@ -1,0 +1,68 @@
+name: list_endpoint_security_version_control_policy_priorities
+description: Get version control policy priorities
+method: GET
+endpoint: /v3.0/endpointSecurity/versionControlPolicyPriorities
+template: standard_list
+tags:
+- Endpoint Security
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: The number of records displayed on a page
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the endpoint version control policies.
+
+
+      Supported fields:
+
+
+      | Field                   | Description                                           |
+      Supported values                                                   |
+
+      |-------------------------|-------------------------------------------------------|--------------------------------------------------------------------|
+
+      | `agentUpdateStatus`     | The status of agent updates                           |
+      `pause`, `onSchedule`, `disable`                                   |
+
+      | `agentUpdatePolicy`     | The version the agent or sensor will update to        |
+      Any value                                                          |
+
+      | `componentUpdateStatus` | The status of component updates                       |
+      `pause`, `onSchedule`                                              |
+
+      | `componentUpdatePolicy` | The version the component will update to              |
+      `n`, `n-1`, `n-2`, `n-3`, `n-4`, `n-5`, `n-6`, `n-7`, `n-8`        |
+
+      | `kernelSupportPackageUpdateStatus`       | The status of kernel support package
+      updates          | `pause`, `always`, `kernelCompatibility`, `never` |
+
+      | `kernelSupportPackageUpdatePolicy`       | The version the kernel support
+      package will update to | Any value                                         |
+
+
+      Supported operators:
+
+
+      | Operator | Description                    |
+
+      | -------- | ------------------------------ |
+
+      | `eq`     | Operator ''equal to''.           |
+
+      | `and`    | Operator ''and''.                |
+
+      | `or`     | Operator ''or''.                 |
+
+      | `not`    | Operator ''not''.                |
+
+      | `( )`    | Symbols for grouping operands. |
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

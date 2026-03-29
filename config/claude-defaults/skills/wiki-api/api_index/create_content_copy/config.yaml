@@ -1,0 +1,14 @@
+name: create_content_copy
+description: Copy single page
+method: POST
+endpoint: /wiki/rest/api/content/{id}/copy
+template: create
+tags:
+- Content - children and descendants
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

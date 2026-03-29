@@ -1,0 +1,14 @@
+name: delete_endpoint_security_version_control_policies
+description: Delete version control policy
+method: DELETE
+endpoint: /v3.0/endpointSecurity/versionControlPolicies/{id}
+template: patch_update
+tags:
+- Endpoint Security
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the policy
+  optional: []
+template_config: {}

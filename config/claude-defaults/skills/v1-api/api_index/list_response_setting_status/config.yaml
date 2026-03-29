@@ -1,0 +1,11 @@
+name: list_response_setting_status
+description: Get endpoint response settings
+method: GET
+endpoint: /v3.0/response/settingStatus
+template: single_get
+tags:
+- Endpoint
+params:
+  required: []
+  optional: []
+template_config: {}

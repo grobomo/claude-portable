@@ -1,0 +1,17 @@
+name: delete_case_management_cases_contents
+description: Delete case content using content ID
+method: DELETE
+endpoint: /v3.0/caseManagement/cases/{id}/contents/{contentId}
+template: patch_update
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  - name: contentId
+    type: string
+    description: The content ID
+  optional: []
+template_config: {}

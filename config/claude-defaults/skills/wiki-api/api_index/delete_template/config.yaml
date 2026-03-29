@@ -1,0 +1,14 @@
+name: delete_template
+description: Remove template
+method: DELETE
+endpoint: /wiki/rest/api/template/{contentTemplateId}
+template: delete
+tags:
+- Template
+params:
+  required:
+  - name: contentTemplateId
+    type: string
+    description: 'Path parameter: contentTemplateId'
+  optional: []
+template_config: {}

@@ -1,0 +1,32 @@
+name: list_oat
+endpoint: /v3.0/oat/detections
+method: GET
+template: standard_list
+description: List Observed Attack Techniques
+
+params:
+  required: []
+  optional:
+  - name: days
+    type: int
+    default: 7
+  - name: risk_level
+    type: str
+    default: ''
+  - name: limit
+    type: int
+    default: 50
+
+template_config:
+  pagination:
+    param: top
+    values: [50, 100, 200]
+    type: enum
+  date_params:
+    start: detectedStartDateTime
+    end: detectedEndDateTime
+    unit: days
+  filter_style: header
+  filter_header: TMV1-Filter
+
+categories: [alerts, detection, threat_hunting]

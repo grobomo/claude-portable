@@ -1,0 +1,54 @@
+{
+  "totalCount": 1,
+  "count": 1,
+  "items": [
+    {
+      "source": "endpointActivityData",
+      "uuid": "c4635e02-395c-4b53-b74b-42202c0a06c8",
+      "detectedDateTime": "2025-12-23T09:25:13Z",
+      "ingestedDateTime": "2025-12-23T09:29:28Z",
+      "entityType": "endpoint",
+      "entityName": "jumox(172.31.40.47)",
+      "filters": [
+        {
+          "id": "F13603",
+          "name": "Registry Modification to Enable Auto Logon of Administrator Account",
+          "description": "Modify windows registry settings to configure automatic administrator login.",
+          "riskLevel": "high",
+          "type": "preset",
+          "mitreTacticIds": ["TA0003", "TA0005"],
+          "mitreTechniqueIds": ["T1112"],
+          "highlightedObjects": [
+            {
+              "field": "processCmd",
+              "type": "command_line",
+              "value": "powershell.exe -f script.ps1"
+            },
+            {
+              "field": "objectRegistryKeyHandle",
+              "type": "registry_key",
+              "value": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+            }
+          ]
+        }
+      ],
+      "detail": {
+        "endpointGuid": "7d05a4c3-c5de-4e54-a453-ba05e0c24767",
+        "endpointHostName": "jumox",
+        "endpointIp": ["172.31.40.47"],
+        "filterRiskLevel": "high",
+        "processCmd": "powershell.exe -f script.ps1",
+        "processFilePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "objectRegistryKeyHandle": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+        "objectRegistryValue": "defaultusername",
+        "objectRegistryData": "Administrator",
+        "tags": ["XSAE.F13603", "MITRE.T1112"]
+      },
+      "endpoint": {
+        "agentGuid": "7d05a4c3-c5de-4e54-a453-ba05e0c24767",
+        "endpointName": "jumox",
+        "ips": ["172.31.40.47"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+name: get_workbench_insights
+description: Get insight details
+method: GET
+endpoint: /v3.0/workbench/insights/{id}
+template: single_get
+tags:
+- Insight
+params:
+  required:
+  - name: id
+    type: string
+    description: The Workbench insight ID.
+  optional: []
+template_config: {}

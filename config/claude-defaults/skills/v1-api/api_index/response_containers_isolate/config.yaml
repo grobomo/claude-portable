@@ -1,0 +1,11 @@
+name: response_containers_isolate
+description: Isolate container
+method: POST
+endpoint: /v3.0/response/containers/isolate
+template: response_action
+tags:
+- Container
+params:
+  required: []
+  optional: []
+template_config: {}

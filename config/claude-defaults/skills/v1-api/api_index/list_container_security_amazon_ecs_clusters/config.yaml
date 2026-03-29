@@ -1,0 +1,38 @@
+name: list_container_security_amazon_ecs_clusters
+description: Get cluster list (Amazon ECS)
+method: GET
+endpoint: /v3.0/containerSecurity/amazonEcsClusters
+template: single_get
+tags:
+- Amazon ECS Clusters
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: "The filter for retrieving a subset of Amazon ECS clusters. Include\
+      \ this parameter in every request that generates paginated output  \n\nSupported\
+      \ fields:\n* `name` - The name of the Amazon ECS cluster\n\nSupported operators:\n\
+      * `eq` - Operator \"equal to\"\n* `not` - Operator \"not\"\n* `or` - Operator\
+      \ \"or\"\n\nSupported functions:\n* `contains` - The string partially matches\n"
+  - name: orderBy
+    type: string
+    description: 'The fields by which the results are sorted. You can indicate multiple
+      fields separated by commas (`,`).
+
+
+      To return records in descending order, add the keyword `desc` after the parameter
+      name.
+
+
+      Available fields:
+
+      * `createdDateTime`
+
+      * `updatedDateTime`
+
+      '
+  - name: null
+    type: string
+    description: ''
+template_config: {}

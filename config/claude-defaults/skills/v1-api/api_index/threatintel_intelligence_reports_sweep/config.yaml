@@ -1,0 +1,11 @@
+name: threatintel_intelligence_reports_sweep
+description: Trigger sweeping task
+method: POST
+endpoint: /v3.0/threatintel/intelligenceReports/sweep
+template: post_action
+tags:
+- Intelligence Reports
+params:
+  required: []
+  optional: []
+template_config: {}

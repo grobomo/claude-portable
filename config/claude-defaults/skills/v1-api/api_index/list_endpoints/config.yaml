@@ -1,0 +1,23 @@
+name: list_endpoints
+endpoint: /v3.0/endpointSecurity/endpoints
+method: GET
+template: standard_list
+description: List managed endpoints
+params:
+  required: []
+  optional:
+  - name: limit
+    type: int
+    description: Max results (ignored - API uses skipToken)
+    default: 50
+  - name: filter
+    type: str
+    description: OData filter expression
+    default: ''
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: odata
+categories:
+- endpoint_management
+- agent_management

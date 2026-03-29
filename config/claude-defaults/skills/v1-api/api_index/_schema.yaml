@@ -1,0 +1,63 @@
+# API Index YAML Schema
+# Each API endpoint has its own YAML file in this folder
+# Filename format: {operation_name}.yaml (e.g., list_alerts.yaml)
+
+# Required fields
+name: string                    # Operation name (e.g., "list_alerts")
+endpoint: string                # API path (e.g., "/v3.0/workbench/alerts")
+method: string                  # HTTP method: GET, POST, PATCH, DELETE
+template: string                # Template name from templates/ folder
+description: string             # Human-readable description
+
+# Parameters
+params:
+  required:                     # Parameters that must be provided
+    - name: string
+      type: string              # str, int, list, bool
+      description: string
+  optional:                     # Parameters with defaults
+    - name: string
+      type: string
+      default: any
+      description: string
+
+# Template-specific configuration
+template_config:
+  pagination:                   # null if not paginated
+    param: string               # e.g., "top"
+    max: int                    # e.g., 200
+    type: string                # "int" or "enum"
+    values: list                # For enum type only
+  date_params:                  # null if no date filtering
+    start: string               # e.g., "startDateTime"
+    end: string                 # e.g., "endDateTime"
+    unit: string                # "days" or "hours"
+  filter_style: string          # "odata", "header", or null
+  body_style: string            # "array", "object", or null (for POST/PATCH)
+
+# Documentation and examples
+example_request:
+  params: {}                    # Example parameter values
+example_response:               # Sample API response (truncated)
+  items: []
+  totalCount: 0
+
+# Gotchas and notes learned from testing
+notes:
+  - string                      # List of important notes/gotchas
+
+# Testing
+test:
+  script: string                # Path to test script (relative to mcp-v1-lite/)
+  status: string                # "passed", "failed", "skipped", "untested"
+  last_run: string              # ISO datetime of last test
+  error_message: string         # Last error if failed
+
+# Categories for api_reference.md grouping
+categories:
+  - string                      # e.g., "alerts", "threat_intel", "admin"
+
+# API key permissions (TODO: to be filled in)
+permissions:
+  required: []                  # Minimum permissions needed
+  notes: string                 # Permission-related notes

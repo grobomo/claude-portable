@@ -1,0 +1,17 @@
+name: delete_space_permission
+description: Remove a space permission
+method: DELETE
+endpoint: /wiki/rest/api/space/{spaceKey}/permission/{id}
+template: delete
+tags:
+- Space permissions
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

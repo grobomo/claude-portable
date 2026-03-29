@@ -1,0 +1,68 @@
+name: list_asrm_asset_groups
+description: Get cyber risk subindexes of asset group data
+method: GET
+endpoint: /v3.0/asrm/assetGroups
+template: standard_list
+tags:
+- Cyber Risk Subindexes
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: "The filter for retrieving a subset of the asset groups \n\nSupported\
+      \ fields:\n\n| Field              | Description                            \
+      \                                                                          \
+      \        | Supported values                                            |\n|--------------------|--------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|\n\
+      | `name`             | The name of the group                               \
+      \                                                                     | Any\
+      \ value                                                   |\n| `id`        \
+      \       | The ID of the group                                              \
+      \                                                        | Any value       \
+      \                                            |\n| `riskIndex`        | The risk\
+      \ score for your organization derived from a comprehensive assessment of a variety\
+      \ of risk categories and factors.| Any value                               \
+      \                    |\n| `riskLevel`        | The risk level of the event \
+      \                                                                          \
+      \                   | `low`, `medium`, `high`                              \
+      \       |\n| `updatedDateTime`  | The last date and time when the response was\
+      \ updated should be in ISO 8601 format.                                    \
+      \   | Any value                                                   |\n| `parentId`\
+      \         | The ID of the parent group                                     \
+      \                                                          | Any value     \
+      \                                              |\n\nSupported operators:  \n\
+      \n| Operator | Description                       |  Notes                  \
+      \                             |\n| -------- | ---------------------------------\
+      \ | ---------------------------------------------------- |\n| `eq`     | Operator\
+      \ 'equal to'.              | -                                             \
+      \       |\n| `gt`     | Operator `greater than`.          | Only applicable\
+      \ to `riskIndex` and `updatedDateTime` |\n| `ge`     | Operator `greater than\
+      \ or equal`. | Only applicable to `riskIndex` and `updatedDateTime` |\n| `le`\
+      \     | Operator `less than or equal`.    | Only applicable to `riskIndex` and\
+      \ `updatedDateTime` |\n| `lt`     | Operator `less than`.             | Only\
+      \ applicable to `riskIndex` and `updatedDateTime` |\n| `and`    | Operator 'and'.\
+      \                   | -                                                    |\n\
+      | `or`     | Operator 'or'.                    | -                         \
+      \                           |\n| `not`    | Operator 'not'.                \
+      \   | -                                                    |\n| `( )`    | Symbols\
+      \ for grouping operands.    | -                                            \
+      \        |\n"
+  - name: orderBy
+    type: string
+    description: "The field by which the results are sorted.\n\nTo display records\
+      \ in ascending or descending order, add the phrase `asc` or `desc` after the\
+      \ parameter name.\n\nAvailable values: \n* `name`\n* `riskIndex`\n* `riskLevel`\n\
+      * `updatedDateTime`\n* `asc` - Ascending order\n* `desc` - Descending order\n"
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page.
+
+
+      Default: `100`
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

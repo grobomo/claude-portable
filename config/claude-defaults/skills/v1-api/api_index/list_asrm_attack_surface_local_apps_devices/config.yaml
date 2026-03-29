@@ -1,0 +1,111 @@
+name: list_asrm_attack_surface_local_apps_devices
+description: Get devices with the specified local application
+method: GET
+endpoint: /v3.0/asrm/attackSurfaceLocalApps/{id}/devices
+template: standard_list
+tags:
+- Attack Surface Discovery
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the local application on the Trend Vision One platform
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the device information list.
+
+
+      Supported fields:
+
+
+      | Field           | Description                              | Supported values
+      |
+
+      |-----------------|------------------------------------------|------------------|
+
+      | id              | The ID of the device                     | Any value        |
+
+      | name            | The name of the device                   | Any value        |
+
+      | latestRiskScore | The most recent Risk Score of the device | Any value        |
+
+
+      Supported operators:
+
+
+      | Operator | Description                                               | Notes                                |
+
+      |----------|-----------------------------------------------------------|--------------------------------------|
+
+      | `eq`     | Operator ''equal to''                                       | -                                    |
+
+      | `and`    | Operator ''and''                                            | -                                    |
+
+      | `or`     | Operator ''or''                                             | -                                    |
+
+      | `not`    | Operator ''not''                                            | -                                    |
+
+      | `()`     | Symbols for grouping operands with their correct operator | -                                    |
+
+      | `gt`     | Operator ''greater than''                                   | Only
+      applicable to `latestRiskScore` |
+
+      | `ge`     | Operator ''greater than or equal''                          | Only
+      applicable to `latestRiskScore` |
+
+      | `le`     | Operator ''less than or equal''                             | Only
+      applicable to `latestRiskScore` |
+
+      | `lt`     | Operator ''less than''                                      | Only
+      applicable to `latestRiskScore` |
+
+
+      Additional functions:
+
+
+      | Function   | Description                                       | Notes                       |
+
+      |------------|---------------------------------------------------|-----------------------------|
+
+      | contains() | Checks if the string contains the specified value | Applicable
+      to `name` only  |
+
+      '
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available fields:
+
+      * `latestRiskScore`
+
+
+      Available modifiers:
+
+      * `asc` - Displays the results in ascending order
+
+      * `desc` - Displays the results in descending order
+
+
+      Default: `latestRiskScore desc`
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

@@ -1,0 +1,14 @@
+name: create_content_permission_check
+description: Check content permissions
+method: POST
+endpoint: /wiki/rest/api/content/{id}/permission/check
+template: create
+tags:
+- Content permissions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

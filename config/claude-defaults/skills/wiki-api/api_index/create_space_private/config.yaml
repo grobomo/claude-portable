@@ -1,0 +1,11 @@
+name: create_space_private
+description: Create private space
+method: POST
+endpoint: /wiki/rest/api/space/_private
+template: create
+tags:
+- Space
+params:
+  required: []
+  optional: []
+template_config: {}

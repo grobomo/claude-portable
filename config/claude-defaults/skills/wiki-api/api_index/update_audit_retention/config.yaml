@@ -1,0 +1,11 @@
+name: update_audit_retention
+description: Set retention period
+method: PUT
+endpoint: /wiki/rest/api/audit/retention
+template: update
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

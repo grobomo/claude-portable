@@ -1,0 +1,14 @@
+name: get_asrm_attack_surface_local_apps
+description: Get local app's profile
+method: GET
+endpoint: /v3.0/asrm/attackSurfaceLocalApps/{id}
+template: single_get
+tags:
+- Attack Surface Discovery
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the local application on the Trend Vision One platform
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: response_domain_accounts_enable
+description: Enable user account
+method: POST
+endpoint: /v3.0/response/domainAccounts/enable
+template: response_action
+tags:
+- Domain Account
+params:
+  required: []
+  optional: []
+template_config: {}

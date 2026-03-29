@@ -1,0 +1,11 @@
+name: list_user_anonymous
+description: Get anonymous user
+method: GET
+endpoint: /wiki/rest/api/user/anonymous
+template: search
+tags:
+- Users
+params:
+  required: []
+  optional: []
+template_config: {}

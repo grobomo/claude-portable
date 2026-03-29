@@ -1,0 +1,94 @@
+name: list_security_playbooks_playbooks
+description: Get playbook list
+method: GET
+endpoint: /v3.0/securityPlaybooks/playbooks
+template: standard_list
+tags:
+- Playbooks
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: The number of items to return in the result set. Default is 10.
+  - name: orderBy
+    type: string
+    description: '
+
+      Specifies the field by which the results are sorted.
+
+
+      Data is displayed in descending order by default.
+
+
+      Supported fields and operators:
+
+      * ''updatedDateTime''
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+
+      Note: You can use multiple fields, separated by commas, to sort the retrieved
+      playbooks.
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of playbooks.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |-----|-----------|----------------|
+
+      |`type`|The playbook type| activityAndBehavior, general, systemConfiguration,
+      securityPolicy, threatDetection, vulnerability, xdrDetection |
+
+      |`name`|The name of playbook|Any value|
+
+      |`creator`|User that created a playbook|Any value|
+
+
+
+      Supported operators:
+
+
+      |Operator|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |`eq`|Operator ''equal to''| - |
+
+      |`and`|Operator ''and''| - |
+
+      |`or`|Operator ''or''| - |
+
+      |`not`|Operator ''not''| - |
+
+      |`( )`|Symbols for grouping operands with their correct operator.| - |
+
+
+      Additional functions:
+
+
+      |Function|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |`contains()`|Allows you to search for a specified string in a field|Only applicable
+      to ''name''|
+
+
+      Note: Include this parameter in every request that generates paginated output.
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

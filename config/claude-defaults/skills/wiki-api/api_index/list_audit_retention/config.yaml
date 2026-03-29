@@ -1,0 +1,11 @@
+name: list_audit_retention
+description: Get retention period
+method: GET
+endpoint: /wiki/rest/api/audit/retention
+template: search
+tags:
+- Audit
+params:
+  required: []
+  optional: []
+template_config: {}

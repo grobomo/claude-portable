@@ -1,0 +1,18 @@
+name: update_datalake_data_pipelines
+description: 'Update pipeline settings
+
+  '
+method: PATCH
+endpoint: /v3.0/datalake/dataPipelines/{id}
+template: patch_update
+tags:
+- Datalake Pipeline
+params:
+  required:
+  - name: id
+    type: string
+    description: 'The ID of a data pipeline.
+
+      '
+  optional: []
+template_config: {}

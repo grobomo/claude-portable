@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Clawdbot Microsoft Teams Integration Add-on (PLACEHOLDER)
+
+  STATUS: Not yet implemented
+
+  This add-on will enable Microsoft Teams messaging for Clawdbot:
+  - Azure AD app registration for bot identity
+  - Teams Bot Framework integration
+  - Webhook-based message handling (more Lambda-friendly than Signal)
+
+  Architecture Notes:
+  - Teams uses webhooks, so can work with pure Lambda (no EC2 needed)
+  - Requires Azure AD app registration
+  - Bot Framework SDK for Node.js
+
+  TODO:
+  - [ ] Azure AD app registration automation
+  - [ ] Bot Framework endpoint Lambda
+  - [ ] Teams manifest generation
+  - [ ] Message formatting (Adaptive Cards)
+
+Parameters:
+  BaseStackName:
+    Type: String
+    Default: clawdbot
+    Description: Name of the base Clawdbot stack
+
+  # Placeholder parameters - will be implemented later
+  AzureTenantId:
+    Type: String
+    Default: 'NOT_IMPLEMENTED'
+    Description: Azure AD Tenant ID (placeholder)
+
+  AzureAppId:
+    Type: String
+    Default: 'NOT_IMPLEMENTED'
+    Description: Azure AD App ID (placeholder)
+
+Resources:
+  # Placeholder - no resources yet
+  PlaceholderParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /clawdbot/addons/teams
+      Type: String
+      Description: Teams integration placeholder
+      Value: |
+        {
+          "enabled": false,
+          "status": "not_implemented",
+          "message": "Teams integration is planned but not yet implemented"
+        }
+
+Outputs:
+  Status:
+    Description: Implementation status
+    Value: 'NOT_IMPLEMENTED - Teams integration is planned for future release'
+
+  Documentation:
+    Description: Reference documentation
+    Value: 'https://docs.microsoft.com/en-us/microsoftteams/platform/bots/what-are-bots'

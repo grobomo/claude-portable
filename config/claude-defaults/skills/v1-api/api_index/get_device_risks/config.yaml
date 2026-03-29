@@ -1,0 +1,26 @@
+name: get_device_risks
+endpoint: /v3.0/asrm/attackSurfaceDevices/{device_id}/riskIndicators
+method: GET
+template: standard_list
+description: Get device risk indicators
+params:
+  required:
+  - name: device_id
+    type: str
+    description: Device ID
+  optional:
+  - name: limit
+    type: int
+    description: Max results
+    default: 20
+template_config:
+  pagination:
+    param: top
+    max: 1000
+    type: int
+  date_params: null
+  filter_style: odata
+  order_by: latestRiskScore desc
+categories:
+- risk_management
+- asset_inventory

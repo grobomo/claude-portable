@@ -1,0 +1,17 @@
+name: list_content_child_attachment_download
+description: Get URI to download attachment
+method: GET
+endpoint: /wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download
+template: children
+tags:
+- Content - attachments
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  - name: attachmentId
+    type: string
+    description: 'Path parameter: attachmentId'
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: list_atlassian_connect_1_app_module_dynamic
+description: Get modules
+method: GET
+endpoint: /atlassian-connect/1/app/module/dynamic
+template: search
+tags:
+- Dynamic modules
+params:
+  required: []
+  optional: []
+template_config: {}

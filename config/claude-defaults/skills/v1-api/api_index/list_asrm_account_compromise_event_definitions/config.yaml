@@ -1,0 +1,11 @@
+name: list_asrm_account_compromise_event_definitions
+description: Get risk event definitions
+method: GET
+endpoint: /v3.0/asrm/accountCompromiseEventDefinitions
+template: single_get
+tags:
+- Risk Factors
+params:
+  required: []
+  optional: []
+template_config: {}

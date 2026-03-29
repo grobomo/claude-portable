@@ -1,0 +1,14 @@
+name: delete_iam_accounts
+description: Delete users, groups or invitations
+method: DELETE
+endpoint: /v3.0/iam/accounts/{id}
+template: patch_update
+tags:
+- Accounts (Foundation Services release)
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+template_config: {}

@@ -1,0 +1,11 @@
+name: response_endpoint_run_osquery
+description: Run osquery
+method: POST
+endpoint: /v3.0/response/endpoints/runOsquery
+template: response_action
+tags:
+- osquery
+params:
+  required: []
+  optional: []
+template_config: {}

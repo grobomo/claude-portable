@@ -1,0 +1,11 @@
+name: response_containers_restore
+description: Restore Container connection
+method: POST
+endpoint: /v3.0/response/containers/restore
+template: response_action
+tags:
+- Container
+params:
+  required: []
+  optional: []
+template_config: {}

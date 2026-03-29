@@ -1,0 +1,14 @@
+name: update_space
+description: Update space
+method: PUT
+endpoint: /wiki/rest/api/space/{spaceKey}
+template: update
+tags:
+- Space
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

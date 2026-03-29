@@ -1,0 +1,17 @@
+name: delete_case_management_cases_attachments
+description: Delete an attachment
+method: DELETE
+endpoint: /v3.0/caseManagement/cases/{id}/attachments/{attachmentId}
+template: patch_update
+tags:
+- Case
+params:
+  required:
+  - name: id
+    type: string
+    description: The case ID
+  - name: attachmentId
+    type: string
+    description: The attachment ID
+  optional: []
+template_config: {}

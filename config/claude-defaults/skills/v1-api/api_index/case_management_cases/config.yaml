@@ -1,0 +1,11 @@
+name: case_management_cases
+description: Create a case
+method: POST
+endpoint: /v3.0/caseManagement/cases
+template: post_action
+tags:
+- Case
+params:
+  required: []
+  optional: []
+template_config: {}

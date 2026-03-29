@@ -1,0 +1,11 @@
+name: list_dmm_exceptions
+description: Get all custom exceptions
+method: GET
+endpoint: /v3.0/dmm/exceptions
+template: single_get
+tags:
+- Exceptions
+params:
+  required: []
+  optional: []
+template_config: {}

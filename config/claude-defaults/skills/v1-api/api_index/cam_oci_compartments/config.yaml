@@ -1,0 +1,11 @@
+name: cam_oci_compartments
+description: Add OCI compartment
+method: POST
+endpoint: /v3.0/cam/ociCompartments
+template: post_action
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional: []
+template_config: {}

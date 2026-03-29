@@ -1,0 +1,11 @@
+name: list_template_page
+description: Get content templates
+method: GET
+endpoint: /wiki/rest/api/template/page
+template: search
+tags:
+- Template
+params:
+  required: []
+  optional: []
+template_config: {}

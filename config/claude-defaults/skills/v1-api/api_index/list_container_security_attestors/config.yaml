@@ -1,0 +1,78 @@
+name: list_container_security_attestors
+description: Get Container Security attestors
+method: GET
+endpoint: /v3.0/containerSecurity/attestors
+template: single_get
+tags:
+- Attestors
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter for retrieving a subset of the attestors list. Include
+      this parameter in every request that generates paginated output.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |-----|-----------|----------------|
+
+      |name|The name of the attestor|Any value|
+
+      |type|The type of the attestor|`cosignPublicKey`|
+
+      |managementType|The management type of the attestor|`userManaged`, `clusterManaged`|
+
+
+      Supported operators:
+
+
+      |Operator|Description|Notes|
+
+      |--------|-----------|-----|
+
+      |`eq`|Operator ''equal to''| - |
+
+      |`and`|Operator ''and''| - |
+
+      |`or`|Operator ''or''| - |
+
+      |`not`|Operator ''not''| - |
+
+
+      Additional functions:
+
+
+      |Function|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |contains|Operator that allows you to search for a specified string in a field|Only
+      applicable to `name`|
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The fields by which the results are sorted. You can indicate multiple
+      fields separated by commas (`,`).
+
+
+      To return records in descending order, add the keyword `desc` after the parameter
+      name.
+
+
+      Available fields:
+
+      * `createdDateTime`
+
+      * `updatedDateTime`
+
+      '
+template_config: {}

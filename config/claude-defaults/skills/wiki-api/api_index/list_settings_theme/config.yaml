@@ -1,0 +1,11 @@
+name: list_settings_theme
+description: Get themes
+method: GET
+endpoint: /wiki/rest/api/settings/theme
+template: search
+tags:
+- Themes
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: delete_group_by_id
+description: Delete user group
+method: DELETE
+endpoint: /wiki/rest/api/group/by-id
+template: delete
+tags:
+- Group
+params:
+  required: []
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: delete_space
+description: Delete space
+method: DELETE
+endpoint: /wiki/rest/api/space/{spaceKey}
+template: delete
+tags:
+- Space
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

@@ -1,0 +1,11 @@
+name: create_content_archive
+description: Archive pages
+method: POST
+endpoint: /wiki/rest/api/content/archive
+template: create
+tags:
+- Content
+params:
+  required: []
+  optional: []
+template_config: {}

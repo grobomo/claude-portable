@@ -1,0 +1,14 @@
+name: list_space_state_content
+description: Get content in space with given content state
+method: GET
+endpoint: /wiki/rest/api/space/{spaceKey}/state/content
+template: search
+tags:
+- Content states
+params:
+  required:
+  - name: spaceKey
+    type: string
+    description: 'Path parameter: spaceKey'
+  optional: []
+template_config: {}

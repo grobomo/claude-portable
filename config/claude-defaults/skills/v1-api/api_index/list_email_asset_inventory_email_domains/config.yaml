@@ -1,0 +1,50 @@
+name: list_email_asset_inventory_email_domains
+description: Get managed email domains
+method: GET
+endpoint: /v3.0/emailAssetInventory/emailDomains
+template: standard_list
+tags:
+- Email Asset Inventory
+params:
+  required: []
+  optional:
+  - name: top
+    type: integer
+    description: 'The number of email domains returned on each page. Supported range:
+      10-1000
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'The filter used to retrieve a subset of email domains from a generated
+      paginated list.
+
+
+      | Field | Description | Supported values |
+
+      |-----|-----|-----|
+
+      | inboundConfigurationStatus | The domain''s inbound configuration status. |
+      ''Completed'', ''Configuration required'', ''Disabled'' |
+
+      | outboundConfigurationStatus | The domain''s outbound configuration status.
+      | ''Completed'', ''Configuration required'', ''Disabled'' |
+
+
+      | Operator | Description | Notes |
+
+      |-----|-----|-----|
+
+      | `eq` | Operator "equal to" | - |
+
+      | `and` | Operator "and" | - |
+
+
+      Only support `eq`, `and` operators.
+
+      '
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

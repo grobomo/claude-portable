@@ -1,0 +1,11 @@
+name: list_asrm_security_posture
+description: Get security posture data
+method: GET
+endpoint: /v3.0/asrm/securityPosture
+template: single_get
+tags:
+- Security Posture
+params:
+  required: []
+  optional: []
+template_config: {}

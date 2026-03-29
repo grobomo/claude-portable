@@ -1,0 +1,11 @@
+name: delete_dmm_exceptions_delete
+description: Delete a custom exception
+method: POST
+endpoint: /v3.0/dmm/exceptions/delete
+template: post_action
+tags:
+- Exceptions
+params:
+  required: []
+  optional: []
+template_config: {}

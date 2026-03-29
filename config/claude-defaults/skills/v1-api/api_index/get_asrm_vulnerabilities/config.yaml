@@ -1,0 +1,14 @@
+name: get_asrm_vulnerabilities
+description: Get basic CVE information
+method: GET
+endpoint: /v3.0/asrm/vulnerabilities/{id}
+template: single_get
+tags:
+- Threat and Exposure Management
+params:
+  required:
+  - name: id
+    type: string
+    description: The CVE ID
+  optional: []
+template_config: {}

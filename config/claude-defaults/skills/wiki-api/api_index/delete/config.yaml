@@ -1,0 +1,17 @@
+name: delete
+description: Delete a Confluence page
+method: DELETE
+endpoint: /rest/api/content/{page_id}
+template: delete
+
+params:
+  required:
+    - name: page_id
+      type: string
+      description: Page ID or URL
+
+template_config: {}
+
+tags:
+  - write
+  - delete

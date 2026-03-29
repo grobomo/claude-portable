@@ -1,0 +1,22 @@
+name: update_iam_accounts
+description: Update a user profile
+method: PATCH
+endpoint: /v3.0/iam/accounts/{id}
+template: patch_update
+tags:
+- Accounts (Foundation Services release)
+params:
+  required: []
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: If-Match
+    type: string
+    description: 'Allows you to update an existing resource.
+
+
+      Note: To get an ETag, send a GET request to the API
+
+      '
+template_config: {}

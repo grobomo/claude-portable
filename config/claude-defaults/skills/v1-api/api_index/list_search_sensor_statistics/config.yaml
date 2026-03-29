@@ -1,0 +1,15 @@
+name: list_search_sensor_statistics
+description: Query endpoint sensor statistics
+method: GET
+endpoint: /v3.0/search/sensorStatistics
+template: single_get
+tags:
+- Statistics
+params:
+  required: []
+  optional:
+  - name: period
+    type: string
+    description: 'The time period for the Trend Vision One connected product status.
+      Default: 7 days.'
+template_config: {}

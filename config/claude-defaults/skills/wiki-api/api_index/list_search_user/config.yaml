@@ -1,0 +1,11 @@
+name: list_search_user
+description: Search users
+method: GET
+endpoint: /wiki/rest/api/search/user
+template: search
+tags:
+- Search
+params:
+  required: []
+  optional: []
+template_config: {}

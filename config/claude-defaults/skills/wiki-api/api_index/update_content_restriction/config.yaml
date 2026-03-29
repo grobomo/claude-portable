@@ -1,0 +1,14 @@
+name: update_content_restriction
+description: Update restrictions
+method: PUT
+endpoint: /wiki/rest/api/content/{id}/restriction
+template: update
+tags:
+- Content restrictions
+params:
+  required:
+  - name: id
+    type: string
+    description: 'Path parameter: id'
+  optional: []
+template_config: {}

@@ -1,0 +1,14 @@
+name: get_endpoint_security_tasks
+description: Get status of a task
+method: GET
+endpoint: /v3.0/endpointSecurity/tasks/{id}
+template: single_get
+tags:
+- Endpoint Security
+params:
+  required:
+  - name: id
+    type: string
+    description: The ID of the task
+  optional: []
+template_config: {}

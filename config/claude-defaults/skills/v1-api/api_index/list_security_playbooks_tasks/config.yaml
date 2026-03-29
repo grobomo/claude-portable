@@ -1,0 +1,127 @@
+name: list_security_playbooks_tasks
+description: Get task list
+method: GET
+endpoint: /v3.0/securityPlaybooks/tasks
+template: standard_list
+tags:
+- Execution Results
+params:
+  required: []
+  optional:
+  - name: startDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the start of the data
+      retrieval range. You can retrieve data for tasks that were created no later
+      than 180 days ago.
+
+
+      If no value is specified, ''startDateTime'' defaults to beginning of the retention
+      period of 180 days.
+
+      '
+  - name: endDateTime
+    type: string
+    description: 'Timestamp in ISO 8601 format that indicates the end of the data
+      retrieval range.
+
+
+      If no value is specified, ''endDateTime'' defaults to the time you make the
+      request.
+
+      '
+  - name: dateTimeTarget
+    type: string
+    description: 'Parameter that allows you to filter the results.
+
+      '
+  - name: top
+    type: integer
+    description: The number of items to return in the result set. Default is 10.
+  - name: orderBy
+    type: string
+    description: '
+
+      Specifies the field by which the results are sorted.
+
+
+      Data is displayed in descending order by default.
+
+
+      Supported fields and operators:
+
+      * ''createdDateTime''
+
+      * ''lastActionDateTime''
+
+      * ''playbookName''
+
+      * asc - Ascending order
+
+      * desc - Descending order
+
+
+      Note: You can use multiple fields, separated by commas, to sort the retrieved
+      results.
+
+      '
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of tasks.
+
+
+      Supported fields:
+
+
+      |Field|Description|Supported values|
+
+      |-----|-----------|----------------|
+
+      |`id`|The ID of task|Any value|
+
+      |`playbookName`|The name of playbook|Any value|
+
+      |`status`|The status of task|`succeeded`, `partiallySucceeded`, `failed`, `queued`,
+      `running`, `pendingApproval`|
+
+
+      Supported operators:
+
+
+      |Operator|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |`eq`|Operator ''equal to''| - |
+
+      |`and`|Operator ''and''| - |
+
+      |`or`|Operator ''or''| - |
+
+      |`not`|Operator ''not''| - |
+
+      |`( )`|Symbols for grouping operands with their correct operator.| - |
+
+
+      Additional functions:
+
+
+      |Function|Description|Notes|
+
+      |-----|-----------|----------------|
+
+      |`contains()`|Allows you to search for a specified string in a field|Only applicable
+      to ''playbookName'' and ''id''|
+
+
+      Note: Include this parameter in every request that generates paginated output.
+
+      '
+template_config:
+  date_params:
+    start: startDateTime
+    end: endDateTime
+    unit: days
+  pagination:
+    param: top
+    type: int
+    max: 200

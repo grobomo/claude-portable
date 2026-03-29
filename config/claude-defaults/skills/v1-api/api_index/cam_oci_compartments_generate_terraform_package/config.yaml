@@ -1,0 +1,11 @@
+name: cam_oci_compartments_generate_terraform_package
+description: Get OCI Terraform template
+method: POST
+endpoint: /v3.0/cam/ociCompartments/generateTerraformPackage
+template: post_action
+tags:
+- OCI Compartments
+params:
+  required: []
+  optional: []
+template_config: {}

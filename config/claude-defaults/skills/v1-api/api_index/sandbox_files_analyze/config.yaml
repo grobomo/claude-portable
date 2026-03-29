@@ -1,0 +1,11 @@
+name: sandbox_files_analyze
+description: Submit file to sandbox
+method: POST
+endpoint: /v3.0/sandbox/files/analyze
+template: post_action
+tags:
+- Sandbox Analysis
+params:
+  required: []
+  optional: []
+template_config: {}

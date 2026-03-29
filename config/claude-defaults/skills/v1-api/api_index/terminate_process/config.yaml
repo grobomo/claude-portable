@@ -1,0 +1,26 @@
+name: terminate_process
+endpoint: /v3.0/response/endpoints/terminateProcess
+method: POST
+template: response_action
+description: Terminate process on endpoint
+params:
+  required:
+  - name: endpoint_guid
+    type: str
+    description: Endpoint agent GUID
+  - name: file_sha1
+    type: str
+    description: SHA1 of process file
+  optional:
+  - name: description
+    type: str
+    description: Reason
+    default: Terminated via MCP
+template_config:
+  pagination: null
+  date_params: null
+  filter_style: null
+  body_builder: process_terminate
+categories:
+- response_actions
+- incident_response

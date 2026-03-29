@@ -1,0 +1,46 @@
+{
+  "$schema": "https://clawdbot.dev/schema/config.json",
+  "version": "1.0.0",
+
+  "models": {
+    "default": "anthropic/claude-sonnet-4-5",
+    "providers": {
+      "anthropic": {
+        "source": "setup-token"
+      }
+    }
+  },
+
+  "gateway": {
+    "port": 18789,
+    "host": "127.0.0.1"
+  },
+
+  "channels": {
+    "tui": {
+      "enabled": true
+    },
+    "signal": {
+      "enabled": false
+    },
+    "teams": {
+      "enabled": false
+    },
+    "discord": {
+      "enabled": false
+    },
+    "telegram": {
+      "enabled": false
+    }
+  },
+
+  "permissions": {
+    "dmPolicy": "pairing",
+    "requirePairing": true
+  },
+
+  "logging": {
+    "level": "info",
+    "file": "/home/clawdbot/.clawdbot/logs/clawdbot.log"
+  }
+}

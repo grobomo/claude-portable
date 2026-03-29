@@ -1,0 +1,11 @@
+name: update_container_security_compliance_scan_configuration
+description: Update compliance scans configuration
+method: PATCH
+endpoint: /v3.0/containerSecurity/complianceScanConfiguration
+template: patch_update
+tags:
+- Compliance Scans
+params:
+  required: []
+  optional: []
+template_config: {}

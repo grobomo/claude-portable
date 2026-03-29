@@ -1,0 +1,109 @@
+name: list_asrm_vulnerable_devices
+description: Get CVEs detected in a device
+method: GET
+endpoint: /v3.0/asrm/vulnerableDevices
+template: standard_list
+tags:
+- Device Vulnerabilities
+params:
+  required: []
+  optional:
+  - name: TMV1-Filter
+    type: string
+    description: 'Filter for retrieving a subset of the prioritized CVEs.
+
+
+      Supported fields:
+
+
+      |Field |Description |Supported values |
+
+      |---------|---------|---------|
+
+      |`id` |The ID of the device on the Trend Vision One platform. |Any value|
+
+      |`deviceName` |The name of the device. |Any value|
+
+      |`ip` |The IP addresses of a device. |Any value|
+
+      |`criticality` |The criticality of the device.|`high`, `medium`, `low` |
+
+      |`cvssScore` |The CVSS score.|Any value|
+
+      |`globalExploitActivityLevel` |Indicates how often attackers are exploiting
+      a vulnerability.|`high`, `medium`, `low` |
+
+      |`cveId` |The Common Vulnerabilities and Exposures identifier (CVE ID).|Any
+      value|
+
+      |`cveMitigationStatus` |The mitigation status of the CVE detected on the device.|`new`,
+      `inProgress`, `closed`, `dismissed`, `accepted`, `mitigated` |
+
+      |`cveEventRiskLevel` | The risk level of the risk event triggered by a CVE|`high`,
+      `medium`, `low` |
+
+
+      Supported operators:
+
+
+      |Operator  |Description |
+
+      |---------|---------|
+
+      |`eq`  |Operator ''equal to''. |
+
+      |`gt`  |Operator ''greater than''. |
+
+      |`ge`  |Operator ''greater than or equal''. |
+
+      |`le`  |Operator ''less than or equal''. |
+
+      |`lt`  |Operator ''less than''. |
+
+      |`and` |Operator ''and''. |
+
+      |`or`  |Operator ''or''. |
+
+      |`not` |Operator ''not''. |
+
+      |`( )` |Symbols for grouping operands. |
+
+      '
+  - name: orderBy
+    type: string
+    description: 'The field by which the results are sorted.
+
+
+      To display records in ascending or descending order, add the phrase `asc` or
+      `desc` after the parameter name.
+
+
+      Available values:
+
+
+      * `deviceName`
+
+      * `asc` - Ascending order
+
+      * `desc` - Descending order
+
+      '
+  - name: top
+    type: integer
+    description: 'The number of records displayed on a page
+
+
+      Default: `100`
+
+      '
+  - name: cveDetectionStatus
+    type: string
+    description: "The CVE detection status of the devices included on the list. \n\
+      \n\nSupported values:\n* `affected` (default) - Includes only devices with detected\
+      \ CVEs\n* `any` - Includes all discovered devices regardless of CVE detection\
+      \ status\n"
+template_config:
+  pagination:
+    param: top
+    type: int
+    max: 200

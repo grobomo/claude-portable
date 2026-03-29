@@ -1,0 +1,203 @@
+name: list_search_detections
+description: Get detection data
+method: GET
+endpoint: /v3.0/search/detections
+template: single_get
+tags:
+- Search
+params:
+  required:
+  - name: TMV1-Query
+    type: string
+    description: 'Statement that allows you to retrieve a subset of the collected
+      detection data. Supported fields:
+
+      * ''hostName'' - Match type support: Partial match
+
+      * ''interestedHost'' - Match type support: Partial match
+
+      * ''shost'' - Match type support: Partial match
+
+      * ''dhost'' - Match type support: Partial match
+
+      * ''endpointHostName'' - Match type support: Partial match
+
+      * ''userDomain'' - Match type support: Partial match
+
+      * ''endpointGUID'' - Match type support: Partial match
+
+      * ''request'' - Match type support: Partial match
+
+      * ''src'' - Match type support: Partial match
+
+      * ''dst'' - Match type support: Partial match
+
+      * ''interestedIp'' - Match type support: Partial match
+
+      * ''endpointIp'' - Match type support: Partial match
+
+      * ''peerIp'' - Match type support: Partial match
+
+      * ''denyListIp'' - Match type support: Partial match
+
+      * ''dpt'' - Match type support: Full match
+
+      * ''spt'' - Match type support: Full match
+
+      * ''fileName'' - Match type support: Partial match
+
+      * ''objectFileName'' - Match type support: Partial match
+
+      * ''compressedFileName'' - Match type support: Partial match
+
+      * ''attachmentFileName'' - Match type support: Partial match
+
+      * ''filePath'' - Match type support: Partial match
+
+      * ''filePathName'' - Match type support: Partial match
+
+      * ''objectFilePath'' - Match type support: Partial match
+
+      * ''fileHash'' - Match type support: Full match
+
+      * ''attachmentFileHash'' - Match type support: Full match
+
+      * ''attachmentFileHashSha1'' - Match type support: Full match
+
+      * ''compressedFileHash'' - Match type support: Full match
+
+      * ''objectFileHashSha1'' - Match type support: Full match
+
+      * ''fileHashSha256'' - Match type support: Full match
+
+      * ''attachmentFileHashSha256'' - Match type support: Full match
+
+      * ''compressedFileHashSha256'' - Match type support: Full match
+
+      * ''objectFileHashSha256'' - Match type support: Full match
+
+      * ''attachmentFileHashMd5'' - Match type support: Full match
+
+      * ''objectFileHashMd5'' - Match type support: Full match
+
+      * ''processCmd'' - Match type support: Partial match
+
+      * ''objectCmd'' - Match type support: Partial match
+
+      * ''objectRegistryData'' - Match type support: Partial match
+
+      * ''objectRegistryKeyHandle'' - Match type support: Partial match
+
+      * ''objectRegistryValue'' - Match type support: Partial match
+
+      * ''suid'' - Match type support: Partial match
+
+      * ''processFilePath'' - Match type support: Partial match
+
+      * ''suser'' - Match type support: Partial match
+
+      * ''duser'' - Match type support: Partial match
+
+      * ''mailMsgSubject'' - Match type support: Partial match
+
+      * ''msgId'' - Match type support: Partial match
+
+      * ''techniqueId'' - Match type support: Partial match
+
+      * ''tags'' - Match type support: Partial match
+
+      * ''tacticId'' - Match type support: Partial match
+
+      * ''malName'' - Match type support: Partial match
+
+      * ''eventName'' - Match type support: Partial match
+
+      * ''eventSubName'' - Match type support: Partial match
+
+      * ''fullPath'' - Match type support: Partial match
+
+      * ''parentCmd'' - Match type support: Partial match
+
+      * ''parentFilePath'' - Match type support: Partial match
+
+      * ''parentFileHashSha1'' - Match type support: Full match
+
+      * ''parentFileHashSha256'' - Match type support: Full match
+
+      * ''parentFileHashMd5'' - Match type support: Full match
+
+      * ''processFileHashSha1'' - Match type support: Full match
+
+      * ''processFileHashSha256'' - Match type support: Full match
+
+      * ''processFileHashMd5'' - Match type support: Full match
+
+      * ''srcFilePath'' - Match type support: Partial match
+
+      * ''srcFileHashSha1'' - Match type support: Full match
+
+      * ''srcFileHashSha256'' - Match type support: Full match
+
+      * ''srcFileHashMd5'' - Match type support: Full match
+
+      * ''pname'' - Match type support: Partial match
+
+      * ''act'' - Match type support: Partial match
+
+      * ''deviceGUID'' - Match type support: Partial match
+
+      * ''objectIp'' - Match type support: Partial match
+
+      * ''objectPort'' - Match type support: Full match
+
+      * ''domainName'' - Match type support: Partial match
+
+      * ''peerHost'' - Match type support: Partial match
+
+      * ''httpReferer'' - Match type support: Partial match
+
+      * ''objectHostName'' - Match type support: Partial match
+
+      * ''msgUuid'' - Match type support: Partial match
+
+      * ''uuid'' - Match type support: Partial match
+
+      * ''productCode'' - Match type support: Partial match
+
+
+      Supported operators:
+
+      * '':'' - Abbreviation of the operator "equal to"
+
+      * ''and'' - Operator "and"
+
+      * ''or'' - Operator "or"
+
+      * ''not'' - Operator "not"
+
+      * ''( )'' - Symbols for grouping operands with their correct operator.
+
+      For more information about query syntax, see [the online help](https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-search-syntax).
+
+
+      Note: For more information about supported fields, see [the online help](https://trendmicro.github.io/tm-v1-schema/pages/index).
+
+      '
+  optional:
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+  - name: null
+    type: string
+    description: ''
+  - name: select
+    type: string
+    description: The list of fields included in search results (If no fields are specified,
+      the query returns all supported fields.)
+template_config: {}
