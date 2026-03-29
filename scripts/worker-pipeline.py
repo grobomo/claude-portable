@@ -148,37 +148,9 @@ def cmd_phase(args):
 
     # Send immediate phase-change event to dispatcher (best-effort)
     if status == "running":
-        dispatcher_url = os.environ.get("DISPATCHER_URL", "")
-        if dispatcher_url:
-            try:
-                _notify_phase_change(
-                    dispatcher_url, state.get("task_num"), old_phase, phase_name
-                )
-            except Exception:
-                pass  # best-effort, don't block pipeline
+        _notify_phase_change(state.get("task_num"), old_phase, phase_name)
 
     return 0
-
-
-def _notify_phase_change(dispatcher_url, task_num, old_phase, new_phase):
-    """POST phase-change event to dispatcher."""
-    import json as _json
-    import urllib.request
-    payload = _json.dumps({
-        "worker_id": WORKER_ID,
-        "task_num": task_num,
-        "old_phase": old_phase,
-        "new_phase": new_phase,
-        "timestamp": _now(),
-    }).encode()
-    req = urllib.request.Request(
-        f"{dispatcher_url.rstrip('/')}/worker/phase-change",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=5):
-        pass
 
 
 def cmd_gate(args):
