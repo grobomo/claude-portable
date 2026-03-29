@@ -30,13 +30,11 @@ class TestReviewStageStructure(unittest.TestCase):
 
     def test_syntax_valid(self):
         """Script passes bash -n syntax check."""
-        # Git Bash needs /c/Users/... not C:/Users/...
-        bash_path = SCRIPT_PATH.replace("\\", "/")
-        if len(bash_path) > 1 and bash_path[1] == ":":
-            bash_path = "/" + bash_path[0].lower() + bash_path[2:]
+        with open(SCRIPT_PATH) as f:
+            script_content = f.read()
         result = subprocess.run(
-            ["bash", "-n", bash_path],
-            capture_output=True, text=True
+            ["bash", "-n"],
+            input=script_content, capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0, f"Syntax error: {result.stderr}")
 
