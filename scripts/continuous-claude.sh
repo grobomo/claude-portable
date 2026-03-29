@@ -480,6 +480,7 @@ run_pipeline() {
   local branch_name="continuous-claude/task-${task_num}"
 
   local research_file="/tmp/task-${task_num}-research.md"
+  local review_file="/tmp/task-${task_num}-review.md"
   local plan_file="/tmp/task-${task_num}-plan.md"
   local stage_log="/data/task-${task_num}-stages.json"
 
