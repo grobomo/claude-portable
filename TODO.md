@@ -1,11 +1,9 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): All commits pushed. 155 tests passing. 55/75 tasks done.
-Shipped: REVIEW stage, refactor-first rule, 7 enforcement gates, ccc cleanup,
-worker zero-touch boot, chat cache (rolling transcript + per-user files + context injection
-+ reply capture), archived k8s files, credential helper fix.
-Pipeline: 7 stages with gates. Chat cache integrated into teams-chat-bridge.py.
-Pre-existing 19 failing tests in test_dependency_analysis.py need implementation
+<!-- SESSION STATE (2026-03-29): All commits pushed. 174 tests passing. 53/75 tasks done.
+Shipped this session: dispatcher dependency analysis (auto-annotates TODO.md with depends-on
+via Claude invocation every 5min). 19 new tests for parsing, annotation, and prompt building.
+Next unchecked: chat cache daemon, context-aware dispatch, reply capture, Neural Pipeline.
 (dispatcher dependency analysis task). Next: dispatcher dependency analysis,
 task template system, Neural Pipeline integration. -->
 
@@ -191,7 +189,7 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 - [x] Dependency visualization: `ccc work` shows a task graph with arrows between dependent tasks. Blocked tasks show as "waiting on #N".
   - PR title: "feat: dependency visualization in ccc work"
 
-- [ ] Dispatcher dependency analysis: every 60s, dispatcher runs a Claude invocation that reads TODO.md + codebase and annotates tasks with `depends-on: task-N` where dependencies exist. Commits the annotated TODO.md back to main. This is fleet-level planning, not per-worker.
+- [x] Dispatcher dependency analysis: every 60s, dispatcher runs a Claude invocation that reads TODO.md + codebase and annotates tasks with `depends-on: task-N` where dependencies exist. Commits the annotated TODO.md back to main. This is fleet-level planning, not per-worker.
   - PR title: "feat: dispatcher auto-annotates task dependencies"
 
 - [x] Workers skip blocked tasks: continuous-claude.sh checks `depends-on:` annotations before claiming. If any dependency task is unchecked, skip to the next unblocked task. Log "task N blocked by task M" in the output.
