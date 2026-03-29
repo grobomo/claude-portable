@@ -1,8 +1,10 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 174 tests passing. 56/75 tasks done.
-Completed: dispatcher dependency analysis (19 tests), all test fixes.
-Next: conversation continuity test, Neural Pipeline, task templates. -->
+<!-- SESSION STATE (2026-03-29): 208 tests passing. 59/75 tasks done.
+Completed this session: dispatcher dependency analysis (19 tests), conversation continuity
+test (6 tests), worker-pipeline.py CLI (19 tests), HTTP pipeline endpoints /status /phase
+/gate (9 tests), worker heartbeat loop + dispatcher /worker/heartbeat + staleness detection.
+Next unchecked: dispatcher board aggregation, ccc board, dispatcher interrupt, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
@@ -255,7 +257,7 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Create `scripts/worker-pipeline.py` — adapted from Neural Pipeline concepts. Each worker runs this alongside continuous-claude.sh. It tracks the current task through phases (RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR). Writes phase state to `/data/pipeline-state.json` with: task number, current phase, phase start time, phase output files, pass/fail per gate. Exposes HTTP API on port 8081: GET /status returns pipeline state, POST /interrupt kills current Claude process, POST /pull forces git pull.
   - PR title: "feat: worker pipeline tracker with HTTP control API"
 
-- [ ] Worker polls dispatcher every 30s: POST /worker/heartbeat with current pipeline state (task, phase, idle time). Dispatcher maintains fleet roster from heartbeats. If a worker misses 3 heartbeats, dispatcher marks it unhealthy.
+- [x] Worker polls dispatcher every 30s: POST /worker/heartbeat with current pipeline state (task, phase, idle time). Dispatcher maintains fleet roster from heartbeats. If a worker misses 3 heartbeats, dispatcher marks it unhealthy.
   - PR title: "feat: worker heartbeat polling to dispatcher"
 
 - [ ] Dispatcher aggregates pipeline state from all workers into `/data/board.json`. Updated on every heartbeat received. Shows: all tasks, which worker has which task, what phase each is in, time in phase, blocked tasks, completed tasks.
