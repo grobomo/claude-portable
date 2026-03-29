@@ -1,11 +1,8 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): All commits pushed. 174 tests passing. 53/75 tasks done.
-Shipped this session: dispatcher dependency analysis (auto-annotates TODO.md with depends-on
-via Claude invocation every 5min). 19 new tests for parsing, annotation, and prompt building.
-Next unchecked: chat cache daemon, context-aware dispatch, reply capture, Neural Pipeline.
-(dispatcher dependency analysis task). Next: dispatcher dependency analysis,
-task template system, Neural Pipeline integration. -->
+<!-- SESSION STATE (2026-03-29): 174 tests passing. 56/75 tasks done.
+Completed: dispatcher dependency analysis (19 tests), all test fixes.
+Next: conversation continuity test, Neural Pipeline, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
