@@ -116,7 +116,7 @@ def _get_pipeline_stage():
     try:
         with open(stage_file, "r") as f:
             stages = json.load(f)
-        stage_names = ["RESEARCH", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
+        stage_names = ["WHY", "RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
         current = "idle"
         complete = 0
         for s in stage_names:

@@ -1161,7 +1161,11 @@ while true; do
   run_pipeline "$NEXT_TASK" "$TASK_DESC" "$TASK_PR_TITLE" || PIPELINE_EXIT=$?
   TASK_DURATION=$(( $(date +%s) - TASK_START ))
 
-  if [ "$PIPELINE_EXIT" -ne 0 ]; then
+  if [ "$PIPELINE_EXIT" -eq 2 ]; then
+    # WHY phase decided to skip this task — not an error
+    echo "  SKIPPED: Task #${NEXT_TASK} skipped by WHY phase"
+    ERROR_COUNT=0
+  elif [ "$PIPELINE_EXIT" -ne 0 ]; then
     ERROR_COUNT=$((ERROR_COUNT + 1))
     echo "  ERROR: Pipeline failed for task #${NEXT_TASK} (${ERROR_COUNT}/${MAX_ERRORS})"
 

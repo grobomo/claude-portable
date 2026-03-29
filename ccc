@@ -2116,7 +2116,7 @@ def cmd_work(args):
                     f"cat /data/task-{task_n}-stages.json 2>/dev/null || echo '{{}}'")
                 try:
                     stages = json.loads(stage_json or "{}")
-                    stage_names = ["RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
+                    stage_names = ["WHY", "RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
                     current_stage = None
                     passed_stages = []
                     failed_stage = None
@@ -2241,6 +2241,7 @@ def cmd_work(args):
 
 # Phase color codes for board display
 _PHASE_COLORS = {
+    "WHY":      "\033[33m",   # dark yellow
     "RESEARCH": "\033[94m",   # blue
     "REVIEW":   "\033[96m",   # cyan
     "PLAN":     "\033[96m",   # cyan

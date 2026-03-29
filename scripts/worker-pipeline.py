@@ -3,7 +3,7 @@
 worker-pipeline.py -- Pipeline state tracker for CCC workers.
 
 Tracks the current task through TDD pipeline phases:
-  RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR
+  WHY → RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR
 
 Writes state to /data/pipeline-state.json. Called by continuous-claude.sh
 at each phase transition. Worker-health.py reads this file for HTTP API.
@@ -30,7 +30,7 @@ import socket
 import sys
 import time
 
-PHASES = ["RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
+PHASES = ["WHY", "RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
 
 STATE_FILE = os.environ.get("PIPELINE_STATE_FILE", "/data/pipeline-state.json")
 DISPATCHER_URL = os.environ.get("DISPATCHER_URL", "")
