@@ -1,11 +1,13 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-28): All commits pushed. 142 tests passing. 52/75 tasks done.
-Shipped this session: REVIEW stage (stage 2), refactor-first rule, 7 enforcement gates,
-ccc cleanup command, worker zero-touch boot (SSH key upload + dispatcher registration),
-archived k8s files, fixed personal paths, fixed credential helper double-escape.
-Pipeline is now 7 stages: RESEARCH→REVIEW→PLAN→TESTS→IMPLEMENT→VERIFY→PR with gates.
-Next unchecked: dispatcher dependency analysis, chat cache, Neural Pipeline integration. -->
+<!-- SESSION STATE (2026-03-29): All commits pushed. 155 tests passing. 55/75 tasks done.
+Shipped: REVIEW stage, refactor-first rule, 7 enforcement gates, ccc cleanup,
+worker zero-touch boot, chat cache (rolling transcript + per-user files + context injection
++ reply capture), archived k8s files, credential helper fix.
+Pipeline: 7 stages with gates. Chat cache integrated into teams-chat-bridge.py.
+Pre-existing 19 failing tests in test_dependency_analysis.py need implementation
+(dispatcher dependency analysis task). Next: dispatcher dependency analysis,
+task template system, Neural Pipeline integration. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
