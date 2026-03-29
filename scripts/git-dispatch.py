@@ -1068,6 +1068,7 @@ def registration_monitor_loop(region: str):
 
 FLEET_MONITOR_INTERVAL = 60  # seconds between checks
 FLEET_MONITOR_STALE_THRESHOLD = 35 * 60  # 35 minutes with no self-report
+HEARTBEAT_MISS_THRESHOLD = 90  # 3 missed heartbeats at 30s interval
 
 
 def _parse_iso_timestamp(ts: str) -> float:
