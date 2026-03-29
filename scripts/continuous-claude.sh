@@ -1,12 +1,13 @@
 #!/bin/bash
 # Continuous Claude runner -- loops through TODO.md tasks via micro-PRs.
-# Each task runs through a 6-stage TDD pipeline with separate claude invocations:
+# Each task runs through a 7-stage TDD pipeline with separate claude invocations:
 #   1. RESEARCH  -> /tmp/task-{N}-research.md
-#   2. PLAN      -> /tmp/task-{N}-plan.md
-#   3. TESTS     -> write failing tests, commit to branch
-#   4. IMPLEMENT -> write code until tests pass
-#   5. VERIFY    -> full suite + lint + secret check
-#   6. PR        -> push, create PR, mark done, merge
+#   2. REVIEW    -> /tmp/task-{N}-review.md (codebase audit for duplicates/dead code)
+#   3. PLAN      -> /tmp/task-{N}-plan.md
+#   4. TESTS     -> write failing tests, commit to branch
+#   5. IMPLEMENT -> write code until tests pass
+#   6. VERIFY    -> full suite + lint + secret check
+#   7. PR        -> push, create PR, mark done, merge
 # Each stage is retried independently on failure.
 #
 # Usage:
