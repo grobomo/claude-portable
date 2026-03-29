@@ -348,7 +348,64 @@ class WorkerHandler(BaseHTTPRequestHandler):
         pass  # suppress per-request noise
 
 
+HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
+DISPATCHER_URL = os.environ.get("DISPATCHER_URL", "")
+
+
+def _build_heartbeat_payload():
+    """Build the heartbeat payload with current worker state."""
+    pipeline = _get_pipeline_stage()
+    task = _get_current_task()
+    return {
+        "worker_id": WORKER_ID,
+        "task": task,
+        "pipeline": pipeline,
+        "idle_seconds": _get_idle_time(),
+        "claude_running": _is_claude_running(),
+        "maintenance": _is_maintenance(),
+        "uptime_seconds": int(time.time() - START_TIME),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def send_heartbeat(dispatcher_url):
+    """POST heartbeat to dispatcher. Returns True on success."""
+    url = f"{dispatcher_url.rstrip('/')}/worker/heartbeat"
+    payload = json.dumps(_build_heartbeat_payload()).encode()
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def heartbeat_loop():
+    """Background thread: send heartbeat to dispatcher every HEARTBEAT_INTERVAL seconds."""
+    if not DISPATCHER_URL:
+        return
+    while True:
+        try:
+            send_heartbeat(DISPATCHER_URL)
+        except Exception:
+            pass
+        time.sleep(HEARTBEAT_INTERVAL)
+
+
 def main():
+    import threading
+
+    # Start heartbeat thread if dispatcher URL configured
+    if DISPATCHER_URL:
+        t = threading.Thread(target=heartbeat_loop, daemon=True, name="heartbeat")
+        t.start()
+        print(f"Heartbeat started (interval={HEARTBEAT_INTERVAL}s, dispatcher={DISPATCHER_URL})")
+
     server = HTTPServer(("0.0.0.0", PORT), WorkerHandler)
     print(f"Worker health endpoint listening on port {PORT} (worker_id={WORKER_ID})")
     try:
