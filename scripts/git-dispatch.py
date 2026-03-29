@@ -1238,7 +1238,26 @@ def _build_board() -> dict:
                 "maintenance": info.get("maintenance", False),
                 "last_heartbeat": info.get("last_heartbeat", ""),
             })
-    return {"updated_at": now_str, "workers": workers}
+    # Task summary from TODO.md
+    task_summary = {"total": 0, "completed": 0, "pending": 0, "blocked": 0}
+    try:
+        todo_path = os.path.join(REPO_DIR, "TODO.md")
+        with open(todo_path, "r") as f:
+            content = f.read()
+        all_tasks, _completed_lines = _parse_all_tasks(content)
+        done = sum(1 for t in all_tasks if t["checked"])
+        pending_tasks = get_pending_tasks(REPO_DIR)
+        blocked = sum(1 for t in pending_tasks if t.get("blocked"))
+        task_summary = {
+            "total": len(all_tasks),
+            "completed": done,
+            "pending": len(all_tasks) - done,
+            "blocked": blocked,
+        }
+    except Exception:
+        pass
+
+    return {"updated_at": now_str, "workers": workers, "tasks": task_summary}
 
 
 def _update_board():

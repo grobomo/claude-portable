@@ -261,7 +261,7 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Worker polls dispatcher every 30s: POST /worker/heartbeat with current pipeline state (task, phase, idle time). Dispatcher maintains fleet roster from heartbeats. If a worker misses 3 heartbeats, dispatcher marks it unhealthy.
   - PR title: "feat: worker heartbeat polling to dispatcher"
 
-- [ ] Dispatcher aggregates pipeline state from all workers into `/data/board.json`. Updated on every heartbeat received. Shows: all tasks, which worker has which task, what phase each is in, time in phase, blocked tasks, completed tasks.
+- [x] Dispatcher aggregates pipeline state from all workers into `/data/board.json`. Updated on every heartbeat received. Shows: all tasks, which worker has which task, what phase each is in, time in phase, blocked tasks, completed tasks.
   - PR title: "feat: dispatcher aggregates worker pipeline state into board"
 
 - [ ] `ccc board` command: reads board.json from dispatcher health endpoint (GET /board), renders a status bar showing each worker and its current phase. Inspired by Neural Pipeline TUI status bar. Color-coded: RESEARCH=blue, PLAN=cyan, TESTS=yellow, IMPLEMENT=green, VERIFY=magenta, PR=white, IDLE=gray.
