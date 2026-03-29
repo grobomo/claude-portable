@@ -775,6 +775,35 @@ If you cannot fix all issues after attempting, output: VERIFY_FAILED with detail
 
   run_stage_with_retry "VERIFY" "6" "$verify_prompt" "$stage_log" || return 1
 
+  # --- GATE 7: No secrets or personal paths in diff ---
+  echo "  GATE 7: Checking diff for secrets and personal paths..."
+  local secret_hits
+  secret_hits=$(git diff "$BRANCH"...HEAD -- '*.sh' '*.json' '*.js' '*.py' '*.yml' 2>/dev/null \
+    | grep -cE '^\+.*(C:/Users/|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{48})' || echo "0")
+  if [ "$secret_hits" -gt 0 ]; then
+    echo "  GATE 7 FAILED: Found ${secret_hits} potential secret(s) or personal path(s) in diff"
+    return 1
+  fi
+  # Check for TODO/FIXME/HACK in new lines
+  local hack_hits
+  hack_hits=$(git diff "$BRANCH"...HEAD 2>/dev/null \
+    | grep -cE '^\+.*(TODO|FIXME|HACK)' || echo "0")
+  if [ "$hack_hits" -gt 0 ]; then
+    echo "  GATE 7 WARNING: ${hack_hits} TODO/FIXME/HACK in new lines (non-blocking)"
+  fi
+  # Syntax check all changed shell scripts
+  local changed_sh
+  changed_sh=$(git diff --name-only "$BRANCH"...HEAD 2>/dev/null | grep '\.sh$' || echo "")
+  for sh_file in $changed_sh; do
+    if [ -f "$sh_file" ]; then
+      if ! bash -n "$sh_file" 2>/dev/null; then
+        echo "  GATE 7 FAILED: Syntax error in $sh_file"
+        return 1
+      fi
+    fi
+  done
+  echo "  GATE 7 PASSED: No secrets, paths clean, syntax OK"
+
   # ===== STAGE 7: PR =====
   local pr_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
