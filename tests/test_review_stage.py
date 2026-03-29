@@ -30,15 +30,18 @@ class TestReviewStageStructure(unittest.TestCase):
 
     def test_syntax_valid(self):
         """Script passes bash -n syntax check."""
-        with open(SCRIPT_PATH) as f:
-            script_content = f.read()
-        # Strip \r so WSL bash doesn't choke on CRLF
-        script_content = script_content.replace("\r", "")
+        with open(SCRIPT_PATH, "rb") as f:
+            script_bytes = f.read()
+        # Strip \r so WSL/non-Git bash doesn't choke on CRLF
+        script_bytes = script_bytes.replace(b"\r\n", b"\n")
         result = subprocess.run(
             ["bash", "-n"],
-            input=script_content, capture_output=True, text=True
+            input=script_bytes, capture_output=True
         )
-        self.assertEqual(result.returncode, 0, f"Syntax error: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0,
+            f"Syntax error: {result.stderr.decode(errors='replace')}"
+        )
 
     def test_seven_stages_in_header(self):
         """Header comment lists 7 stages."""
