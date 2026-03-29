@@ -2439,6 +2439,8 @@ def main():
         cmd_interrupt_api(args)
     elif args.command == "pull":
         cmd_pull_api(args)
+    elif args.command == "cleanup":
+        cmd_cleanup(args)
     elif args.command == "bundle":
         # Delegate to config-bundle.py
         bundle_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
