@@ -298,6 +298,274 @@ def route_task_to_area(description: str) -> str | None:
     return max(scores, key=scores.get)
 
 
+# ── Dependency analysis ──────────────────────────────────────────────────────
+#
+# Periodically invokes Claude to read TODO.md and annotate tasks with
+# depends-on: lines where implicit dependencies exist.
+
+DEP_ANALYSIS_INTERVAL = int(os.environ.get("DEP_ANALYSIS_INTERVAL", "300"))  # 5 minutes
+
+
+def parse_dependency_analysis(output: str) -> dict[int, list[int]]:
+    """Parse Claude's dependency analysis output.
+
+    Expected format per line: DEPENDENCY: line <N> depends-on: <M>[, <M2>, ...]
+    Returns {line_number: [dep_line_1, dep_line_2, ...]}.
+    """
+    deps: dict[int, list[int]] = {}
+    for line in output.splitlines():
+        m = re.match(
+            r"^\s*DEPENDENCY:\s+line\s+(\d+)\s+depends-on:\s*(.+)$",
+            line, re.IGNORECASE,
+        )
+        if not m:
+            continue
+        task_line = int(m.group(1))
+        raw_refs = re.split(r"[,\s]+", m.group(2).strip())
+        dep_lines: list[int] = []
+        seen: set[int] = set()
+        for ref in raw_refs:
+            ref = ref.strip()
+            num_m = re.search(r"(\d+)", ref)
+            if num_m:
+                val = int(num_m.group(1))
+                if val not in seen:
+                    dep_lines.append(val)
+                    seen.add(val)
+        if dep_lines:
+            deps[task_line] = dep_lines
+    return deps
+
+
+def annotate_todo_with_deps(content: str, deps: dict[int, list[int]]) -> str:
+    """Inject or merge depends-on lines into TODO.md content.
+
+    - Skips completed tasks (checked).
+    - Merges new deps with existing depends-on lines (no duplicates).
+    - Returns the (possibly modified) content.
+    """
+    if not deps:
+        return content
+
+    lines = content.splitlines()
+
+    # Build set of completed task line numbers and map of task lines
+    task_lines: dict[int, bool] = {}  # 1-indexed line -> is_checked
+    for i, line in enumerate(lines):
+        line_num = i + 1
+        if re.match(r"^\s*-\s+\[x\]\s+", line, re.IGNORECASE):
+            task_lines[line_num] = True
+        elif re.match(r"^\s*-\s+\[\s+\]\s+", line):
+            task_lines[line_num] = False
+
+    result_lines = list(lines)
+    # Process in reverse order so line insertions don't shift indices
+    for task_line in sorted(deps.keys(), reverse=True):
+        new_dep_nums = deps[task_line]
+        idx = task_line - 1  # 0-indexed
+
+        # Skip if line doesn't exist or is a completed task
+        if idx < 0 or idx >= len(result_lines):
+            continue
+        if task_lines.get(task_line) is True:
+            continue
+        if task_lines.get(task_line) is None:
+            continue  # not a task line at all
+
+        # Find existing depends-on line in sub-lines
+        existing_dep_idx = None
+        existing_deps: set[int] = set()
+        j = idx + 1
+        while j < len(result_lines):
+            sub = result_lines[j]
+            if re.match(r"^\s*-\s+\[", sub):
+                break
+            if not sub.strip():
+                j += 1
+                continue
+            if not sub.startswith(" ") and not sub.startswith("\t"):
+                break
+            dep_m = re.match(r"^\s*-\s+depends-on:\s*(.+)$", sub, re.IGNORECASE)
+            if dep_m:
+                existing_dep_idx = j
+                for ref in re.split(r"[,\s]+", dep_m.group(1)):
+                    num_m = re.search(r"(\d+)", ref)
+                    if num_m:
+                        existing_deps.add(int(num_m.group(1)))
+            j += 1
+
+        # Compute merged deps
+        merged = set(new_dep_nums) | existing_deps
+        if merged == existing_deps:
+            continue  # no new deps to add
+
+        dep_str = ", ".join(str(d) for d in sorted(merged))
+        new_line = f"  - depends-on: {dep_str}"
+
+        if existing_dep_idx is not None:
+            result_lines[existing_dep_idx] = new_line
+        else:
+            # Insert after the last sub-line of this task (before next task or blank gap)
+            insert_at = idx + 1
+            while insert_at < len(result_lines):
+                sub = result_lines[insert_at]
+                if re.match(r"^\s*-\s+\[", sub):
+                    break
+                if not sub.strip():
+                    break
+                if not sub.startswith(" ") and not sub.startswith("\t"):
+                    break
+                insert_at += 1
+            result_lines.insert(insert_at, new_line)
+
+    return "\n".join(result_lines)
+
+
+def build_dependency_analysis_prompt(todo_content: str) -> str:
+    """Build the prompt for Claude to analyze task dependencies."""
+    # Number lines for easy reference
+    numbered = "\n".join(
+        f"{i+1}: {line}" for i, line in enumerate(todo_content.splitlines())
+    )
+    return f"""\
+You are analyzing a TODO.md task list to identify dependencies between unchecked tasks.
+
+Here is the TODO.md with line numbers:
+
+{numbered}
+
+Instructions:
+- Only analyze UNCHECKED tasks (lines with "- [ ]").
+- For each unchecked task, determine if it depends on another UNCHECKED task.
+- A task depends on another if it cannot be started until the other is complete.
+- Do NOT add dependencies on CHECKED tasks (already done).
+- Do NOT add circular dependencies.
+- Skip tasks that already have correct depends-on annotations.
+
+Output format (one per dependency found, nothing else):
+DEPENDENCY: line <N> depends-on: <M>
+DEPENDENCY: line <N> depends-on: <M>, <M2>
+
+If no dependencies exist, output: NO_DEPENDENCIES_FOUND
+
+Only output DEPENDENCY lines and NO_DEPENDENCIES_FOUND. No other text."""
+
+
+def _apply_dependency_annotations(repo_dir: str, deps: dict[int, list[int]]) -> bool:
+    """Apply dependency annotations to TODO.md on disk. Returns True if file changed."""
+    todo_path = os.path.join(repo_dir, "TODO.md")
+    try:
+        with open(todo_path, "r") as f:
+            original = f.read()
+    except FileNotFoundError:
+        return False
+
+    updated = annotate_todo_with_deps(original, deps)
+    if updated == original:
+        return False
+
+    with open(todo_path, "w") as f:
+        f.write(updated)
+    return True
+
+
+def run_dependency_analysis(repo_dir: str, dry_run: bool = False) -> bool:
+    """Run Claude to analyze TODO.md for dependencies and annotate it.
+
+    Returns True if TODO.md was modified and committed.
+    """
+    todo_path = os.path.join(repo_dir, "TODO.md")
+    try:
+        with open(todo_path, "r") as f:
+            todo_content = f.read()
+    except FileNotFoundError:
+        log.warning("dependency analysis: TODO.md not found")
+        return False
+
+    # Count unchecked tasks — skip analysis if none
+    unchecked = re.findall(r"^\s*-\s+\[\s+\]", todo_content, re.MULTILINE)
+    if not unchecked:
+        log.info("dependency analysis: no unchecked tasks, skipping")
+        return False
+
+    prompt = build_dependency_analysis_prompt(todo_content)
+
+    if dry_run:
+        log.info("dependency analysis: dry_run=True, skipping Claude invocation")
+        return False
+
+    # Invoke Claude CLI
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "text"],
+            capture_output=True, text=True, timeout=120,
+            cwd=repo_dir,
+        )
+        if result.returncode != 0:
+            log.warning("dependency analysis: claude failed: %s", result.stderr.strip())
+            return False
+        output = result.stdout
+    except FileNotFoundError:
+        log.warning("dependency analysis: claude CLI not found")
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("dependency analysis: claude timed out")
+        return False
+
+    deps = parse_dependency_analysis(output)
+    if not deps:
+        log.info("dependency analysis: no new dependencies found")
+        return False
+
+    log.info("dependency analysis: found %d task(s) with dependencies", len(deps))
+
+    changed = _apply_dependency_annotations(repo_dir, deps)
+    if not changed:
+        log.info("dependency analysis: TODO.md unchanged after annotation")
+        return False
+
+    # Commit and push
+    try:
+        subprocess.run(
+            ["git", "add", "TODO.md"],
+            cwd=repo_dir, capture_output=True, timeout=10,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "chore: auto-annotate task dependencies"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=10,
+        )
+        r = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            log.warning("dependency analysis: git push failed: %s", r.stderr.strip())
+            return False
+        log.info("dependency analysis: committed and pushed updated TODO.md")
+        return True
+    except Exception as e:
+        log.warning("dependency analysis: git commit/push error: %s", e)
+        return False
+
+
+def dependency_analysis_loop(repo_dir: str):
+    """Background thread: periodically analyze and annotate task dependencies."""
+    log.info(
+        "Dependency analysis loop started (interval: %ds)", DEP_ANALYSIS_INTERVAL,
+    )
+    # Initial delay to let the dispatcher settle
+    time.sleep(60)
+    while True:
+        try:
+            if is_primary():
+                run_dependency_analysis(repo_dir)
+            else:
+                log.debug("dependency analysis: standby mode, skipping")
+        except Exception as e:
+            log.error("dependency analysis error: %s", e)
+        time.sleep(DEP_ANALYSIS_INTERVAL)
+
+
 def get_area_context(repo_dir: str, area: str) -> str:
     """Read the CONTEXT.md for an area. Returns content or empty string."""
     path = os.path.join(repo_dir, "areas", area, "CONTEXT.md")
