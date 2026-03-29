@@ -199,13 +199,13 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 
 The dispatcher must maintain a rolling cache of the Teams chat as txt files on disk. Before processing ANY @claude message, the dispatcher reads the cache to understand full context. This is not prompt engineering — it's a local file cache that Claude reads with its tools.
 
-- [ ] Chat cache daemon: every poll cycle, fetch last 50 messages from the Teams chat via Graph API. Write them to `/data/chat-cache/group-chat.txt` as a simple transcript: `[timestamp] sender: message`. One file, always overwritten with the latest 50. Also maintain per-user files: `/data/chat-cache/users/{name}.txt` with last 20 messages from that specific user + Claude's replies to them.
+- [x] Chat cache daemon: every poll cycle, fetch last 50 messages from the Teams chat via Graph API. Write them to `/data/chat-cache/group-chat.txt` as a simple transcript: `[timestamp] sender: message`. One file, always overwritten with the latest 50. Also maintain per-user files: `/data/chat-cache/users/{name}.txt` with last 20 messages from that specific user + Claude's replies to them.
   - PR title: "feat: rolling chat cache as txt files on dispatcher"
 
-- [ ] Context-aware dispatch: when dispatching an @claude request, the prompt sent to the worker includes: (1) the full group-chat.txt so Claude sees recent conversation, (2) the user's personal history file so Claude knows prior back-and-forth with that user, (3) the new message. Claude reads these files with Read tool, not as inline prompt text. Copy them to the worker at dispatch time via SCP.
+- [x] Context-aware dispatch: when dispatching an @claude request, the prompt sent to the worker includes: (1) the full group-chat.txt so Claude sees recent conversation, (2) the user's personal history file so Claude knows prior back-and-forth with that user, (3) the new message. Claude reads these files with Read tool, not as inline prompt text. Copy them to the worker at dispatch time via SCP.
   - PR title: "feat: dispatch includes chat cache files for full context"
 
-- [ ] Reply capture: after Claude responds, append both the prompt and response to the user's history file AND to group-chat.txt. This ensures the next request sees the full conversation including Claude's own replies.
+- [x] Reply capture: after Claude responds, append both the prompt and response to the user's history file AND to group-chat.txt. This ensures the next request sees the full conversation including Claude's own replies.
   - PR title: "feat: capture Claude replies into chat cache"
 
 - [ ] Test: send a message "what is 2+2", then immediately send "multiply that by 10". Verify Claude answers "40" because it has context from the first exchange.
