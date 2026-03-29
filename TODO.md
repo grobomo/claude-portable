@@ -179,7 +179,7 @@ Dispatcher assigns tasks to the right worker based on which area of the app the 
 - [x] Add dependency syntax to TODO.md: tasks can declare `depends-on: task-N` to indicate they can't start until task N is complete. The continuous-claude runner checks dependencies before claiming a task — if any dependency is unchecked, skip it and try the next task.
   - PR title: "feat: task dependency tracking in continuous-claude"
 
-- [ ] Dependency visualization: `ccc work` shows a task graph with arrows between dependent tasks. Blocked tasks show as "waiting on #N".
+- [x] Dependency visualization: `ccc work` shows a task graph with arrows between dependent tasks. Blocked tasks show as "waiting on #N".
   - PR title: "feat: dependency visualization in ccc work"
 
 - [ ] Dispatcher dependency analysis: every 60s, dispatcher runs a Claude invocation that reads TODO.md + codebase and annotates tasks with `depends-on: task-N` where dependencies exist. Commits the annotated TODO.md back to main. This is fleet-level planning, not per-worker.

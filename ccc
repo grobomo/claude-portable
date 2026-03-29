@@ -2096,6 +2096,69 @@ def cmd_work(args):
 
         print()
 
+    # ── Task queue with dependency visualization ──
+    print("-" * 70)
+    print("  Task Queue (from TODO.md)")
+    print("-" * 70)
+    todo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TODO.md")
+    if os.path.isfile(todo_path):
+        with open(todo_path, "r") as f:
+            content = f.read()
+        lines = content.splitlines()
+        # Collect checked line numbers
+        checked_lines = set()
+        for i, line in enumerate(lines):
+            if re.match(r'^\s*-\s+\[x\]', line, re.IGNORECASE):
+                checked_lines.add(i + 1)
+        # Show unchecked tasks with dependency info
+        task_num = 0
+        for i, line in enumerate(lines):
+            if not re.match(r'^\s*-\s+\[\s+\]', line):
+                continue
+            task_num += 1
+            desc = re.sub(r'^\s*-\s+\[\s+\]\s+', '', line).strip()
+            line_num = i + 1
+            # Check for depends-on in sub-lines
+            deps = []
+            blocked_by = []
+            j = i + 1
+            while j < len(lines):
+                sub = lines[j]
+                if re.match(r'^\s*-\s+\[', sub):
+                    break
+                if not sub.strip() or (sub[0] not in (' ', '\t') and sub.strip()):
+                    if not sub.strip():
+                        j += 1
+                        continue
+                    break
+                dep_match = re.match(r'^\s*-\s+depends-on:\s*(.+)$', sub, re.IGNORECASE)
+                if dep_match:
+                    for ref in re.split(r'[,\s]+', dep_match.group(1)):
+                        num_m = re.search(r'(\d+)', ref)
+                        if num_m:
+                            dep_line = int(num_m.group(1))
+                            deps.append(dep_line)
+                            if dep_line not in checked_lines:
+                                blocked_by.append(dep_line)
+                j += 1
+
+            if blocked_by:
+                status = f"\033[91mBLOCKED\033[0m (waiting on line {', '.join(str(b) for b in blocked_by)})"
+            elif deps:
+                status = "\033[92mREADY\033[0m (deps met)"
+            else:
+                status = "\033[92mREADY\033[0m"
+
+            short_desc = desc[:55] + "..." if len(desc) > 55 else desc
+            print(f"  L{line_num:>3}  {status:>40}  {short_desc}")
+
+        pending = sum(1 for line in lines if re.match(r'^\s*-\s+\[\s+\]', line))
+        done = sum(1 for line in lines if re.match(r'^\s*-\s+\[x\]', line, re.IGNORECASE))
+        print(f"\n  Total: {done} done, {pending} pending")
+    else:
+        print("  (no TODO.md found)")
+    print()
+
 
 # ── Teams Dispatch ──────────────────────────────────────────────────────────
 
