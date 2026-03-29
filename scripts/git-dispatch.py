@@ -961,7 +961,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/worker/register":
-            worker_id = str(payload.get("worker_id", "unknown"))
+            worker_id = str(payload.get("worker_id", payload.get("name", "unknown")))
             ip = str(payload.get("ip", ""))
             role = str(payload.get("role", "worker"))
             capabilities = payload.get("capabilities", [])
@@ -1130,6 +1130,21 @@ class HealthHandler(BaseHTTPRequestHandler):
                 name=f"stop-{worker_id}",
             )
             t.start()
+
+        elif self.path == "/worker/deregister":
+            worker_id = str(payload.get("worker_id", payload.get("name", "unknown")))
+            with _fleet_roster_lock:
+                removed = _fleet_roster.pop(worker_id, None)
+            if removed:
+                log.info("Worker deregistered: %s", worker_id)
+                resp = json.dumps({"status": "ok", "worker_id": worker_id, "message": "deregistered"}).encode()
+            else:
+                resp = json.dumps({"status": "not_found", "worker_id": worker_id}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
 
         else:
             self.send_response(404)
