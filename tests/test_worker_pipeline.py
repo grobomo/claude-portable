@@ -233,5 +233,69 @@ class TestWorkerPipelineMain(unittest.TestCase):
             sys.argv = original_argv
 
 
+class TestWorkerPipelineWhyPhase(unittest.TestCase):
+    """Test WHY phase is registered as stage 0 in the pipeline."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.state_file = os.path.join(self.tmpdir, "pipeline-state.json")
+        self._orig = wp.STATE_FILE
+        wp.STATE_FILE = self.state_file
+
+    def tearDown(self):
+        wp.STATE_FILE = self._orig
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_why_is_first_phase(self):
+        self.assertEqual(wp.PHASES[0], "WHY")
+
+    def test_why_phase_tracked_in_state(self):
+        wp.cmd_start(["1", "Test", "task"])
+        wp.cmd_phase(["WHY", "running"])
+        with open(self.state_file) as f:
+            state = json.load(f)
+        self.assertEqual(state["current_phase"], "WHY")
+        self.assertEqual(state["phases"]["WHY"]["status"], "running")
+
+    def test_why_phase_passed(self):
+        wp.cmd_start(["1", "Test"])
+        wp.cmd_phase(["WHY", "running"])
+        wp.cmd_phase(["WHY", "passed", "/tmp/why.md"])
+        with open(self.state_file) as f:
+            state = json.load(f)
+        self.assertEqual(state["phases"]["WHY"]["status"], "passed")
+        self.assertEqual(state["phases"]["WHY"]["output_file"], "/tmp/why.md")
+
+    def test_why_gate_recorded(self):
+        wp.cmd_start(["1", "Test"])
+        wp.cmd_phase(["WHY", "running"])
+        wp.cmd_gate(["WHY", "passed"])
+        with open(self.state_file) as f:
+            state = json.load(f)
+        self.assertEqual(state["phases"]["WHY"]["gate_result"], "passed")
+
+    def test_why_skip_gate_recorded(self):
+        wp.cmd_start(["1", "Test"])
+        wp.cmd_phase(["WHY", "running"])
+        wp.cmd_gate(["WHY", "failed", "VERDICT: SKIP"])
+        with open(self.state_file) as f:
+            state = json.load(f)
+        self.assertEqual(state["phases"]["WHY"]["gate_result"], "failed")
+        self.assertEqual(state["phases"]["WHY"]["gate_reason"], "VERDICT: SKIP")
+
+    def test_full_pipeline_sequence_with_why(self):
+        """WHY -> RESEARCH -> ... -> PR all track correctly."""
+        wp.cmd_start(["1", "Test"])
+        for phase in wp.PHASES:
+            wp.cmd_phase([phase, "running"])
+            wp.cmd_phase([phase, "passed"])
+        with open(self.state_file) as f:
+            state = json.load(f)
+        self.assertEqual(len(state["phases"]), len(wp.PHASES))
+        for phase in wp.PHASES:
+            self.assertEqual(state["phases"][phase]["status"], "passed")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2131,13 +2131,13 @@ def cmd_work(args):
                                 failed_stage = s
                     n_done = len(passed_stages)
                     if current_stage:
-                        print(f"      Stage:    {current_stage} (running) [{n_done}/6 complete]")
+                        print(f"      Stage:    {current_stage} (running) [{n_done}/7 complete]")
                     elif failed_stage:
-                        print(f"      Stage:    {failed_stage} (FAILED) [{n_done}/6 complete]")
+                        print(f"      Stage:    {failed_stage} (FAILED) [{n_done}/7 complete]")
                     elif n_done == 6:
                         print(f"      Stage:    all 6 stages complete")
                     elif n_done > 0:
-                        print(f"      Stage:    {passed_stages[-1]} passed [{n_done}/6 complete]")
+                        print(f"      Stage:    {passed_stages[-1]} passed [{n_done}/7 complete]")
                     else:
                         print(f"      Stage:    not started")
                 except Exception:
