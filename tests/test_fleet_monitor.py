@@ -234,5 +234,85 @@ class TestFleetMonitorTick(unittest.TestCase):
         mock_stop.assert_called_once_with("worker-b", "us-east-2")
 
 
+def _hb_timestamp(seconds_ago=0):
+    """Return an ISO timestamp N seconds in the past."""
+    t = time.gmtime(time.time() - seconds_ago)
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", t)
+
+
+class TestHeartbeatStaleness(unittest.TestCase):
+    """Test heartbeat miss detection in fleet monitor."""
+
+    def setUp(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    def tearDown(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    @patch.object(gd, "stop_worker_instance")
+    @patch.object(gd, "_ssh_check_claude_process")
+    def test_fresh_heartbeat_marked_healthy(self, mock_ssh, mock_stop):
+        """Worker with recent heartbeat is marked healthy."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["hb-1"] = _make_worker(
+                last_report=_stale_timestamp(5),
+            )
+            gd._fleet_roster["hb-1"]["last_heartbeat"] = _hb_timestamp(10)
+
+        gd._fleet_monitor_tick("us-east-2")
+
+        with gd._fleet_roster_lock:
+            self.assertTrue(gd._fleet_roster["hb-1"]["healthy"])
+            self.assertEqual(gd._fleet_roster["hb-1"]["missed_heartbeats"], 0)
+
+    @patch.object(gd, "stop_worker_instance")
+    @patch.object(gd, "_ssh_check_claude_process")
+    def test_stale_heartbeat_marked_unhealthy(self, mock_ssh, mock_stop):
+        """Worker missing 3+ heartbeats is marked unhealthy."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["hb-2"] = _make_worker(
+                last_report=_stale_timestamp(5),
+            )
+            gd._fleet_roster["hb-2"]["last_heartbeat"] = _hb_timestamp(100)
+
+        gd._fleet_monitor_tick("us-east-2")
+
+        with gd._fleet_roster_lock:
+            self.assertFalse(gd._fleet_roster["hb-2"]["healthy"])
+            self.assertGreaterEqual(gd._fleet_roster["hb-2"]["missed_heartbeats"], 3)
+
+    @patch.object(gd, "stop_worker_instance")
+    @patch.object(gd, "_ssh_check_claude_process")
+    def test_no_heartbeat_field_skipped(self, mock_ssh, mock_stop):
+        """Worker without last_heartbeat field is not marked unhealthy."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["hb-3"] = _make_worker(
+                last_report=_stale_timestamp(5),
+            )
+            # No last_heartbeat key
+
+        gd._fleet_monitor_tick("us-east-2")
+
+        with gd._fleet_roster_lock:
+            self.assertNotIn("healthy", gd._fleet_roster["hb-3"])
+
+    @patch.object(gd, "stop_worker_instance")
+    @patch.object(gd, "_ssh_check_claude_process")
+    def test_heartbeat_boundary_89s_still_healthy(self, mock_ssh, mock_stop):
+        """89 seconds since last heartbeat (< 90s threshold) → still healthy."""
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["hb-4"] = _make_worker(
+                last_report=_stale_timestamp(5),
+            )
+            gd._fleet_roster["hb-4"]["last_heartbeat"] = _hb_timestamp(89)
+
+        gd._fleet_monitor_tick("us-east-2")
+
+        with gd._fleet_roster_lock:
+            self.assertTrue(gd._fleet_roster["hb-4"]["healthy"])
+
+
 if __name__ == "__main__":
     unittest.main()
