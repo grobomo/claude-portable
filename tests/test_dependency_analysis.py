@@ -56,7 +56,7 @@ SAMPLE_ANALYSIS = """\
 After analyzing the codebase and TODO.md, here are the dependency annotations:
 
 DEPENDENCY: line 11 depends-on: 8
-DEPENDENCY: line 17 depends-on: 11, 8
+DEPENDENCY: line 18 depends-on: 11, 8
 """
 
 
