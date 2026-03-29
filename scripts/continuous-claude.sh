@@ -693,6 +693,25 @@ CRITICAL: Use the detected framework '${test_framework}'. If no framework was de
 
   run_stage_with_retry "TESTS" "4" "$tests_prompt" "$stage_log" || return 1
 
+  # --- GATE 4: Test files must have been added to branch ---
+  local test_files_added
+  test_files_added=$(git diff --name-only "$BRANCH"...HEAD 2>/dev/null | grep -icE '(test_|_test\.|\.test\.|\.spec\.|tests/)' || echo "0")
+  if [ "$test_files_added" -eq 0 ]; then
+    echo "  GATE 4 FAILED: No test files added to branch"
+    return 1
+  fi
+  echo "  GATE 4 PASSED: ${test_files_added} test file(s) added"
+
+  # --- GATE 5: Tests must FAIL (no implementation yet) ---
+  echo "  GATE 5: Verifying tests fail before implementation..."
+  local gate5_exit=0
+  eval "$test_run_cmd" >/dev/null 2>&1 || gate5_exit=$?
+  if [ "$gate5_exit" -eq 0 ]; then
+    echo "  GATE 5 FAILED: Tests pass before implementation (tests may not be testing anything)"
+    return 1
+  fi
+  echo "  GATE 5 PASSED: Tests fail as expected (exit ${gate5_exit})"
+
   # ===== STAGE 5: IMPLEMENT =====
   local implement_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
