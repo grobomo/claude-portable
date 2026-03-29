@@ -230,7 +230,7 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 - [ ] Add `ccc cleanup` command: runs a one-off Claude invocation that reviews the entire codebase for dead code, duplicate implementations, unused files, and inconsistencies. Outputs a report and optionally creates a cleanup PR.
   - PR title: "feat: ccc cleanup command for codebase hygiene"
 
-- [ ] Enforcement gates in continuous-claude.sh (NOT prompts — these are bash checks that block progression):
+- [x] Enforcement gates in continuous-claude.sh (NOT prompts — these are bash checks that block progression):
   Gate 1: RESEARCH output file must exist and be >500 chars. If not, stage fails.
   Gate 2: REVIEW output must list files examined. If it lists 0 files, stage fails.
   Gate 3: PLAN output must exist. If task is "already done" per review, skip to next task.
@@ -242,7 +242,7 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
   All gates are `if ! check; then echo "GATE FAILED"; exit 1; fi` — no exceptions.
   - PR title: "feat: enforcement gates between TDD pipeline stages"
 
-- [ ] Add bash validation gates between each stage in continuous-claude.sh. These are NOT prompts — they are bash checks that block progression with exit 1:
+- [x] Add bash validation gates between each stage in continuous-claude.sh. These are NOT prompts — they are bash checks that block progression with exit 1:
   After RESEARCH: `[ -f research_file ] && [ $(wc -c < research_file) -gt 100 ]`
   After PLAN: `[ -f plan_file ] && [ $(wc -c < plan_file) -gt 100 ]`
   After TESTS: count test files added to branch (git diff --name-only must include test files). Run test command, verify exit code != 0 (tests must fail before implementation).
