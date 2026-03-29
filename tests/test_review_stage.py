@@ -32,6 +32,8 @@ class TestReviewStageStructure(unittest.TestCase):
         """Script passes bash -n syntax check."""
         with open(SCRIPT_PATH) as f:
             script_content = f.read()
+        # Strip \r so WSL bash doesn't choke on CRLF
+        script_content = script_content.replace("\r", "")
         result = subprocess.run(
             ["bash", "-n"],
             input=script_content, capture_output=True, text=True
