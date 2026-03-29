@@ -245,6 +245,40 @@ if [ -f "$HEALTH_SCRIPT" ]; then
   echo "  worker-health PID: $!"
 fi
 
+# --- Worker zero-touch boot: SSH key upload + dispatcher registration ---
+if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ]; then
+  INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
+
+  # Upload SSH public key to S3 fleet-keys bucket for dispatcher access
+  if command -v aws >/dev/null 2>&1 && aws sts get-caller-identity &>/dev/null; then
+    SSH_PUB="$HOME/.ssh/id_ed25519.pub"
+    if [ ! -f "$SSH_PUB" ]; then
+      ssh-keygen -t ed25519 -f "$HOME/.ssh/id_ed25519" -N "" -q 2>/dev/null || true
+    fi
+    if [ -f "$SSH_PUB" ]; then
+      ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+      if [ -n "$ACCOUNT_ID" ]; then
+        BUCKET="claude-portable-state-${ACCOUNT_ID}"
+        aws s3 cp "$SSH_PUB" "s3://${BUCKET}/fleet-keys/${INSTANCE_ID}.pub" 2>/dev/null && \
+          echo "  SSH public key uploaded to s3://${BUCKET}/fleet-keys/${INSTANCE_ID}.pub" || \
+          echo "  WARNING: Could not upload SSH key to S3 (non-fatal)"
+      fi
+    fi
+  fi
+
+  # Register with dispatcher (if DISPATCHER_URL is set)
+  if [ -n "${DISPATCHER_URL:-}" ]; then
+    LOCAL_IP=$(curl -s -m 2 http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown")
+    REGISTER_JSON="{\"worker_id\":\"${INSTANCE_ID}\",\"ip\":\"${LOCAL_IP}\",\"role\":\"worker\",\"capabilities\":[\"continuous-claude\",\"tdd-pipeline\"]}"
+    if curl -s -f -X POST -H "Content-Type: application/json" -d "$REGISTER_JSON" \
+        --connect-timeout 5 --max-time 10 "${DISPATCHER_URL}/worker/register" >/dev/null 2>&1; then
+      echo "  Registered with dispatcher at ${DISPATCHER_URL}"
+    else
+      echo "  WARNING: Could not register with dispatcher (non-fatal, will retry in continuous-claude)"
+    fi
+  fi
+fi
+
 # --- Start continuous-claude runner (autonomous task loop) ---
 if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ] && [ -n "${CONTINUOUS_CLAUDE_REPO:-}" ]; then
   CC_BRANCH="${CONTINUOUS_CLAUDE_BRANCH:-main}"
