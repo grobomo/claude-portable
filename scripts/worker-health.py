@@ -365,6 +365,31 @@ class WorkerHandler(BaseHTTPRequestHandler):
             record_gate_result(task_num, phase, passed, detail)
             self._send_json({"status": "ok", "task_num": task_num, "phase": phase, "passed": passed})
 
+        elif self.path == "/answer":
+            payload = self._read_body()
+            answer_text = payload.get("answer", "")
+            if not answer_text:
+                self._send_json({"status": "error", "message": "answer required"}, 400)
+                return
+            # Write answer to pipeline state
+            state = _read_pipeline_state()
+            if state:
+                state["status"] = "running"
+                state["blocked_answer"] = answer_text
+                state["unblocked_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                state["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                if state.get("blocked_phase"):
+                    state["current_phase"] = state["blocked_phase"]
+                _write_pipeline_state(state)
+            # Also write to a file that continuous-claude.sh can read
+            answer_file = "/data/.answer"
+            try:
+                with open(answer_file, "w") as f:
+                    f.write(answer_text)
+            except Exception:
+                pass
+            self._send_json({"status": "ok", "answer_received": True})
+
         else:
             self.send_response(404)
             self.end_headers()

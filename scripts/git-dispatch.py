@@ -1708,6 +1708,42 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif self.path == "/worker/blocked":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            task_num = payload.get("task_num")
+            phase = payload.get("phase", "?")
+            reason = payload.get("reason", "")
+            question = payload.get("question", reason)
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_id)
+                if entry:
+                    entry["status"] = "blocked"
+                    entry["blocked_at"] = now
+                    entry["blocked_phase"] = phase
+                    entry["blocked_reason"] = reason
+                    entry["blocked_question"] = question
+                    entry["last_report"] = now
+
+            log.warning(
+                "Worker blocked: worker=%s task=%s phase=%s reason=%s question=%s",
+                worker_id, task_num, phase, reason, question,
+            )
+
+            _update_board()
+
+            resp = json.dumps({
+                "status": "ok",
+                "worker_id": worker_id,
+                "message": "blocked status recorded",
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         else:
             self.send_response(404)
             self.end_headers()

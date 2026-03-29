@@ -205,6 +205,76 @@ def cmd_idle(args):
     return 0
 
 
+def cmd_blocked(args):
+    """Mark task as blocked: blocked <phase> <reason> [question]."""
+    if len(args) < 2:
+        print("Usage: worker-pipeline.py blocked <phase> <reason> [question]", file=sys.stderr)
+        return 1
+    phase_name = args[0].upper()
+    reason = args[1]
+    question = " ".join(args[2:]) if len(args) > 2 else reason
+
+    state = _read_state()
+    if not state:
+        print("No active task.", file=sys.stderr)
+        return 1
+
+    state["status"] = "blocked"
+    state["blocked_at"] = _now()
+    state["blocked_phase"] = phase_name
+    state["blocked_reason"] = reason
+    state["blocked_question"] = question
+    state["updated_at"] = _now()
+    _write_state(state)
+
+    # Notify dispatcher (best-effort)
+    dispatcher_url = os.environ.get("DISPATCHER_URL", "")
+    if dispatcher_url:
+        try:
+            import urllib.request
+            payload = json.dumps({
+                "worker_id": WORKER_ID,
+                "task_num": state.get("task_num"),
+                "phase": phase_name,
+                "reason": reason,
+                "question": question,
+            }).encode()
+            req = urllib.request.Request(
+                f"{dispatcher_url.rstrip('/')}/worker/blocked",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10):
+                pass
+        except Exception:
+            pass
+    return 0
+
+
+def cmd_answer(args):
+    """Receive answer to blocked question: answer <text>."""
+    if not args:
+        print("Usage: worker-pipeline.py answer <text>", file=sys.stderr)
+        return 1
+    answer_text = " ".join(args)
+
+    state = _read_state()
+    if not state:
+        print("No active task.", file=sys.stderr)
+        return 1
+
+    state["status"] = "running"
+    state["blocked_answer"] = answer_text
+    state["unblocked_at"] = _now()
+    state["updated_at"] = _now()
+    # Restore current_phase to where it was blocked
+    if state.get("blocked_phase"):
+        state["current_phase"] = state["blocked_phase"]
+    _write_state(state)
+    return 0
+
+
 def cmd_status(args):
     """Print current pipeline state as JSON."""
     state = _read_state()
@@ -218,6 +288,8 @@ COMMANDS = {
     "gate": cmd_gate,
     "done": cmd_done,
     "idle": cmd_idle,
+    "blocked": cmd_blocked,
+    "answer": cmd_answer,
     "status": cmd_status,
 }
 
