@@ -30,8 +30,9 @@ class TestReviewStageStructure(unittest.TestCase):
 
     def test_syntax_valid(self):
         """Script passes bash -n syntax check."""
+        bash_path = SCRIPT_PATH.replace("\\", "/")
         result = subprocess.run(
-            ["bash", "-n", SCRIPT_PATH],
+            ["bash", "-n", bash_path],
             capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0, f"Syntax error: {result.stderr}")
