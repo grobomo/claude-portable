@@ -146,6 +146,55 @@ get_claimed_tasks() {
   echo "$claimed" | tr ' ' '\n' | sort -un | tr '\n' ' '
 }
 
+# --- Check if a task is blocked by unmet dependencies ---
+# Returns 0 if blocked, 1 if not blocked
+is_task_blocked() {
+  local task_line_num="$1"  # actual line number in TODO.md
+  if [ -z "$task_line_num" ]; then
+    return 1
+  fi
+
+  # Look at sub-lines after this task for "depends-on:" annotations
+  local deps=""
+  local next=$((task_line_num + 1))
+  local total_lines
+  total_lines=$(wc -l < TODO.md)
+
+  while [ "$next" -le "$total_lines" ]; do
+    local sub
+    sub=$(sed -n "${next}p" TODO.md)
+    # Stop at next task item
+    if echo "$sub" | grep -qE '^\s*- \['; then
+      break
+    fi
+    # Stop at non-indented non-blank line
+    if [ -n "$sub" ] && ! echo "$sub" | grep -qE '^\s'; then
+      break
+    fi
+    # Check for depends-on
+    if echo "$sub" | grep -iqE '^\s*-\s+depends-on:'; then
+      local dep_refs
+      dep_refs=$(echo "$sub" | sed 's/.*depends-on:\s*//i' | tr ',' ' ')
+      for ref in $dep_refs; do
+        local dep_line
+        dep_line=$(echo "$ref" | grep -oE '[0-9]+' || echo "")
+        if [ -n "$dep_line" ]; then
+          # Check if that line is checked in TODO.md
+          local dep_content
+          dep_content=$(sed -n "${dep_line}p" TODO.md 2>/dev/null || echo "")
+          if echo "$dep_content" | grep -qE '^\s*- \[ \]'; then
+            echo "  Task at line ${task_line_num} blocked by unchecked dependency at line ${dep_line}"
+            return 0  # blocked
+          fi
+        fi
+      done
+    fi
+    next=$((next + 1))
+  done
+
+  return 1  # not blocked
+}
+
 # --- Find next unclaimed task number ---
 find_next_task() {
   if [ ! -f "TODO.md" ]; then
@@ -167,10 +216,19 @@ find_next_task() {
         break
       fi
     done
-    if [ "$is_claimed" = false ]; then
-      echo "$task_num"
-      return
+    if [ "$is_claimed" = true ]; then
+      continue
     fi
+
+    # Check dependencies — get the actual line number from TODO.md
+    local actual_line
+    actual_line=$(echo "$line" | cut -d: -f1)
+    if is_task_blocked "$actual_line"; then
+      continue
+    fi
+
+    echo "$task_num"
+    return
   done < <(grep -nE '^\s*- \[ \]' TODO.md | head -20)
 
   echo ""

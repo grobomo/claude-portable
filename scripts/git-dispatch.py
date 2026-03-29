@@ -156,8 +156,79 @@ def git_pull(repo_dir: str) -> bool:
         return False
 
 
+def _parse_all_tasks(content: str) -> tuple[list, set]:
+    """Parse TODO.md content into (all_tasks, completed_lines).
+
+    Returns:
+      all_tasks: list of dicts with line, description, checked, pr_title, depends_on
+      completed_lines: set of line numbers for checked tasks (for dependency resolution)
+    """
+    tasks = []
+    completed_lines: set[int] = set()
+    lines = content.splitlines()
+
+    for i, line in enumerate(lines):
+        # Match checked items: "- [x] description"
+        checked_match = re.match(r"^\s*-\s+\[x\]\s+(.+)$", line, re.IGNORECASE)
+        # Match unchecked items: "- [ ] description"
+        unchecked_match = re.match(r"^\s*-\s+\[\s+\]\s+(.+)$", line)
+
+        match = checked_match or unchecked_match
+        if not match:
+            continue
+
+        is_checked = checked_match is not None
+        description = match.group(1).strip()
+        line_num = i + 1
+
+        if is_checked:
+            completed_lines.add(line_num)
+
+        # Scan indented sub-lines for metadata
+        pr_title = None
+        depends_on: list[int] = []
+        j = i + 1
+        while j < len(lines):
+            sub = lines[j]
+            # Stop at next task item or blank line followed by non-indented content
+            if re.match(r"^\s*-\s+\[", sub):
+                break
+            if not sub.strip():
+                j += 1
+                continue
+            # Not indented = end of sub-lines
+            if not sub.startswith(" ") and not sub.startswith("\t"):
+                break
+
+            pr_match = re.match(r'^\s*-\s+PR title:\s*["\']?(.+?)["\']?\s*$', sub)
+            if pr_match:
+                pr_title = pr_match.group(1).strip()
+
+            dep_match = re.match(r'^\s*-\s+depends-on:\s*(.+)$', sub, re.IGNORECASE)
+            if dep_match:
+                # Parse comma-separated line numbers or task-N references
+                for ref in re.split(r'[,\s]+', dep_match.group(1)):
+                    ref = ref.strip()
+                    # "task-5" or "line-5" or just "5"
+                    num_match = re.search(r'(\d+)', ref)
+                    if num_match:
+                        depends_on.append(int(num_match.group(1)))
+
+            j += 1
+
+        tasks.append({
+            "line": line_num,
+            "description": description,
+            "checked": is_checked,
+            "pr_title": pr_title,
+            "depends_on": depends_on,
+        })
+
+    return tasks, completed_lines
+
+
 def get_pending_tasks(repo_dir: str) -> list:
-    """Read TODO.md and return list of unchecked tasks."""
+    """Read TODO.md and return list of unchecked tasks with dependency info."""
     todo_path = os.path.join(repo_dir, "TODO.md")
     try:
         with open(todo_path, "r") as f:
@@ -166,26 +237,24 @@ def get_pending_tasks(repo_dir: str) -> list:
         log.warning("TODO.md not found at %s", todo_path)
         return []
 
-    tasks = []
-    lines = content.splitlines()
-    for i, line in enumerate(lines):
-        # Match unchecked items: "- [ ] description"
-        match = re.match(r"^\s*-\s+\[\s+\]\s+(.+)$", line)
-        if match:
-            description = match.group(1).strip()
-            # Look for PR title on next line
-            pr_title = None
-            if i + 1 < len(lines):
-                pr_match = re.match(r'^\s*-\s+PR title:\s*["\']?(.+?)["\']?\s*$', lines[i + 1])
-                if pr_match:
-                    pr_title = pr_match.group(1).strip()
-            tasks.append({
-                "line": i + 1,
-                "description": description,
-                "pr_title": pr_title,
-                "area": route_task_to_area(description),
-            })
-    return tasks
+    all_tasks, completed_lines = _parse_all_tasks(content)
+
+    pending = []
+    for task in all_tasks:
+        if task["checked"]:
+            continue
+        # Check if all dependencies are satisfied (their line is in completed_lines)
+        unmet = [d for d in task["depends_on"] if d not in completed_lines]
+        pending.append({
+            "line": task["line"],
+            "description": task["description"],
+            "pr_title": task["pr_title"],
+            "area": route_task_to_area(task["description"]),
+            "depends_on": task["depends_on"],
+            "blocked_by": unmet,
+            "blocked": len(unmet) > 0,
+        })
+    return pending
 
 
 # ── Task routing by app area ─────────────────────────────────────────────────
