@@ -198,6 +198,7 @@ class TestPipelinePhaseNotification(unittest.TestCase):
 
     def tearDown(self):
         wp.STATE_FILE = self._orig
+        wp.DISPATCHER_URL = ""
         os.environ.pop("DISPATCHER_URL", None)
         import shutil
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -237,6 +238,7 @@ class TestPipelinePhaseNotification(unittest.TestCase):
         t.start()
 
         os.environ["DISPATCHER_URL"] = f"http://127.0.0.1:{port}"
+        wp.DISPATCHER_URL = f"http://127.0.0.1:{port}"
         wp.cmd_phase(["RESEARCH", "running"])
         server.shutdown()
 
