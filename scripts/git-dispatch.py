@@ -93,6 +93,7 @@ PROJECT_TAG_VALUE = "claude-portable"
 
 # How long a launched worker has to register before being terminated (seconds)
 REGISTRATION_TIMEOUT = int(os.environ.get("WORKER_REGISTRATION_TIMEOUT", "300"))  # 5 minutes
+RELAY_TASK_TIMEOUT = int(os.environ.get("RELAY_TASK_TIMEOUT", "900"))  # 15 minutes
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
@@ -1344,7 +1345,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=10",
             "-i", key_path, f"ubuntu@{worker_ip}", cmd,
-        ], capture_output=True, text=True, timeout=300)
+        ], capture_output=True, text=True, timeout=RELAY_TASK_TIMEOUT)
 
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if r.returncode == 0 and r.stdout.strip():
@@ -1370,7 +1371,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             log.warning("RELAY %s failed on %s: %s", request_id, worker_name, error_msg[:100])
     except subprocess.TimeoutExpired:
         _move_relay_file(request_id, "dispatched", "failed", {
-            "error": "timeout (300s)",
+            "error": f"timeout ({RELAY_TASK_TIMEOUT}s)",
             "worker": worker_name,
         })
         _relay_git_push(f"relay: {request_id} timed out on {worker_name}")
