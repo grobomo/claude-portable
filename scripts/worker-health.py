@@ -13,6 +13,8 @@ Environment:
   WORKER_HEALTH_PORT    Port to listen on (default: 8081)
   WORKER_ID             Instance identifier (default: hostname)
   WORKER_WORKDIR        continuous-claude working directory (default: /workspace/continuous-claude)
+  DISPATCHER_URL        Dispatcher base URL for heartbeats (e.g. http://10.0.1.5:8080)
+  HEARTBEAT_INTERVAL    Seconds between heartbeat POSTs (default: 30)
 """
 
 import json
