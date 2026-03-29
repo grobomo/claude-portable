@@ -2075,6 +2075,16 @@ def main():
     log.info("  Relay dir:     %s", RELAY_DIR)
     log.info("  Relay poll:    %ds", RELAY_POLL_INTERVAL)
 
+    # Start dependency analysis loop (auto-annotates TODO.md)
+    dep_thread = threading.Thread(
+        target=dependency_analysis_loop,
+        args=(REPO_DIR,),
+        daemon=True,
+        name="dep-analysis",
+    )
+    dep_thread.start()
+    log.info("  Dep analysis:  every %ds", DEP_ANALYSIS_INTERVAL)
+
     dispatch_loop(region)
 
 
