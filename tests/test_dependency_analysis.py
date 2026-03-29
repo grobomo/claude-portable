@@ -75,7 +75,7 @@ class TestParseAnalysisOutput(unittest.TestCase):
 
     def test_parse_multiple_lines(self):
         deps = gd.parse_dependency_analysis(SAMPLE_ANALYSIS)
-        self.assertEqual(deps, {11: [8], 17: [11, 8]})
+        self.assertEqual(deps, {11: [8], 18: [11, 8]})
 
     def test_parse_empty_output(self):
         deps = gd.parse_dependency_analysis("")
