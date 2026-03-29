@@ -206,10 +206,10 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 
 ## Worker management API
 
-- [ ] Add HTTP health/control endpoint to each worker (port 8081): GET /health returns current task, stage, uptime. POST /interrupt kills the current Claude process and returns to idle. POST /pull forces a git pull on next iteration. This replaces manual SSH + pkill.
+- [x] Add HTTP health/control endpoint to each worker (port 8081): GET /health returns current task, stage, uptime. POST /interrupt kills the current Claude process and returns to idle. POST /pull forces a git pull on next iteration. This replaces manual SSH + pkill.
   - PR title: "feat: worker HTTP control API for interrupt and health"
 
-- [ ] Wire worker control API into ccc CLI: `ccc interrupt worker-1` calls POST /interrupt. `ccc health worker-1` calls GET /health. No SSH needed.
+- [x] Wire worker control API into ccc CLI: `ccc interrupt worker-1` calls POST /interrupt. `ccc health worker-1` calls GET /health. No SSH needed.
   - PR title: "feat: ccc interrupt and health commands via worker API"
 
 ## Code quality enforcement

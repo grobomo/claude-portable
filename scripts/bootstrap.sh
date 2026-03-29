@@ -237,6 +237,14 @@ if [ "${CHATBOT_MODE:-false}" = "true" ]; then
   fi
 fi
 
+# --- Start worker health API (HTTP control endpoint) ---
+HEALTH_SCRIPT="/opt/claude-portable/scripts/worker-health.py"
+if [ -f "$HEALTH_SCRIPT" ]; then
+  echo "[+] Starting worker health API on port ${WORKER_HEALTH_PORT:-8081}..."
+  nohup python3 "$HEALTH_SCRIPT" >> /data/worker-health.log 2>&1 &
+  echo "  worker-health PID: $!"
+fi
+
 # --- Start continuous-claude runner (autonomous task loop) ---
 if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ] && [ -n "${CONTINUOUS_CLAUDE_REPO:-}" ]; then
   CC_BRANCH="${CONTINUOUS_CLAUDE_BRANCH:-main}"

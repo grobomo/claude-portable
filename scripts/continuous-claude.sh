@@ -100,6 +100,23 @@ merge_leftover_prs() {
   fi
 }
 
+# --- Check and clear API control flags ---
+check_api_flags() {
+  # Force pull flag (set by worker-health.py POST /pull)
+  if [ -f /data/.force-pull ]; then
+    echo "[+] Force-pull requested via API. Pulling..."
+    rm -f /data/.force-pull
+    git pull origin "$BRANCH" || true
+  fi
+  # Interrupt flag (set by worker-health.py POST /interrupt)
+  if [ -f /data/.interrupt ]; then
+    echo "[!] Interrupt requested via API. Aborting current task."
+    rm -f /data/.interrupt
+    return 1
+  fi
+  return 0
+}
+
 # --- Check if all tasks are done ---
 all_tasks_done() {
   if [ ! -f "TODO.md" ]; then
@@ -801,6 +818,12 @@ while true; do
   if check_maintenance; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$INSTANCE_ID] Maintenance mode -- paused"
     IDLE_START=0
+    sleep "$COOLDOWN"
+    continue
+  fi
+
+  # Check API control flags (interrupt, force-pull)
+  if ! check_api_flags; then
     sleep "$COOLDOWN"
     continue
   fi
