@@ -19,6 +19,7 @@ Manages EC2 instances with stop/start lifecycle:
   ccc maint <name>          Pause task pickup for troubleshooting (--off to resume)
   ccc teams <chat_id>       Poll Teams chat for @claude, dispatch to ccc instances
   ccc work                  Show what each worker is doing (branch, PR, tasks, maint)
+  ccc cleanup               Review codebase for dead code, duplicates, inconsistencies
 """
 import argparse
 import json
