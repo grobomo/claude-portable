@@ -2234,6 +2234,71 @@ def cmd_work(args):
 
 # ── Teams Dispatch ──────────────────────────────────────────────────────────
 
+def cmd_cleanup(args):
+    """Run a one-off codebase review for dead code, duplicates, and inconsistencies."""
+    repo_dir = args.directory or os.getcwd()
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        print(f"Error: {repo_dir} is not a git repository")
+        sys.exit(1)
+
+    output_file = os.path.join(repo_dir, "cleanup-report.md")
+    prompt = f"""You are a senior code reviewer. Audit the ENTIRE codebase at {repo_dir}.
+
+Generate a thorough cleanup report covering:
+
+## Dead Code
+Files, functions, or variables that are never referenced or imported.
+List each with file:line and why it's dead.
+
+## Duplicate Implementations
+Multiple implementations of the same concept. Note which to keep and which to remove.
+
+## Inconsistencies
+Naming convention violations, mixed patterns, contradictory approaches.
+
+## Unused Dependencies
+Packages in requirements.txt/package.json that aren't imported anywhere.
+
+## Stale Files
+Config files, scripts, or docs that reference outdated paths, features, or architecture.
+
+## Recommended Actions
+Numbered list of specific cleanup steps, ordered by impact.
+
+Write the report to {output_file} using the Write tool.
+Be specific — cite file paths and line numbers, not vague descriptions."""
+
+    print(f"Running codebase cleanup review on {repo_dir}...")
+    print(f"Report will be written to: {output_file}")
+    print()
+
+    claude_cmd = ["claude", "--print", "--dangerously-skip-permissions", prompt]
+    result = subprocess.run(claude_cmd, cwd=repo_dir)
+
+    if result.returncode == 0 and os.path.exists(output_file):
+        print(f"\nReport written to: {output_file}")
+        if args.pr:
+            # Create cleanup PR
+            branch = "cleanup/codebase-review"
+            subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir)
+            subprocess.run(["git", "add", output_file], cwd=repo_dir)
+            subprocess.run(
+                ["git", "commit", "-m", "chore: add codebase cleanup report"],
+                cwd=repo_dir,
+            )
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch], cwd=repo_dir
+            )
+            subprocess.run(
+                ["gh", "pr", "create", "--title", "chore: codebase cleanup report",
+                 "--body", "Auto-generated cleanup report from `ccc cleanup`"],
+                cwd=repo_dir,
+            )
+            print("Cleanup PR created.")
+    else:
+        print(f"\nCleanup review completed with exit code {result.returncode}")
+
+
 def cmd_teams(args):
     """Poll a Teams chat for @claude mentions and dispatch to ccc instances."""
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "teams-dispatch.py")
