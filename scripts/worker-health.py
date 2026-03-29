@@ -326,21 +326,35 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
         elif self.path == "/pull":
-            # Set flag for continuous-claude.sh to force git pull
             try:
                 with open(PULL_FLAG, "w") as f:
                     f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
                 status = "pull_scheduled"
             except Exception as e:
                 status = f"error: {e}"
+            self._send_json({"status": status, "worker_id": WORKER_ID})
 
-            data = {"status": status, "worker_id": WORKER_ID}
-            body = json.dumps(data).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        elif self.path == "/phase":
+            payload = self._read_body()
+            task_num = payload.get("task_num")
+            phase = payload.get("phase", "").upper()
+            if task_num is None or not phase:
+                self._send_json({"status": "error", "message": "task_num and phase required"}, 400)
+                return
+            set_pipeline_phase(task_num, phase)
+            self._send_json({"status": "ok", "task_num": task_num, "phase": phase})
+
+        elif self.path == "/gate":
+            payload = self._read_body()
+            task_num = payload.get("task_num")
+            phase = payload.get("phase", "").upper()
+            passed = payload.get("passed", False)
+            detail = payload.get("detail", "")
+            if task_num is None or not phase:
+                self._send_json({"status": "error", "message": "task_num and phase required"}, 400)
+                return
+            record_gate_result(task_num, phase, passed, detail)
+            self._send_json({"status": "ok", "task_num": task_num, "phase": phase, "passed": passed})
 
         else:
             self.send_response(404)
