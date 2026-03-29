@@ -738,6 +738,16 @@ CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token
 
   run_stage_with_retry "IMPLEMENT" "5" "$implement_prompt" "$stage_log" || return 1
 
+  # --- GATE 6: Tests must PASS after implementation ---
+  echo "  GATE 6: Verifying tests pass after implementation..."
+  local gate6_exit=0
+  eval "$test_run_cmd" >/dev/null 2>&1 || gate6_exit=$?
+  if [ "$gate6_exit" -ne 0 ]; then
+    echo "  GATE 6 FAILED: Tests still failing after implementation (exit ${gate6_exit})"
+    return 1
+  fi
+  echo "  GATE 6 PASSED: All tests pass"
+
   # ===== STAGE 6: VERIFY =====
   local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
