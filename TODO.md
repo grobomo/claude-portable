@@ -1,5 +1,12 @@
 # Teams Integration — Continuous Claude Tasks
 
+<!-- SESSION STATE (2026-03-28): 16 commits on main (not pushed), 101 tests passing.
+Key features shipped: git relay polling, fleet monitor, leader election, task routing,
+area affinity, task dependencies, config bundle system, worker health API.
+Untracked k8s files (Dockerfile.k8s, k8s/, scripts/k8s-dispatch.py) need to be
+committed or moved to teams-helper repo. Hook runners fixed (stdin parse, output format).
+Next: REVIEW stage in TDD pipeline, or worker zero-touch boot. Push when ready. -->
+
 ## Phase 0: Dedicated Dispatcher Instance
 
 - [x] Create `scripts/dispatcher-daemon.sh` — pulls Graph token from Secrets Manager, pulls SSH keys from S3, starts teams-dispatch.py with watchdog loop (auto-restart on crash), streams logs to /data/dispatcher.log
