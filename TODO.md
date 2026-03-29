@@ -1,10 +1,13 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 368 tests passing. 75/75 tasks COMPLETE.
-This session: Neural Pipeline bootstrap (react/ sub-project, 14 tests),
-chatbot auto-fill task template (generate_task_template + parse_template_output, 19 tests),
-verified task template checker + CI workflow already existed, retrofit tasks already compliant.
-ALL TASKS DONE. Project ready for deployment testing or new feature phases. -->
+<!-- SESSION STATE (2026-03-29): 323 tests passing (313 Python + 10 bash). 75/75 tasks COMPLETE.
+Cleanup done: archived chatbot.md, chatbot-daemon.sh, teams-chat-bridge.py + their tests.
+Updated bootstrap.sh (deprecated chatbot mode), ccc help text, dispatcher-architecture.md,
+TODO Phase 2 description. No chatbot instance — dispatcher handles RONE relay directly.
+Also this session: fixed stale board tests (22 pass), phase-change tests (10), WHY phase
+tests (6), worker pushback tests (10), reviewer function (10 bash), task template checker
+with code-block skip fix (10), task-check.yml CI workflow.
+ALL TASKS DONE. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
@@ -60,19 +63,22 @@ ALL TASKS DONE. Project ready for deployment testing or new feature phases. -->
 - [x] Add `ccc work` command — show what each worker is doing: current branch, PR status (open/merged), task progress, maintenance mode
   - PR title: "feat: add ccc work command for fleet activity view"
 
-## Phase 2: Team chatbot instance
+## Phase 2: Teams integration via RONE git relay
 
-Chatbot is the SINGLE human-facing interface. All human interaction goes through it — Teams, web chat, SSH. Git is the coordination layer between chatbot, dispatcher, and workers.
-
-Architecture:
-- Chatbot receives requests (Teams @claude, web chat, SSH)
-- Chatbot answers questions directly (reads git for latest state)
-- Chatbot submits work by adding TODO items + committing to git
-- Dispatcher watches git for unchecked TODO items, scales workers
-- Workers claim tasks via branches, do the work, merge PRs
-- Chatbot sees results on next git pull
-
-Dispatcher NO LONGER polls Teams. It only watches git + manages EC2 fleet.
+> **Architecture change**: The separate "chatbot" instance was eliminated. The dispatcher
+> handles everything — both TODO.md polling and RONE relay requests. Human interaction
+> flows through RONE (Teams poller in K8s) which pushes relay requests to a shared git
+> repo. The dispatcher picks them up, dispatches to workers or responds directly, and
+> writes results back to the git repo. RONE picks up results and posts them to Teams.
+>
+> ```
+> Teams chat → RONE poller (K8s) → git bridge repo → Dispatcher → Workers
+>                                                  ↘ git bridge repo → RONE → Teams reply
+> ```
+>
+> The chatbot role in `ccc` and related scripts (teams-chat-bridge.py, chatbot-daemon.sh)
+> are legacy artifacts from before this consolidation. The web-chat.js server still works
+> for direct SSH/Lambda access but is not the primary interaction path.
 
 - [x] Create `chatbot` role in ccc launcher: launches t3.large, clones repo, starts web-chat.js + Teams polling, exposes via Lambda URL. Does NOT run continuous-claude (it's not a worker).
   - PR title: "feat: add chatbot role to ccc launcher"

@@ -1,0 +1,50 @@
+{
+  "built_at": "2026-03-29T17:52:59.776Z",
+  "target": "worker",
+  "source_host": "NABU-2WD56M3",
+  "strip_desktop": true,
+  "files": 71,
+  "collectors": [
+    {
+      "name": "hooks",
+      "ok": true,
+      "files": 7
+    },
+    {
+      "name": "settings",
+      "ok": true,
+      "files": 1
+    },
+    {
+      "name": "claude-md",
+      "ok": true,
+      "files": 1
+    },
+    {
+      "name": "rules",
+      "ok": true,
+      "files": 7
+    },
+    {
+      "name": "unknown",
+      "ok": false,
+      "files": 0
+    },
+    {
+      "name": "hackathon-context",
+      "ok": true,
+      "files": 8
+    },
+    {
+      "name": "speckit-commands",
+      "ok": true,
+      "files": 9
+    },
+    {
+      "name": "binaries",
+      "ok": true,
+      "files": 2
+    }
+  ],
+  "install": "node install.js [bundle-dir]"
+}

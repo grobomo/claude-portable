@@ -8,7 +8,7 @@ Manages EC2 instances with stop/start lifecycle:
   ccc --new                 Always launch a fresh instance
   ccc --continuous URL      Launch with continuous-claude enabled
   ccc --role dispatcher     Launch a dedicated t3.small dispatcher instance
-  ccc --role chatbot        Launch a chatbot instance (web-chat + Teams, no continuous-claude)
+  ccc --role chatbot        (deprecated) Legacy chatbot — use dispatcher + RONE relay instead
   ccc list                  List all managed instances
   ccc stop [name]           Stop an instance (keeps state, no cost)
   ccc kill [name]           Terminate an instance permanently

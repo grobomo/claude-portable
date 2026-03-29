@@ -61,6 +61,9 @@ RUN mkdir -p /var/run/sshd && \
 RUN useradd -m -s /bin/bash -G sudo claude && \
   echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude
 
+# uv (Python package manager) — used by dispatcher for spec-kit, general Python tooling
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+
 # Install Claude Code CLI
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin

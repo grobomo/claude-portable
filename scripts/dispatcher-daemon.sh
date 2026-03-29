@@ -202,6 +202,12 @@ echo ""
 echo "[+] Starting git-dispatch.py watchdog (max crashes: ${MAX_CRASHES}, restart delay: ${RESTART_DELAY}s)..."
 echo ""
 
+# Auto-register workers after dispatcher starts (background, waits for health endpoint)
+if [ -f "${SCRIPT_DIR}/worker-autoregister.sh" ]; then
+  bash "${SCRIPT_DIR}/worker-autoregister.sh" >> "$LOG_FILE" 2>&1 &
+  echo "  Worker auto-registration started (PID $!)"
+fi
+
 while true; do
   START_TS=$(date +%s)
 

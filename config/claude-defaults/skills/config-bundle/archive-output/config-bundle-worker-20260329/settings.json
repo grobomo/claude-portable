@@ -1,9 +1,7 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "GOOGLE_GEMINI_BASE_URL": "https://api.rdsec.trendmicro.com/prod/aiendpoint",
-    "NANO_BANANA_MODEL": "gemini-3-pro-image"
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"
   },
   "permissions": {
     "allow": [
@@ -31,17 +29,6 @@
   },
   "model": "opus[1m]",
   "enableAllProjectMcpServers": true,
-  "enabledPlugins": {},
-  "extraKnownMarketplaces": {
-    "grobomo-marketplace": {
-      "source": {
-        "source": "github",
-        "repo": "grobomo/claude-code-skills"
-      }
-    }
-  },
-  "autoUpdatesChannel": "latest",
-  "voiceEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "hooks": {
     "Stop": [

@@ -1107,7 +1107,7 @@ def _ssh_check_claude_process(worker_ip: str, worker_name: str) -> bool | None:
             "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
             "-i", key_path, f"ubuntu@{worker_ip}",
-            "docker exec claude-portable pgrep -f 'node.*claude' || echo IDLE",
+            "docker exec claude-portable pgrep -f 'claude -p ' || echo IDLE",
         ], capture_output=True, text=True, timeout=15)
         if r.returncode != 0:
             return None  # SSH failed — unreachable
@@ -1892,6 +1892,161 @@ def _move_relay_file(request_id: str, from_dir: str, to_dir: str, extra_fields: 
         return None
 
 
+def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
+    """Generate spec-kit artifacts locally on the dispatcher using claude -p.
+
+    Returns path to temp directory containing .specs/ and .planning/, or None on failure.
+    """
+    spec_timeout = int(os.environ.get("SPEC_GENERATE_TIMEOUT", "300"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    spec_script = os.path.join(script_dir, "spec-generate.sh")
+
+    if not os.path.isfile(spec_script):
+        log.warning("RELAY %s: spec-generate.sh not found at %s", request_id, spec_script)
+        return None
+
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix=f"spec-{request_id}-")
+
+    try:
+        r = subprocess.run(
+            ["bash", spec_script, task_text, tmpdir],
+            capture_output=True, text=True, timeout=spec_timeout,
+            env={**os.environ, "SPEC_TIMEOUT": str(spec_timeout // 3)},
+        )
+        if r.returncode == 0:
+            log.info("RELAY %s: spec generated locally at %s", request_id, tmpdir)
+            return tmpdir
+        else:
+            log.warning("RELAY %s: spec generation failed: %s", request_id, r.stderr[:200])
+            # Still return tmpdir — fallback spec.md was written by the script
+            return tmpdir
+    except subprocess.TimeoutExpired:
+        log.warning("RELAY %s: spec generation timed out", request_id)
+        return tmpdir  # partial spec may exist
+    except Exception as e:
+        log.error("RELAY %s: spec generation error: %s", request_id, e)
+        return None
+
+
+def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
+                         request_id: str) -> bool:
+    """SCP spec artifacts from local tmpdir to worker container."""
+    try:
+        ssh_base = [
+            "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", key_path, f"ubuntu@{worker_ip}",
+        ]
+
+        # Clean up old specs/planning from previous tasks on this worker
+        subprocess.run(
+            ssh_base + ["docker exec -w /workspace/boothapp claude-portable "
+                        "bash -c 'rm -rf .specs/ .planning/ TODO.md 2>/dev/null; true'"],
+            capture_output=True, text=True, timeout=10)
+
+        # Create target dir on remote host
+        subprocess.run(
+            ssh_base + [f"mkdir -p /tmp/spec-{request_id}"],
+            capture_output=True, text=True, timeout=10)
+
+        # SCP to the host, then docker cp into the container
+        r = subprocess.run([
+            "scp", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
+            "-i", key_path, "-r",
+            spec_dir + "/.", f"ubuntu@{worker_ip}:/tmp/spec-{request_id}/",
+        ], capture_output=True, text=True, timeout=30)
+
+        if r.returncode != 0:
+            log.warning("RELAY %s: SCP failed: %s", request_id, r.stderr[:100])
+            return False
+
+        # Ensure boothapp workspace exists in container, then copy spec artifacts
+        subprocess.run(
+            ssh_base + ["docker exec claude-portable mkdir -p /workspace/boothapp"],
+            capture_output=True, text=True, timeout=10)
+
+        for subdir in [".specs", ".planning"]:
+            subprocess.run(
+                ssh_base + [f"docker cp /tmp/spec-{request_id}/{subdir} "
+                            f"claude-portable:/workspace/boothapp/{subdir}"],
+                capture_output=True, text=True, timeout=30)
+
+        # Clean up remote /tmp
+        subprocess.run(
+            ssh_base + [f"rm -rf /tmp/spec-{request_id}"],
+            capture_output=True, text=True, timeout=10)
+
+        log.info("RELAY %s: spec artifacts copied to worker", request_id)
+        return True
+    except Exception as e:
+        log.warning("RELAY %s: SCP spec failed: %s", request_id, e)
+        return False
+
+
+def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
+                          escaped_prompt: str, result_file: str) -> str:
+    """Build a command that uses continuous-claude.sh for multi-task specs.
+
+    Instead of a single claude -p, this:
+    1. Writes spec tasks.md content into TODO.md (continuous-claude reads TODO.md)
+    2. Launches continuous-claude.sh against the boothapp repo
+    3. Each TODO item becomes a separate branch + PR
+
+    Falls back to claude -p if continuous-claude.sh is not available.
+
+    To avoid quoting issues through SSH -> docker exec -> bash -c layers,
+    we write a dispatch script to the container first, then execute it.
+    """
+    # Build the dispatch script content (runs inside the worker container)
+    script_lines = [
+        "#!/bin/bash",
+        "set -euo pipefail",
+        "cd /workspace/boothapp",
+        "",
+        f"RESULT_FILE={result_file}",
+        "",
+        "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ]; then",
+        "  SPEC_TASKS=$(ls -t .specs/*/tasks.md 2>/dev/null | head -1)",
+        '  if [ -n "$SPEC_TASKS" ]; then',
+        '    SPEC_DIR=$(dirname "$SPEC_TASKS")',
+        '    echo "# Auto-generated from spec" > TODO.md',
+        '    echo "" >> TODO.md',
+        '    echo "## Context" >> TODO.md',
+        '    echo "Read $SPEC_DIR/ for full specification. GSD is enforced." >> TODO.md',
+        '    echo "" >> TODO.md',
+        '    echo "## Tasks" >> TODO.md',
+        '    grep -E "^\\s*- \\[" "$SPEC_TASKS" >> TODO.md || echo "- [ ] Implement spec" >> TODO.md',
+        '    git add TODO.md .specs/ .planning/ 2>/dev/null || true',
+        '    git commit -m "spec: add tasks from dispatcher" --no-verify 2>/dev/null || true',
+        "    CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
+        "      bash /opt/claude-portable/scripts/continuous-claude.sh \\",
+        "        https://github.com/altarr/boothapp.git main /workspace/boothapp \\",
+        '        > "$RESULT_FILE" 2>&1',
+        '    cat "$RESULT_FILE"',
+        "  else",
+        f'    claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
+        '      > "$RESULT_FILE" 2>&1',
+        '    cat "$RESULT_FILE"',
+        "  fi",
+        "else",
+        f'  claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
+        '    > "$RESULT_FILE" 2>&1',
+        '  cat "$RESULT_FILE"',
+        "fi",
+    ]
+    script_content = "\n".join(script_lines)
+
+    # Write script to worker via SSH, then execute it
+    import base64
+    encoded = base64.b64encode(script_content.encode()).decode()
+    cmd = (
+        f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
+        f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
+        f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+    )
+    return cmd
+
+
 def _dispatch_relay_request(request_id: str, request_data: dict):
     """Dispatch a relay request to a worker via SSH + claude -p."""
     sender = request_data.get("sender", "unknown")
@@ -1931,11 +2086,47 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         _relay_git_push(f"relay: {request_id} failed (no SSH key)")
         return
 
-    cmd = (
-        f"docker exec -w /workspace/claude-portable claude-portable bash -c '"
-        f"claude -p \"{escaped}\" --dangerously-skip-permissions "
-        f"> {result_file} 2>&1 && cat {result_file}'"
-    )
+    # Generate spec-kit artifacts locally, then SCP to worker
+    spec_dir = None
+    if os.environ.get("SPEC_KIT_ENABLED", "1") == "1" and text:
+        log.info("RELAY %s: generating spec locally...", request_id)
+        spec_dir = _generate_spec_locally(text, request_id)
+        if spec_dir:
+            _scp_spec_to_worker(spec_dir, worker_ip, key_path, request_id)
+            # Clean up local temp
+            import shutil
+            shutil.rmtree(spec_dir, ignore_errors=True)
+
+        # Modify prompt to reference the spec + enforce GSD
+        spec_preamble = (
+            "A specification has been generated for this task in .specs/. "
+            "GSD tracking is enforced — you MUST:\n"
+            "1. Read the spec files in .specs/ first\n"
+            "2. Create .planning/quick/001-<slug>/001-PLAN.md with Goal + Success Criteria from the spec\n"
+            "3. Only then implement the code\n"
+            "4. Verify every success criterion before creating your PR\n\n"
+            "Original request:\n"
+        )
+        escaped = (spec_preamble + prompt).replace("'", "'\\''").replace('"', '\\"')
+
+    # Choose dispatch mode: continuous-claude for multi-task specs, claude -p for single tasks
+    use_continuous = os.environ.get("CONTINUOUS_CLAUDE_ENABLED", "1") == "1"
+    if use_continuous and spec_dir:
+        cmd = _build_continuous_cmd(request_id, worker_ip, key_path, escaped, result_file)
+    else:
+        # Use base64 to avoid quoting issues through SSH -> docker exec -> bash -c
+        import base64
+        script = (
+            f"#!/bin/bash\ncd /workspace/boothapp\n"
+            f'claude -p "{escaped}" --dangerously-skip-permissions '
+            f"> {result_file} 2>&1\ncat {result_file}"
+        )
+        encoded = base64.b64encode(script.encode()).decode()
+        cmd = (
+            f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
+            f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
+            f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+        )
 
     try:
         r = subprocess.run([
@@ -1945,6 +2136,8 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         ], capture_output=True, text=True, timeout=RELAY_TASK_TIMEOUT)
 
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        log.info("RELAY %s: SSH returned rc=%d stdout=%d stderr=%d",
+                 request_id, r.returncode, len(r.stdout), len(r.stderr))
         if r.returncode == 0 and r.stdout.strip():
             _move_relay_file(request_id, "dispatched", "completed", {
                 "result": r.stdout.strip()[:5000],
@@ -1956,7 +2149,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
                 _relay_stats["completed"] += 1
             log.info("RELAY %s completed by %s", request_id, worker_name)
         else:
-            error_msg = r.stderr[:500] if r.stderr else "empty response"
+            error_msg = r.stderr[:500] if r.stderr else f"empty response (rc={r.returncode}, stdout={r.stdout[:200]})"
             _move_relay_file(request_id, "dispatched", "failed", {
                 "error": error_msg,
                 "worker": worker_name,
@@ -2011,6 +2204,34 @@ def _relay_poll_tick():
         return
     if not _relay_git_pull():
         return
+
+    # Recover orphaned dispatched tasks (stuck longer than task timeout)
+    dispatched_dir = os.path.join(RELAY_DIR, "requests", "dispatched")
+    if os.path.isdir(dispatched_dir):
+        now = time.time()
+        for fname in os.listdir(dispatched_dir):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(dispatched_dir, fname)
+            try:
+                with open(fpath, "r") as f:
+                    data = json.load(f)
+                dispatched_at = data.get("dispatched_at", "")
+                if dispatched_at:
+                    import datetime
+                    dt = datetime.datetime.strptime(dispatched_at, "%Y-%m-%dT%H:%M:%SZ")
+                    age_s = now - dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+                    if age_s > RELAY_TASK_TIMEOUT * 2:  # 2x timeout = definitely orphaned
+                        rid = fname.replace(".json", "")
+                        log.warning("RELAY %s: orphaned dispatched task (age=%ds), moving to failed",
+                                    rid, int(age_s))
+                        _move_relay_file(rid, "dispatched", "failed", {
+                            "error": f"orphaned dispatch (age={int(age_s)}s, timeout={RELAY_TASK_TIMEOUT}s)",
+                            "failed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        })
+                        _relay_git_push(f"relay: {rid} failed (orphaned dispatch)")
+            except Exception:
+                pass
 
     pending_dir = os.path.join(RELAY_DIR, "requests", "pending")
     if not os.path.isdir(pending_dir):

@@ -223,18 +223,11 @@ if [ "${CLAUDE_PORTABLE_MODE:-}" = "remote" ]; then
   echo "  Idle monitor PID: $!"
 fi
 
-# --- Start chatbot Teams bridge (chatbot mode) ---
+# --- Legacy: chatbot mode (deprecated — dispatcher handles relay via git) ---
+# Kept for backward compat. CHATBOT_MODE is never set in current deployments.
+# Teams interaction now flows through RONE poller → git bridge → dispatcher.
 if [ "${CHATBOT_MODE:-false}" = "true" ]; then
-  CHATBOT_DAEMON="/opt/claude-portable/scripts/chatbot-daemon.sh"
-  if [ -x "$CHATBOT_DAEMON" ]; then
-    echo "[+] Starting chatbot Teams bridge..."
-    echo "  Chat ID: ${CHATBOT_TEAMS_CHAT_ID:-(not set, Teams polling disabled)}"
-    nohup "$CHATBOT_DAEMON" \
-      >> /data/chatbot/chatbot-daemon.log 2>&1 &
-    echo "  chatbot-daemon PID: $!"
-  else
-    echo "  WARNING: chatbot-daemon.sh not found or not executable at $CHATBOT_DAEMON"
-  fi
+  echo "  WARNING: CHATBOT_MODE is deprecated. Use dispatcher with RONE git relay instead."
 fi
 
 # --- Start worker health API (HTTP control endpoint) ---
