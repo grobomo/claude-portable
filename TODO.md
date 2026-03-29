@@ -1,11 +1,11 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 265 tests passing. 62/75 tasks done.
-Completed this session: board aggregation with full task/worker mapping (15 tests),
-ccc board command with color-coded phase display, enhanced _build_board with
-time_in_phase_s and per-task worker assignments.
-Next unchecked: dispatcher interrupt, Neural Pipeline bootstrap, phase transition events,
-WHY phase, worker pushback, pipeline folder, reviewer, audit trail, task templates. -->
+<!-- SESSION STATE (2026-03-29): 269 tests passing. 63/73 tasks done.
+Completed this session: fixed stale board tests to match new _build_board API shape,
+added time_in_phase_s/phase_start/summary tests, fixed DISPATCHER_URL env var lookup
+in worker-pipeline.py _notify_phase_change, confirmed phase-change endpoint working.
+Next unchecked: Neural Pipeline bootstrap, WHY phase, worker pushback, pipeline folder,
+reviewer, audit trail, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 

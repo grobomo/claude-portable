@@ -1,6 +1,7 @@
 #!/bin/bash
 # Continuous Claude runner -- loops through TODO.md tasks via micro-PRs.
-# Each task runs through a 7-stage TDD pipeline with separate claude invocations:
+# Each task runs through an 8-stage TDD pipeline with separate claude invocations:
+#   0. WHY       -> /tmp/task-{N}-why.md (task justification; PROCEED or SKIP)
 #   1. RESEARCH  -> /tmp/task-{N}-research.md
 #   2. REVIEW    -> /tmp/task-{N}-review.md (codebase audit for duplicates/dead code)
 #   3. PLAN      -> /tmp/task-{N}-plan.md
@@ -479,6 +480,7 @@ run_pipeline() {
   local pr_title="$3"
   local branch_name="continuous-claude/task-${task_num}"
 
+  local why_file="/tmp/task-${task_num}-why.md"
   local research_file="/tmp/task-${task_num}-research.md"
   local review_file="/tmp/task-${task_num}-review.md"
   local plan_file="/tmp/task-${task_num}-plan.md"
@@ -522,6 +524,52 @@ with open(path, 'w') as f:
   # Create and push branch
   git checkout -b "$branch_name"
   git push -u origin "$branch_name"
+
+  # ===== STAGE 0: WHY =====
+  local why_prompt="You are instance '${INSTANCE_ID}' evaluating task #${task_num}.
+
+TASK: ${task_desc}
+
+STAGE: WHY (task justification — stage 0, before any work begins)
+
+You must critically evaluate whether this task should be done at all. Answer these questions:
+
+1. **Why does this task need to exist?** What problem does it solve?
+2. **Is there already a simpler solution?** Check if existing code already handles this, or if a config change would suffice.
+3. **Should this task be rejected?** Is it a duplicate of completed work? Is it obsolete?
+4. **Should it be merged with another task?** Check TODO.md for related unchecked tasks.
+5. **Should it be split into smaller tasks?** Is this too broad for a single PR?
+
+Read TODO.md and scan the codebase before answering. Be specific — cite files and line numbers.
+
+Write your analysis to '${why_file}'. Your analysis MUST end with exactly one of these verdicts on the LAST LINE:
+  VERDICT: PROCEED — task is justified and ready for implementation
+  VERDICT: SKIP — task is unnecessary, duplicate, or already done (explain why)
+
+CRITICAL: Write the analysis to ${why_file} using the Write tool. The last line MUST be 'VERDICT: PROCEED' or 'VERDICT: SKIP'."
+
+  run_stage_with_retry "WHY" "0" "$why_prompt" "$stage_log" || return 1
+
+  # --- GATE 0: WHY output must exist and contain PROCEED or SKIP verdict ---
+  if [ ! -f "$why_file" ] || [ "$(wc -c < "$why_file" 2>/dev/null || echo 0)" -lt 100 ]; then
+    echo "  GATE 0 FAILED: WHY output missing or too short (<100 chars)"
+    return 1
+  fi
+  local verdict
+  verdict=$(grep -oE 'VERDICT: (PROCEED|SKIP)' "$why_file" | tail -1 || true)
+  if [ -z "$verdict" ]; then
+    echo "  GATE 0 FAILED: WHY output does not contain 'VERDICT: PROCEED' or 'VERDICT: SKIP'"
+    return 1
+  fi
+  echo "  GATE 0 PASSED: WHY verdict = ${verdict}"
+  if echo "$verdict" | grep -q "SKIP"; then
+    echo "  Task #${task_num} SKIPPED by WHY phase — marking in TODO.md"
+    # Clean up branch
+    git checkout main
+    git branch -D "$branch_name" 2>/dev/null || true
+    git push origin --delete "$branch_name" 2>/dev/null || true
+    return 2  # special return code: task skipped
+  fi
 
   # ===== STAGE 1: RESEARCH =====
   local research_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.

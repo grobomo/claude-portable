@@ -46,10 +46,11 @@ def _now():
 
 def _notify_phase_change(task_num, old_phase, new_phase, gate_result=None):
     """POST phase transition event to dispatcher. Best-effort, never blocks."""
-    if not DISPATCHER_URL:
+    dispatcher_url = os.environ.get("DISPATCHER_URL", "") or DISPATCHER_URL
+    if not dispatcher_url:
         return
     import urllib.request
-    url = f"{DISPATCHER_URL.rstrip('/')}/worker/phase-change"
+    url = f"{dispatcher_url.rstrip('/')}/worker/phase-change"
     payload = json.dumps({
         "worker_id": WORKER_ID,
         "task_num": task_num,
