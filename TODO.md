@@ -227,7 +227,7 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 - [x] Refactor-first rule: if the REVIEW stage finds >3 files that need changes to accommodate the new feature, the worker must create a REFACTOR PR first (separate from the feature PR). Refactor PR cleans up, removes dead code, consolidates duplicates. Feature PR builds on top of the clean base. Never patch on top of spaghetti.
   - PR title: "feat: refactor-first rule when review finds messy codebase"
 
-- [ ] Add `ccc cleanup` command: runs a one-off Claude invocation that reviews the entire codebase for dead code, duplicate implementations, unused files, and inconsistencies. Outputs a report and optionally creates a cleanup PR.
+- [x] Add `ccc cleanup` command: runs a one-off Claude invocation that reviews the entire codebase for dead code, duplicate implementations, unused files, and inconsistencies. Outputs a report and optionally creates a cleanup PR.
   - PR title: "feat: ccc cleanup command for codebase hygiene"
 
 - [x] Enforcement gates in continuous-claude.sh (NOT prompts — these are bash checks that block progression):
