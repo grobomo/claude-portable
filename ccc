@@ -2385,6 +2385,10 @@ def main():
     p_pull = sub.add_parser("pull", help="Force git pull on a worker via HTTP API")
     p_pull.add_argument("name", help="Worker name")
 
+    p_cleanup = sub.add_parser("cleanup", help="Review codebase for dead code, duplicates, and inconsistencies")
+    p_cleanup.add_argument("-d", "--directory", help="Repository directory (default: cwd)")
+    p_cleanup.add_argument("--pr", action="store_true", help="Create a cleanup PR with the report")
+
     p_bundle = sub.add_parser("bundle", help="Config bundle: scrape, build, deploy, status, patch, simulate")
     p_bundle.add_argument("action", nargs="?", default="status",
                           choices=["scrape", "build", "deploy", "status", "patch", "simulate"],
