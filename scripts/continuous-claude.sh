@@ -719,7 +719,7 @@ If anything fails, fix it and re-run. Commit any fixes with: 'fix: verification 
 When ALL checks pass, output: VERIFY_PASSED
 If you cannot fix all issues after attempting, output: VERIFY_FAILED with details."
 
-  run_stage_with_retry "VERIFY" "5" "$verify_prompt" "$stage_log" || return 1
+  run_stage_with_retry "VERIFY" "6" "$verify_prompt" "$stage_log" || return 1
 
   # ===== STAGE 6: PR =====
   local pr_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
