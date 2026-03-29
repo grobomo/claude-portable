@@ -681,8 +681,11 @@ def poll_once(chat_id, trigger, state, workspace=None):
     requests = state.get("requests", {})
 
     # --- Phase 1: Check for new @claude messages ---
-    messages = fetch_messages(chat_id)
+    messages = fetch_messages(chat_id, count=50)
     new_requests = []
+
+    # Update chat cache with latest messages
+    update_chat_cache(messages)
 
     for m in messages:
         mid = m.get("id", "")
