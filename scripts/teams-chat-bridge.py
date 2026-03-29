@@ -481,8 +481,87 @@ def get_fleet_status(repo_dir, dispatcher_url=None):
     return "\n".join(lines)
 
 
+def generate_task_template(prompt, sender, workspace=None):
+    """Use Claude to generate structured task template fields from a conversational request.
+
+    Returns a multi-line string with What/Why/How/Acceptance/Context/PR title fields,
+    or None if generation fails.
+    """
+    workspace = workspace or os.environ.get("CHATBOT_TODO_REPO_DIR", "/workspace/claude-portable")
+
+    # Build context from chat history
+    context_prompt = get_chat_context_prompt(sender)
+
+    template_prompt = f"""{context_prompt}You are a task template generator for the CCC fleet system.
+
+A user ({sender}) has requested work via Teams chat. Your job is to generate a structured task
+for TODO.md following the project's task template format.
+
+USER REQUEST: {prompt}
+
+Generate ONLY the following fields, one per line, indented with 2 spaces and prefixed with "- ":
+  - What: (one-line description of the deliverable)
+  - Why: (what problem this solves, what breaks without it, context from the conversation)
+  - How: (technical approach, key files to modify, patterns to follow)
+  - Acceptance: (specific testable criteria — commands to run, expected output)
+  - Context: (related files, conversation context, requester info)
+  - PR title: (conventional commit format in quotes, e.g. "feat: add dark mode")
+
+Also generate a one-line task summary (max 80 chars) to use as the checkbox line.
+
+Output format (EXACTLY this, no extra text):
+SUMMARY: <one-line task summary>
+  - What: <...>
+  - Why: <...>
+  - How: <...>
+  - Acceptance: <...>
+  - Context: requested by {sender}; <...>
+  - PR title: "<type>: <description>"
+
+CRITICAL: Output ONLY the fields above. No explanations, no markdown fences, no extra text."""
+
+    try:
+        r = subprocess.run(
+            ["claude", "-p", template_prompt, "--dangerously-skip-permissions"],
+            capture_output=True, text=True, timeout=120, cwd=workspace,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        return r.stdout.strip()
+    except Exception:
+        return None
+
+
+def parse_template_output(output):
+    """Parse Claude's template output into (summary, fields_block).
+
+    Returns (summary, fields_text) or (None, None) on parse failure.
+    """
+    if not output:
+        return None, None
+
+    lines = output.strip().splitlines()
+    summary = None
+    field_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("SUMMARY:"):
+            summary = stripped[len("SUMMARY:"):].strip()
+        elif re.match(r"^\s*-\s+(What|Why|How|Acceptance|Context|PR title):", stripped):
+            field_lines.append(line if line.startswith("  ") else f"  {line.strip()}")
+
+    if not summary or len(field_lines) < 4:
+        return None, None
+
+    return summary, "\n".join(field_lines)
+
+
 def add_todo_item(prompt, sender, repo_dir=None):
-    """Add a TODO item to TODO.md: create branch → commit → open PR → merge.
+    """Add a TODO item to TODO.md: create branch -> commit -> open PR -> merge.
+
+    Uses Claude to auto-generate structured template fields (What/Why/How/Acceptance/
+    Context/PR title) from the user's conversational request and chat history.
 
     Returns (success, pr_url_or_error_message).
     """
@@ -492,21 +571,37 @@ def add_todo_item(prompt, sender, repo_dir=None):
     if not os.path.isfile(todo_path):
         return False, f"TODO.md not found at {todo_path}"
 
-    # Generate short task description from prompt (first 80 chars, cleaned up)
-    task_desc = prompt.strip()
-    # Remove common prefixes
-    for prefix in ["can you ", "please ", "could you ", "i need you to ", "we need "]:
-        if task_desc.lower().startswith(prefix):
-            task_desc = task_desc[len(prefix):]
-            break
-    # Capitalize first letter
-    task_desc = task_desc[:1].upper() + task_desc[1:] if task_desc else task_desc
-    # Truncate at 80 chars at a word boundary
-    if len(task_desc) > 80:
-        task_desc = task_desc[:77].rsplit(" ", 1)[0] + "..."
+    # Try to generate structured template via Claude
+    template_output = generate_task_template(prompt, sender, repo_dir)
+    summary, fields_text = parse_template_output(template_output)
 
-    pr_title = f"feat: {task_desc[:60].lower()}"
-    todo_item = f"- [ ] {task_desc} (requested by {sender})\n  - PR title: \"{pr_title}\"\n"
+    if summary and fields_text:
+        # Use Claude-generated structured template
+        task_desc = summary
+        # Extract PR title from fields
+        pr_title_match = re.search(r'PR title:\s*"([^"]+)"', fields_text)
+        pr_title = pr_title_match.group(1) if pr_title_match else f"feat: {task_desc[:60].lower()}"
+        todo_item = f"- [ ] {task_desc}\n{fields_text}\n"
+    else:
+        # Fallback: generate minimal template manually
+        task_desc = prompt.strip()
+        for prefix in ["can you ", "please ", "could you ", "i need you to ", "we need "]:
+            if task_desc.lower().startswith(prefix):
+                task_desc = task_desc[len(prefix):]
+                break
+        task_desc = task_desc[:1].upper() + task_desc[1:] if task_desc else task_desc
+        if len(task_desc) > 80:
+            task_desc = task_desc[:77].rsplit(" ", 1)[0] + "..."
+        pr_title = f"feat: {task_desc[:60].lower()}"
+        todo_item = (
+            f"- [ ] {task_desc}\n"
+            f"  - What: {task_desc}\n"
+            f"  - Why: requested by {sender} via Teams chat\n"
+            f"  - How: TBD (auto-generated minimal template)\n"
+            f"  - Acceptance: TBD\n"
+            f"  - Context: requested by {sender}\n"
+            f"  - PR title: \"{pr_title}\"\n"
+        )
 
     branch = f"chatbot/request-{uuid.uuid4().hex[:6]}"
 

@@ -1,11 +1,10 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 310+ tests passing. 66/75 tasks done.
-This session: board aggregation (15 tests), ccc board command, phase transition
-events (15 tests), WHY phase as stage 0 with PROCEED/SKIP gate (15 tests),
-worker pushback /answer endpoint, 8-stage pipeline (WHY->RESEARCH->...->PR).
-Next unchecked: Neural Pipeline bootstrap, worker pushback flow, pipeline task folder,
-reviewer Claude, audit trail, task templates. -->
+<!-- SESSION STATE (2026-03-29): 368 tests passing. 75/75 tasks COMPLETE.
+This session: Neural Pipeline bootstrap (react/ sub-project, 14 tests),
+chatbot auto-fill task template (generate_task_template + parse_template_output, 19 tests),
+verified task template checker + CI workflow already existed, retrofit tasks already compliant.
+ALL TASKS DONE. Project ready for deployment testing or new feature phases. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
@@ -314,7 +313,7 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   ```
   - PR title: "feat: define task submission template"
 
-- [ ] Task template checker: GitHub Action or pre-commit hook that parses TODO.md and rejects commits where unchecked tasks are missing any of the required fields (What/Why/How/Acceptance). Runs on every push to main. Blocks merge if template is incomplete.
+- [x] Task template checker: GitHub Action or pre-commit hook that parses TODO.md and rejects commits where unchecked tasks are missing any of the required fields (What/Why/How/Acceptance). Runs on every push to main. Blocks merge if template is incomplete.
   - What: CI gate that validates task format
   - Why: workers built broken features because tasks said "do X" without explaining why or how to verify
   - How: Python script that parses TODO.md, finds unchecked items, checks for required subsections
@@ -322,7 +321,7 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - Context: this was identified in session 2026-03-28 after dispatcher bugs stacked up from vague tasks
   - PR title: "feat: task template checker CI gate"
 
-- [ ] Retrofit existing TODO items to follow the template. Go through all unchecked tasks, add missing Why/How/Acceptance fields based on the conversation context from this session and PR history.
+- [x] Retrofit existing TODO items to follow the template. Go through all unchecked tasks, add missing Why/How/Acceptance fields based on the conversation context from this session and PR history.
   - What: backfill context on all existing tasks
   - Why: current tasks are one-liners that workers will misinterpret
   - How: read each task, find the related conversation context in this chat export, add the fields
@@ -330,7 +329,7 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - Context: the entire conversation from session 2026-03-28
   - PR title: "chore: retrofit existing tasks with full template context"
 
-- [ ] Chatbot auto-fills task template: when a user requests a feature via Teams or web chat, the chatbot fills in all template fields (What/Why/How/Acceptance/Context) based on the conversation. It shows the filled template to the user and asks "Does this look right?" before committing to TODO.md. User can say "yes" or correct it. This ensures workers get full context without users having to write structured docs.
+- [x] Chatbot auto-fills task template: when a user requests a feature via Teams or web chat, the chatbot fills in all template fields (What/Why/How/Acceptance/Context) based on the conversation. It shows the filled template to the user and asks "Does this look right?" before committing to TODO.md. User can say "yes" or correct it. This ensures workers get full context without users having to write structured docs.
   - What: chatbot generates structured task from conversational request
   - Why: users say "add dark mode" but workers need What/Why/How/Acceptance to build it right. The conversation context that explains WHY is in the chat, not in the user's head.
   - How: chatbot reads recent conversation history, extracts the motivation and requirements, fills the template, confirms with user, commits to TODO.md

@@ -100,13 +100,20 @@ curl -s http://<dispatcher-ip>:8080/health | python3 -m json.tool
 
 When a user asks you to build something, do NOT implement it yourself. Instead:
 
-1. **Add a TODO item** to `TODO.md` in the appropriate phase section:
+1. **Generate the full task template** from the conversation. Read recent chat history to extract the motivation, requirements, and technical context. Fill in ALL required fields:
    ```markdown
-   - [ ] <description of the feature>
+   - [ ] <one-line summary>
+     - What: <one-line deliverable>
+     - Why: <problem statement — extract from conversation context>
+     - How: <technical approach, key files to modify>
+     - Acceptance: <specific testable criteria>
+     - Context: <related PRs, conversation excerpts>
      - PR title: "feat: <short title>"
    ```
 
-2. **Commit to a branch and open a PR:**
+2. **Show the filled template to the user** and ask "Does this look right?" Wait for confirmation or corrections before committing.
+
+3. **After user confirms**, commit to a branch and open a PR:
    ```bash
    git checkout -b chatbot/feature-request-<short-name>
    git add TODO.md
@@ -115,12 +122,12 @@ When a user asks you to build something, do NOT implement it yourself. Instead:
    gh pr create --title "feat: add <feature> to TODO" --body "Feature request from user: <description>"
    ```
 
-3. **Merge immediately** (chatbot PRs to TODO.md are always safe to merge):
+4. **Merge immediately** (chatbot PRs to TODO.md are always safe to merge):
    ```bash
    gh pr merge --squash --delete-branch
    ```
 
-4. **Tell the user** the task has been queued and give them the PR link. The dispatcher will assign it to a worker.
+5. **Tell the user** the task has been queued and give them the PR link. The dispatcher will assign it to a worker.
 
 ---
 

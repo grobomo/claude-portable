@@ -83,13 +83,12 @@ class TestPipelineHTTP(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
         wh.PIPELINE_STATE_FILE = os.path.join(cls.tmpdir, "pipeline-state.json")
-        import socket
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        cls.port = s.getsockname()[1]
-        s.close()
         from http.server import HTTPServer
-        cls.server = HTTPServer(("127.0.0.1", cls.port), wh.WorkerHandler)
+        # Use port 0 and let the OS assign; set allow_reuse_address to avoid
+        # Windows Hyper-V reserved port conflicts.
+        cls.server = HTTPServer(("127.0.0.1", 0), wh.WorkerHandler)
+        cls.server.allow_reuse_address = True
+        cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         time.sleep(0.1)
