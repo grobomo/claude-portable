@@ -593,6 +593,17 @@ CRITICAL: The verdict MUST be one of: PROCEED, ALREADY_DONE, REFACTOR_FIRST"
 
   run_stage_with_retry "REVIEW" "2" "$review_prompt" "$stage_log" || return 1
 
+  # --- GATE 2: Review output must exist and contain a verdict ---
+  if [ ! -f "$review_file" ] || [ "$(wc -c < "$review_file" 2>/dev/null || echo 0)" -lt 100 ]; then
+    echo "  GATE 2 FAILED: Review output missing or too short (<100 chars)"
+    return 1
+  fi
+  if ! grep -qE 'VERDICT: (PROCEED|ALREADY_DONE|REFACTOR_FIRST)' "$review_file" 2>/dev/null; then
+    echo "  GATE 2 FAILED: Review output missing VERDICT line"
+    return 1
+  fi
+  echo "  GATE 2 PASSED: Review output exists with verdict"
+
   # Check review verdict -- skip task if already done
   local review_verdict=""
   if [ -f "$review_file" ]; then
