@@ -135,7 +135,8 @@ def should_exclude(path: str) -> bool:
     """Check if a path matches any exclusion pattern."""
     for pat in EXCLUDE_PATTERNS:
         if pat.endswith("/"):
-            if pat.rstrip("/") in path.split(os.sep):
+            parts = re.split(r'[/\\]', path)
+            if pat.rstrip("/") in parts:
                 return True
         elif "*" in pat:
             import fnmatch
