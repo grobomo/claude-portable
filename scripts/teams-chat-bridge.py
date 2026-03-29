@@ -777,6 +777,8 @@ def poll_once(chat_id, trigger, state, workspace=None):
         if reply_in_teams(chat_id, reply_text):
             req["state"] = STATE_REPLIED
             print(f"  [{rid}] Replied in Teams")
+            # Capture reply into chat cache for future context
+            update_chat_cache(messages, bot_replies=[(sender, prompt, result)])
         else:
             req["state"] = STATE_FAILED
             print(f"  [{rid}] Failed to reply in Teams")
