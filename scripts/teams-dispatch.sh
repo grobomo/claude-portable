@@ -16,8 +16,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCC_DIR="$(dirname "$SCRIPT_DIR")"
-TEAMS_CHAT_PY="C:/Users/joelg/Documents/ProjectsCL1/teams-chat/teams_chat.py"
-MSGRAPH_LIB="C:/Users/joelg/Documents/ProjectsCL1/msgraph-lib"
+TEAMS_CHAT_PY="${TEAMS_CHAT_PY:-teams_chat.py}"
+MSGRAPH_LIB="${MSGRAPH_LIB:-msgraph-lib}"
 
 POLL_INTERVAL="${1:-30}"
 CHAT_ID="${TEAMS_CHAT_ID:?Set TEAMS_CHAT_ID to the Teams chat ID}"
