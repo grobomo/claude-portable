@@ -258,6 +258,22 @@ def _get_idle_time():
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
+    def _send_json(self, data, status=200):
+        body = json.dumps(data, indent=2).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+
     def do_GET(self):
         if self.path in ("/health", "/"):
             task = _get_current_task()
@@ -273,12 +289,9 @@ class WorkerHandler(BaseHTTPRequestHandler):
                 "pull_pending": os.path.isfile(PULL_FLAG),
                 "interrupt_pending": os.path.isfile(INTERRUPT_FLAG),
             }
-            body = json.dumps(data, indent=2).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_json(data)
+        elif self.path == "/status":
+            self._send_json(get_pipeline_state())
         else:
             self.send_response(404)
             self.end_headers()
