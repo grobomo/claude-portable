@@ -129,6 +129,104 @@ def _get_pipeline_stage():
         return {"stage": "unknown", "stages_complete": 0}
 
 
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _read_pipeline_state():
+    try:
+        with open(PIPELINE_STATE_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _write_pipeline_state(state):
+    os.makedirs(os.path.dirname(PIPELINE_STATE_FILE) or ".", exist_ok=True)
+    with open(PIPELINE_STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def get_pipeline_state():
+    """Return current pipeline state for HTTP API."""
+    state = _read_pipeline_state()
+    if not state:
+        return {"phase": "idle", "task_num": None, "phase_history": [], "gates": {}}
+    return {
+        "phase": state.get("current_phase") or "idle",
+        "task_num": state.get("task_num"),
+        "phase_start": state.get("phases", {}).get(
+            state.get("current_phase", ""), {}
+        ).get("start"),
+        "phase_history": state.get("phase_history", []),
+        "gates": state.get("gates", {}),
+        "status": state.get("status", "idle"),
+    }
+
+
+def set_pipeline_phase(task_num, phase):
+    """Set current pipeline phase. Resets history if task_num changes."""
+    state = _read_pipeline_state()
+    old_task = state.get("task_num")
+
+    if old_task != task_num:
+        # New task — reset
+        state = {
+            "worker_id": WORKER_ID,
+            "task_num": task_num,
+            "status": "running",
+            "current_phase": phase,
+            "updated_at": _now(),
+            "phases": {},
+            "phase_history": [],
+            "gates": {},
+        }
+    else:
+        state["current_phase"] = phase
+        state["updated_at"] = _now()
+
+    # Record in phases dict
+    state.setdefault("phases", {})[phase] = {
+        "status": "running",
+        "start": _now(),
+    }
+
+    # Append to history
+    state.setdefault("phase_history", []).append({
+        "phase": phase,
+        "started_at": _now(),
+    })
+
+    _write_pipeline_state(state)
+
+
+def record_gate_result(task_num, phase, passed, detail=""):
+    """Record a gate result for a phase."""
+    state = _read_pipeline_state()
+    state.setdefault("gates", {})[phase] = {
+        "passed": passed,
+        "detail": detail,
+        "timestamp": _now(),
+    }
+    state["updated_at"] = _now()
+    _write_pipeline_state(state)
+
+
+def set_pipeline_idle():
+    """Reset pipeline to idle state."""
+    state = {
+        "worker_id": WORKER_ID,
+        "task_num": None,
+        "status": "idle",
+        "current_phase": None,
+        "updated_at": _now(),
+        "phases": {},
+        "phase_history": [],
+        "gates": {},
+    }
+    _write_pipeline_state(state)
+
+
 def _is_claude_running():
     """Check if a Claude CLI process is active."""
     try:

@@ -252,7 +252,7 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 
 Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each worker tracks its task through pipeline phases. Dispatcher aggregates status from all workers into a live dashboard.
 
-- [ ] Create `scripts/worker-pipeline.py` — adapted from Neural Pipeline concepts. Each worker runs this alongside continuous-claude.sh. It tracks the current task through phases (RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR). Writes phase state to `/data/pipeline-state.json` with: task number, current phase, phase start time, phase output files, pass/fail per gate. Exposes HTTP API on port 8081: GET /status returns pipeline state, POST /interrupt kills current Claude process, POST /pull forces git pull.
+- [x] Create `scripts/worker-pipeline.py` — adapted from Neural Pipeline concepts. Each worker runs this alongside continuous-claude.sh. It tracks the current task through phases (RESEARCH → REVIEW → PLAN → TESTS → IMPLEMENT → VERIFY → PR). Writes phase state to `/data/pipeline-state.json` with: task number, current phase, phase start time, phase output files, pass/fail per gate. Exposes HTTP API on port 8081: GET /status returns pipeline state, POST /interrupt kills current Claude process, POST /pull forces git pull.
   - PR title: "feat: worker pipeline tracker with HTTP control API"
 
 - [ ] Worker polls dispatcher every 30s: POST /worker/heartbeat with current pipeline state (task, phase, idle time). Dispatcher maintains fleet roster from heartbeats. If a worker misses 3 heartbeats, dispatcher marks it unhealthy.
