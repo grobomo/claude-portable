@@ -694,7 +694,7 @@ CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token
 
   run_stage_with_retry "IMPLEMENT" "5" "$implement_prompt" "$stage_log" || return 1
 
-  # ===== STAGE 5: VERIFY =====
+  # ===== STAGE 6: VERIFY =====
   local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
