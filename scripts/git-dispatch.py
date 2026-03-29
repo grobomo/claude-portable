@@ -1141,6 +1141,27 @@ def _fleet_monitor_tick(region: str):
         if info.get("status") == "stopping":
             continue
 
+        # Check heartbeat staleness (3 missed = 90s)
+        last_hb_ts = _parse_iso_timestamp(info.get("last_heartbeat", ""))
+        if last_hb_ts > 0:
+            hb_age = now - last_hb_ts
+            if hb_age > HEARTBEAT_MISS_THRESHOLD:
+                with _fleet_roster_lock:
+                    entry = _fleet_roster.get(worker_id)
+                    if entry:
+                        entry["healthy"] = False
+                        entry["missed_heartbeats"] = int(hb_age // 30)
+                log.warning(
+                    "Fleet monitor: worker %s missed %d heartbeats (last %ds ago)",
+                    worker_id, int(hb_age // 30), int(hb_age),
+                )
+            else:
+                with _fleet_roster_lock:
+                    entry = _fleet_roster.get(worker_id)
+                    if entry:
+                        entry["healthy"] = True
+                        entry["missed_heartbeats"] = 0
+
         last_report_ts = _parse_iso_timestamp(info.get("last_report", ""))
         if last_report_ts == 0:
             continue  # never reported — registration monitor handles this
