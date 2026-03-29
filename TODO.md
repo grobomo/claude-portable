@@ -267,7 +267,7 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] `ccc board` command: reads board.json from dispatcher health endpoint (GET /board), renders a status bar showing each worker and its current phase. Inspired by Neural Pipeline TUI status bar. Color-coded: RESEARCH=blue, PLAN=cyan, TESTS=yellow, IMPLEMENT=green, VERIFY=magenta, PR=white, IDLE=gray.
   - PR title: "feat: ccc board command with pipeline status visualization"
 
-- [ ] Dispatcher can interrupt workers via API: POST to worker's /interrupt endpoint. Used by `ccc interrupt worker-1` and by dispatcher when reprioritizing tasks.
+- [x] Dispatcher can interrupt workers via API: POST to worker's /interrupt endpoint. Used by `ccc interrupt worker-1` and by dispatcher when reprioritizing tasks.
   - PR title: "feat: dispatcher interrupts workers via HTTP API"
 
 - [ ] Set up Neural Pipeline (react/) as a ccc-managed project. Create TODO.md in react/ with improvement tasks. Workers develop it using continuous-claude with branches/PRs against the react repo. First tasks: fix monitor status bar, make phases actually enforce gates, add API endpoint for status queries.
