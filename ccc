@@ -624,6 +624,10 @@ def launch_new(name=None, continuous_repo=None, continuous_branch="main", role=N
         env_vars.setdefault("CONTINUOUS_CLAUDE_ENABLED", "true")
         env_vars.setdefault("CONTINUOUS_CLAUDE_REPO", CFG.get("repo_url", ""))
         env_vars.setdefault("CONTINUOUS_CLAUDE_BRANCH", "main")
+        # Pass dispatcher URL so workers can register and report status
+        dispatcher_url = CFG.get("dispatcher_url", "")
+        if dispatcher_url:
+            env_vars.setdefault("DISPATCHER_URL", dispatcher_url)
 
     # Dispatcher-specific env vars (read from .env or ccc.config.json)
     # Dispatcher watches git (TODO.md) and manages EC2 fleet -- no Teams polling.
