@@ -170,5 +170,147 @@ class TestGetChatContextPrompt(unittest.TestCase):
         self.assertIn("NEW MESSAGE", result)
 
 
+class TestConversationContinuity(unittest.TestCase):
+    """Test that chat cache preserves context across multiple exchanges.
+
+    Simulates the flow: user sends "what is 2+2", Claude replies "4",
+    user sends "multiply that by 10". Verifies the cache and context
+    prompt contain the full conversation so Claude can answer "40".
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self._orig = bridge.CHAT_CACHE_DIR
+        bridge.CHAT_CACHE_DIR = self.tmpdir
+
+    def tearDown(self):
+        bridge.CHAT_CACHE_DIR = self._orig
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_second_message_sees_first_exchange(self):
+        """After caching msg1 + reply, cache files contain the full exchange."""
+        # Step 1: User asks "what is 2+2"
+        msg1 = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        bridge.update_chat_cache(
+            [msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        # Step 2: User asks "multiply that by 10" — cache should contain prior context
+        msg2 = _make_message("Alice", "multiply that by 10", ts="2026-03-28T10:01:00Z")
+        bridge.update_chat_cache(
+            [msg2, msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        # Verify group chat has full conversation
+        with open(os.path.join(self.tmpdir, "group-chat.txt")) as f:
+            group = f.read()
+        self.assertIn("what is 2+2", group)
+        self.assertIn("Claude Bot: 4", group)
+        self.assertIn("multiply that by 10", group)
+
+    def test_user_file_has_full_exchange(self):
+        """Per-user file shows both messages and Claude's reply."""
+        msg1 = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        bridge.update_chat_cache(
+            [msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        msg2 = _make_message("Alice", "multiply that by 10", ts="2026-03-28T10:01:00Z")
+        bridge.update_chat_cache(
+            [msg2, msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        user_file = os.path.join(self.tmpdir, "users", "Alice.txt")
+        with open(user_file) as f:
+            content = f.read()
+        self.assertIn("what is 2+2", content)
+        self.assertIn("Claude Bot: 4", content)
+        self.assertIn("multiply that by 10", content)
+
+    def test_context_prompt_includes_files_after_exchange(self):
+        """get_chat_context_prompt references both group and user files."""
+        msg1 = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        bridge.update_chat_cache(
+            [msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        prompt = bridge.get_chat_context_prompt("Alice")
+        self.assertIn("group-chat.txt", prompt)
+        self.assertIn("Alice.txt", prompt)
+        self.assertIn("CONTEXT", prompt)
+        self.assertIn("NEW MESSAGE", prompt)
+
+    def test_chronological_order_preserved(self):
+        """Messages appear in chronological order in the cache."""
+        msg1 = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        msg2 = _make_message("Alice", "multiply that by 10", ts="2026-03-28T10:01:00Z")
+        # Graph API returns newest first
+        bridge.update_chat_cache(
+            [msg2, msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        with open(os.path.join(self.tmpdir, "group-chat.txt")) as f:
+            content = f.read()
+        # "what is 2+2" should appear before "multiply that by 10"
+        pos_first = content.index("what is 2+2")
+        pos_second = content.index("multiply that by 10")
+        self.assertLess(pos_first, pos_second,
+                        "First message should appear before second in chronological order")
+
+    def test_multiple_users_isolated(self):
+        """Two users' conversations don't bleed into each other's files."""
+        msg_a = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        msg_b = _make_message("Bob", "what is 3+3", ts="2026-03-28T10:00:30Z")
+        bridge.update_chat_cache(
+            [msg_b, msg_a],
+            bot_replies=[
+                ("Alice", "what is 2+2", "4"),
+                ("Bob", "what is 3+3", "6"),
+            ],
+        )
+
+        with open(os.path.join(self.tmpdir, "users", "Alice.txt")) as f:
+            alice = f.read()
+        with open(os.path.join(self.tmpdir, "users", "Bob.txt")) as f:
+            bob = f.read()
+
+        self.assertIn("2+2", alice)
+        self.assertIn("Claude Bot: 4", alice)
+        self.assertNotIn("3+3", alice)
+
+        self.assertIn("3+3", bob)
+        self.assertIn("Claude Bot: 6", bob)
+        self.assertNotIn("2+2", bob)
+
+    def test_reply_capture_accumulates(self):
+        """Multiple reply captures build up conversation history."""
+        msg1 = _make_message("Alice", "what is 2+2", ts="2026-03-28T10:00:00Z")
+        bridge.update_chat_cache(
+            [msg1],
+            bot_replies=[("Alice", "what is 2+2", "4")],
+        )
+
+        msg2 = _make_message("Alice", "multiply that by 10", ts="2026-03-28T10:01:00Z")
+        bridge.update_chat_cache(
+            [msg2, msg1],
+            bot_replies=[
+                ("Alice", "what is 2+2", "4"),
+                ("Alice", "multiply that by 10", "40"),
+            ],
+        )
+
+        with open(os.path.join(self.tmpdir, "group-chat.txt")) as f:
+            content = f.read()
+        self.assertIn("Claude Bot: 4", content)
+        self.assertIn("Claude Bot: 40", content)
+
+
 if __name__ == "__main__":
     unittest.main()
