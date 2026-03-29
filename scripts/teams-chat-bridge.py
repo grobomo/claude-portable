@@ -750,8 +750,11 @@ def poll_once(chat_id, trigger, state, workspace=None):
             result = get_fleet_status(workspace)
             print(f"  [{rid}] Fleet status collected ({len(result)} chars)")
         else:
-            print(f"  [{rid}] Running Claude locally...")
-            result = run_claude_locally(prompt, workspace=workspace)
+            # Inject chat context so Claude sees conversation history
+            context_prefix = get_chat_context_prompt(sender)
+            contextualized_prompt = context_prefix + prompt
+            print(f"  [{rid}] Running Claude locally (with chat context)...")
+            result = run_claude_locally(contextualized_prompt, workspace=workspace)
             print(f"  [{rid}] Claude result: {result[:80]}")
 
         # Check if this is a work request that should be queued
