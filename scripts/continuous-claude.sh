@@ -1,5 +1,5 @@
 #!/bin/bash
-# Continuous Claude runner -- loops through TODO.md tasks via micro-PRs.
+# Continuous Claude runner -- loops through $TASK_FILE tasks via micro-PRs.
 # Each task runs through an 8-stage TDD pipeline with separate claude invocations:
 #   0. WHY       -> /data/pipeline/task-{N}/00-why.md (task justification; PROCEED or SKIP)
 #   1. RESEARCH  -> /data/pipeline/task-{N}/01-research.md
@@ -33,6 +33,16 @@ MAX_RETRIES="${CONTINUOUS_CLAUDE_MAX_RETRIES:-2}"
 IDLE_TIMEOUT="${CONTINUOUS_CLAUDE_IDLE_TIMEOUT:-30}"  # minutes
 INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
 DISPATCHER_URL="${DISPATCHER_URL:-}"
+
+# Task file: use tasks.md from speckit if available, else TODO.md
+# This lets continuous-claude consume speckit output directly.
+detect_task_file() {
+  if [ -f "TODO.md" ]; then echo "TODO.md"; return; fi
+  local speckit_tasks
+  speckit_tasks=$(ls -t .specs/*/tasks.md 2>/dev/null | head -1)
+  if [ -n "$speckit_tasks" ]; then echo "$speckit_tasks"; return; fi
+  echo "TODO.md"
+}
 
 # Redirect all output to log file (and stdout for docker logs)
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -78,6 +88,8 @@ else
 fi
 
 echo "[+] Working directory: $(pwd)"
+TASK_FILE=$(detect_task_file)
+echo "[+] Task file: $TASK_FILE"
 echo ""
 
 # --- Safety net: merge any leftover PRs from previous runs ---
@@ -121,11 +133,11 @@ check_api_flags() {
 
 # --- Check if all tasks are done ---
 all_tasks_done() {
-  if [ ! -f "TODO.md" ]; then
-    echo "WARNING: No TODO.md found."
+  if [ ! -f "$TASK_FILE" ]; then
+    echo "WARNING: No $TASK_FILE found."
     return 0
   fi
-  if grep -qE '^\s*- \[ \]' TODO.md; then
+  if grep -qE '^\s*- \[ \]' $TASK_FILE; then
     return 1
   fi
   return 0
@@ -133,11 +145,11 @@ all_tasks_done() {
 
 # --- Count remaining tasks ---
 count_remaining() {
-  if [ ! -f "TODO.md" ]; then
+  if [ ! -f "$TASK_FILE" ]; then
     echo "0"
     return
   fi
-  grep -cE '^\s*- \[ \]' TODO.md 2>/dev/null || echo "0"
+  grep -cE '^\s*- \[ \]' $TASK_FILE 2>/dev/null || echo "0"
 }
 
 # --- Get claimed task numbers ---
@@ -168,7 +180,7 @@ get_claimed_tasks() {
 # --- Check if a task is blocked by unmet dependencies ---
 # Returns 0 if blocked, 1 if not blocked
 is_task_blocked() {
-  local task_line_num="$1"  # actual line number in TODO.md
+  local task_line_num="$1"  # actual line number in $TASK_FILE
   if [ -z "$task_line_num" ]; then
     return 1
   fi
@@ -177,11 +189,11 @@ is_task_blocked() {
   local deps=""
   local next=$((task_line_num + 1))
   local total_lines
-  total_lines=$(wc -l < TODO.md)
+  total_lines=$(wc -l < $TASK_FILE)
 
   while [ "$next" -le "$total_lines" ]; do
     local sub
-    sub=$(sed -n "${next}p" TODO.md)
+    sub=$(sed -n "${next}p" $TASK_FILE)
     # Stop at next task item
     if echo "$sub" | grep -qE '^\s*- \['; then
       break
@@ -198,9 +210,9 @@ is_task_blocked() {
         local dep_line
         dep_line=$(echo "$ref" | grep -oE '[0-9]+' || echo "")
         if [ -n "$dep_line" ]; then
-          # Check if that line is checked in TODO.md
+          # Check if that line is checked in $TASK_FILE
           local dep_content
-          dep_content=$(sed -n "${dep_line}p" TODO.md 2>/dev/null || echo "")
+          dep_content=$(sed -n "${dep_line}p" $TASK_FILE 2>/dev/null || echo "")
           if echo "$dep_content" | grep -qE '^\s*- \[ \]'; then
             echo "  Task at line ${task_line_num} blocked by unchecked dependency at line ${dep_line}"
             return 0  # blocked
@@ -216,7 +228,7 @@ is_task_blocked() {
 
 # --- Find next unclaimed task number ---
 find_next_task() {
-  if [ ! -f "TODO.md" ]; then
+  if [ ! -f "$TASK_FILE" ]; then
     echo ""
     return
   fi
@@ -239,7 +251,7 @@ find_next_task() {
       continue
     fi
 
-    # Check dependencies — get the actual line number from TODO.md
+    # Check dependencies — get the actual line number from $TASK_FILE
     local actual_line
     actual_line=$(echo "$line" | cut -d: -f1)
     if is_task_blocked "$actual_line"; then
@@ -248,7 +260,7 @@ find_next_task() {
 
     echo "$task_num"
     return
-  done < <(grep -nE '^\s*- \[ \]' TODO.md | head -20)
+  done < <(grep -nE '^\s*- \[ \]' $TASK_FILE | head -20)
 
   echo ""
 }
@@ -256,8 +268,8 @@ find_next_task() {
 # --- Get task description for a task number ---
 get_task_description() {
   local task_num="$1"
-  # Find the Nth unchecked task in TODO.md (1-indexed)
-  grep -E '^\s*- \[ \]' TODO.md | sed -n "${task_num}p" | sed 's/^\s*- \[ \] //'
+  # Find the Nth unchecked task in $TASK_FILE (1-indexed)
+  grep -E '^\s*- \[ \]' $TASK_FILE | sed -n "${task_num}p" | sed 's/^\s*- \[ \] //'
 }
 
 # --- Get PR title for a task ---
@@ -265,7 +277,7 @@ get_pr_title() {
   local task_num="$1"
   # Find the Nth unchecked task block and extract "PR title:" line
   local task_line
-  task_line=$(grep -nE '^\s*- \[ \]' TODO.md | sed -n "${task_num}p" | cut -d: -f1)
+  task_line=$(grep -nE '^\s*- \[ \]' $TASK_FILE | sed -n "${task_num}p" | cut -d: -f1)
   if [ -z "$task_line" ]; then
     echo "feat: task ${task_num}"
     return
@@ -273,10 +285,10 @@ get_pr_title() {
   # Look at the line after the task for "PR title:"
   local next_line=$((task_line + 1))
   local pr_title
-  pr_title=$(sed -n "${next_line}p" TODO.md | grep -oP '(?<=PR title: ").*(?=")' || echo "")
+  pr_title=$(sed -n "${next_line}p" $TASK_FILE | grep -oP '(?<=PR title: ").*(?=")' || echo "")
   if [ -z "$pr_title" ]; then
     # Try without quotes
-    pr_title=$(sed -n "${next_line}p" TODO.md | grep -oP '(?<=PR title: ).*' | tr -d '"' || echo "")
+    pr_title=$(sed -n "${next_line}p" $TASK_FILE | grep -oP '(?<=PR title: ).*' | tr -d '"' || echo "")
   fi
   echo "${pr_title:-feat: task ${task_num}}"
 }
@@ -635,10 +647,10 @@ You must critically evaluate whether this task should be done at all. Answer the
 1. **Why does this task need to exist?** What problem does it solve?
 2. **Is there already a simpler solution?** Check if existing code already handles this, or if a config change would suffice.
 3. **Should this task be rejected?** Is it a duplicate of completed work? Is it obsolete?
-4. **Should it be merged with another task?** Check TODO.md for related unchecked tasks.
+4. **Should it be merged with another task?** Check $TASK_FILE for related unchecked tasks.
 5. **Should it be split into smaller tasks?** Is this too broad for a single PR?
 
-Read TODO.md and scan the codebase before answering. Be specific — cite files and line numbers.
+Read $TASK_FILE and scan the codebase before answering. Be specific — cite files and line numbers.
 
 Write your analysis to '${why_file}'. Your analysis MUST end with exactly one of these verdicts on the LAST LINE:
   VERDICT: PROCEED — task is justified and ready for implementation
@@ -661,7 +673,7 @@ CRITICAL: Write the analysis to ${why_file} using the Write tool. The last line 
   fi
   echo "  GATE 0 PASSED: WHY verdict = ${verdict}"
   if echo "$verdict" | grep -q "SKIP"; then
-    echo "  Task #${task_num} SKIPPED by WHY phase — marking in TODO.md"
+    echo "  Task #${task_num} SKIPPED by WHY phase — marking in $TASK_FILE"
     # Clean up branch
     git checkout main
     git branch -D "$branch_name" 2>/dev/null || true
@@ -769,7 +781,7 @@ CRITICAL: The verdict MUST be one of: PROCEED, ALREADY_DONE, REFACTOR_FIRST"
     python3 -c "
 import re, sys
 task_num = int(sys.argv[1])
-with open('TODO.md') as f:
+with open('$TASK_FILE') as f:
     lines = f.readlines()
 count = 0
 for i, line in enumerate(lines):
@@ -778,10 +790,10 @@ for i, line in enumerate(lines):
         if count == task_num:
             lines[i] = line.replace('- [ ]', '- [x]', 1)
             break
-with open('TODO.md', 'w') as f:
+with open('$TASK_FILE', 'w') as f:
     f.writelines(lines)
 " "$task_num" 2>/dev/null || true
-    git add TODO.md 2>/dev/null && git commit -m "chore: skip task ${task_num} (already implemented per review)" 2>/dev/null && git push origin "$BRANCH" 2>/dev/null || true
+    git add $TASK_FILE 2>/dev/null && git commit -m "chore: skip task ${task_num} (already implemented per review)" 2>/dev/null && git push origin "$BRANCH" 2>/dev/null || true
     git branch -D "$branch_name" 2>/dev/null || true
     git push origin --delete "$branch_name" 2>/dev/null || true
     return 0
@@ -1057,10 +1069,10 @@ TDD pipeline stages completed:
 
    (If PR already exists from branch push, use: gh pr edit --body '...' instead)
 
-3. Mark the task as done in TODO.md:
+3. Mark the task as done in $TASK_FILE:
    - Find task #${task_num} (the ${task_num}th unchecked '- [ ]' item)
    - Change '- [ ]' to '- [x]'
-   - git add TODO.md && git commit -m 'chore: mark task ${task_num} complete'
+   - git add $TASK_FILE && git commit -m 'chore: mark task ${task_num} complete'
    - git push origin ${branch_name}
 
 4. Merge the PR:
@@ -1230,7 +1242,7 @@ while true; do
   if all_tasks_done; then
     echo ""
     echo "CONTINUOUS_CLAUDE_PROJECT_COMPLETE"
-    echo "All tasks in TODO.md are done. Exiting."
+    echo "All tasks in $TASK_FILE are done. Exiting."
     exit 0
   fi
 
