@@ -347,6 +347,7 @@ def annotate_todo_with_deps(content: str, deps: dict[int, list[int]]) -> str:
     if not deps:
         return content
 
+    trailing_newline = content.endswith("\n")
     lines = content.splitlines()
 
     # Build set of completed task line numbers and map of task lines
