@@ -15,6 +15,7 @@ Environment variables:
 """
 
 import argparse
+import calendar
 import json
 import logging
 import os
@@ -1239,7 +1240,8 @@ def _build_board() -> dict:
             time_in_phase_s = None
             if phase_start:
                 try:
-                    pt = time.mktime(time.strptime(phase_start, "%Y-%m-%dT%H:%M:%SZ"))
+                    import calendar
+                    pt = calendar.timegm(time.strptime(phase_start, "%Y-%m-%dT%H:%M:%SZ"))
                     time_in_phase_s = int(now - pt)
                 except (ValueError, OverflowError):
                     pass

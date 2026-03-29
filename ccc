@@ -2237,6 +2237,133 @@ def cmd_work(args):
     print()
 
 
+# ── Board ─────────────────────────────────────────────────────────────────────
+
+# Phase color codes for board display
+_PHASE_COLORS = {
+    "RESEARCH": "\033[94m",   # blue
+    "REVIEW":   "\033[96m",   # cyan
+    "PLAN":     "\033[96m",   # cyan
+    "TESTS":    "\033[93m",   # yellow
+    "IMPLEMENT":"\033[92m",   # green
+    "VERIFY":   "\033[95m",   # magenta
+    "PR":       "\033[97m",   # white
+    "idle":     "\033[90m",   # gray
+}
+_RESET = "\033[0m"
+
+
+def _fmt_phase(phase):
+    """Color-code a pipeline phase name."""
+    color = _PHASE_COLORS.get(phase, _PHASE_COLORS.get(phase.upper(), ""))
+    return f"{color}{phase}{_RESET}" if color else phase
+
+
+def _fmt_duration(seconds):
+    """Format seconds as human-readable duration."""
+    if seconds is None or seconds < 0:
+        return "?"
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m{seconds % 60}s"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60}m"
+
+
+def cmd_board(args):
+    """Pipeline status board: show worker phases and task assignments from dispatcher."""
+    dispatcher_name = args.name
+    instances = get_instances()
+    disp = None
+    for inst in instances:
+        label = inst.get("label") or inst.get("name", "")
+        if label == dispatcher_name or label == f"ccc-{dispatcher_name}":
+            disp = inst
+            break
+    if not disp or disp.get("state") != "running":
+        print(f"  Dispatcher '{dispatcher_name}' not found or not running.")
+        print("  Use --name to specify a different dispatcher instance.")
+        return
+
+    ip = disp.get("ip", "")
+    if not ip:
+        print(f"  Dispatcher '{dispatcher_name}' has no IP address.")
+        return
+
+    # Fetch board from dispatcher health endpoint
+    import urllib.request
+    url = f"http://{ip}:8080/board"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            board = json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"  Failed to fetch board from {url}: {e}")
+        return
+
+    if args.raw_json:
+        print(json.dumps(board, indent=2))
+        return
+
+    summary = board.get("summary", {})
+    workers = board.get("workers", [])
+    tasks = board.get("tasks", [])
+
+    print("=" * 72)
+    print("  CCC Pipeline Board")
+    print("=" * 72)
+
+    # Summary
+    print(f"\n  Tasks: {summary.get('completed', 0)} done, "
+          f"{summary.get('in_progress', 0)} in progress, "
+          f"{summary.get('pending', 0)} pending, "
+          f"{summary.get('blocked', 0)} blocked "
+          f"({summary.get('total_tasks', 0)} total)")
+    print(f"  Workers: {summary.get('busy_workers', 0)} busy, "
+          f"{summary.get('idle_workers', 0)} idle "
+          f"({summary.get('total_workers', 0)} total)")
+
+    # Workers
+    print(f"\n  {'Worker':<18} {'Status':<14} {'Phase':<14} {'Time':<10} {'Task'}")
+    print("  " + "-" * 68)
+    for w in sorted(workers, key=lambda x: x.get("worker_id", "")):
+        wid = w.get("worker_id", "?")[:17]
+        status = w.get("status", "?")
+        phase = w.get("phase", "idle")
+        duration = _fmt_duration(w.get("time_in_phase_s"))
+        task_desc = w.get("task_description", "")[:30]
+        if not task_desc and phase == "idle":
+            task_desc = "-"
+        healthy = w.get("healthy", True)
+        health_mark = " !" if not healthy else ""
+
+        phase_display = _fmt_phase(phase)
+        print(f"  {wid:<18} {status:<14} {phase_display:<23} {duration:<10} {task_desc}{health_mark}")
+
+    # Tasks
+    if tasks:
+        print(f"\n  {'Status':<14} {'Worker':<16} {'Phase':<14} {'Task'}")
+        print("  " + "-" * 68)
+        for t in tasks:
+            status = t.get("status", "?")
+            worker = t.get("worker", "-") or "-"
+            phase = t.get("phase") or "-"
+            desc = t.get("description", "")[:50]
+
+            if status == "blocked":
+                status_display = f"\033[91m{status}\033[0m"
+            elif status == "in_progress":
+                status_display = f"\033[92m{status}\033[0m"
+            else:
+                status_display = status
+
+            phase_display = _fmt_phase(phase) if phase != "-" else phase
+            print(f"  {status_display:<23} {worker:<16} {phase_display:<23} {desc}")
+
+    print(f"\n  Updated: {board.get('updated_at', '?')}")
+    print()
+
+
 # ── Teams Dispatch ──────────────────────────────────────────────────────────
 
 def cmd_cleanup(args):

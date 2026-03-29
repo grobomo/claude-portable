@@ -112,6 +112,65 @@ class TestBuildBoard(unittest.TestCase):
         self.assertEqual(w["task_description"], "")
         self.assertTrue(w["healthy"])  # default True
 
+    def test_time_in_phase_computed(self):
+        """time_in_phase_s calculated from pipeline.phases.<phase>.start."""
+        past = time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 120)
+        )
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "busy",
+                "pipeline": {
+                    "stage": "IMPLEMENT",
+                    "phases": {"IMPLEMENT": {"start": past, "status": "running"}},
+                },
+                "task": {"task_num": 3},
+            }
+
+        board = gd._build_board()
+        w = board["workers"][0]
+        self.assertEqual(w["phase"], "IMPLEMENT")
+        self.assertEqual(w["phase_start"], past)
+        self.assertIsNotNone(w["time_in_phase_s"])
+        self.assertGreaterEqual(w["time_in_phase_s"], 115)
+        self.assertLessEqual(w["time_in_phase_s"], 130)
+
+    def test_idle_worker_has_null_time_in_phase(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "idle",
+                "pipeline": {"stage": "idle"},
+                "task": {},
+            }
+
+        board = gd._build_board()
+        w = board["workers"][0]
+        self.assertIsNone(w["phase_start"])
+        self.assertIsNone(w["time_in_phase_s"])
+
+    def test_summary_worker_counts(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "busy",
+                "pipeline": {"stage": "TESTS"},
+                "task": {},
+            }
+            gd._fleet_roster["w2"] = {
+                "status": "idle",
+                "pipeline": {"stage": "idle"},
+                "task": {},
+            }
+            gd._fleet_roster["w3"] = {
+                "status": "busy",
+                "pipeline": {"stage": "PR"},
+                "task": {},
+            }
+
+        board = gd._build_board()
+        self.assertEqual(board["summary"]["busy_workers"], 2)
+        self.assertEqual(board["summary"]["idle_workers"], 1)
+        self.assertEqual(board["summary"]["total_workers"], 3)
+
 
 class TestUpdateBoard(unittest.TestCase):
     def setUp(self):
@@ -164,6 +223,180 @@ class TestUpdateBoard(unittest.TestCase):
         with open(self.board_file) as f:
             board = json.load(f)
         self.assertEqual(board["workers"], [])
+
+
+class TestBoardTaskSummary(unittest.TestCase):
+    """Test that board includes task list and summary from TODO.md."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self._orig_repo = gd.REPO_DIR
+        gd.REPO_DIR = self.tmpdir
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    def tearDown(self):
+        gd.REPO_DIR = self._orig_repo
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_todo(self, content):
+        with open(os.path.join(self.tmpdir, "TODO.md"), "w") as f:
+            f.write(content)
+
+    def test_task_counts_in_summary(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [x] Done 1\n"
+            "- [x] Done 2\n"
+            "- [ ] Pending 3\n"
+            "- [ ] Pending 4\n"
+        )
+        board = gd._build_board()
+        s = board["summary"]
+        self.assertEqual(s["total_tasks"], 4)
+        self.assertEqual(s["completed"], 2)
+        self.assertEqual(s["pending"], 2)
+
+    def test_tasks_is_list_of_pending(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [x] Done 1\n"
+            "- [ ] Pending 2\n"
+            "- [ ] Pending 3\n"
+        )
+        board = gd._build_board()
+        # tasks list only contains pending (unchecked) items
+        self.assertIsInstance(board["tasks"], list)
+        self.assertEqual(len(board["tasks"]), 2)
+
+    def test_no_todo_file_gives_empty(self):
+        # No TODO.md written — REPO_DIR points to empty tmpdir
+        board = gd._build_board()
+        self.assertEqual(board["summary"]["total_tasks"], 0)
+        self.assertEqual(board["tasks"], [])
+
+    def test_summary_always_present(self):
+        self._write_todo("")
+        board = gd._build_board()
+        self.assertIn("summary", board)
+        self.assertIn("tasks", board)
+        for key in ("total_tasks", "completed", "pending", "blocked",
+                     "idle_workers", "busy_workers", "total_workers"):
+            self.assertIn(key, board["summary"])
+
+    def test_task_worker_assignment(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [ ] Build feature X\n"
+        )
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "busy",
+                "pipeline": {"stage": "IMPLEMENT"},
+                "task": {"description": "Build feature X"},
+            }
+        board = gd._build_board()
+        self.assertEqual(len(board["tasks"]), 1)
+        t = board["tasks"][0]
+        self.assertEqual(t["worker"], "w1")
+        self.assertEqual(t["phase"], "IMPLEMENT")
+        self.assertEqual(t["status"], "in_progress")
+
+    def test_unassigned_task_is_pending(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [ ] Unassigned task\n"
+        )
+        board = gd._build_board()
+        t = board["tasks"][0]
+        self.assertEqual(t["status"], "pending")
+        self.assertIsNone(t["worker"])
+
+    def test_blocked_task_status(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [ ] Blocked task\n"
+            "  - depends-on: 99\n"
+        )
+        board = gd._build_board()
+        t = board["tasks"][0]
+        self.assertEqual(t["status"], "blocked")
+        self.assertTrue(t["blocked"])
+        self.assertEqual(board["summary"]["blocked"], 1)
+
+    def test_in_progress_count(self):
+        self._write_todo(
+            "# Tasks\n"
+            "- [ ] Task A\n"
+            "- [ ] Task B\n"
+        )
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["w1"] = {
+                "status": "busy",
+                "pipeline": {"stage": "TESTS"},
+                "task": {"description": "Task A"},
+            }
+        board = gd._build_board()
+        self.assertEqual(board["summary"]["in_progress"], 1)
+        self.assertEqual(board["summary"]["pending"], 1)
+
+
+class TestBoardEndpoint(unittest.TestCase):
+    """Test GET /board HTTP endpoint."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.port = 18083
+        gd.HEALTH_PORT = cls.port
+        cls.server = HTTPServer(("127.0.0.1", cls.port), gd.HealthHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def setUp(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster.clear()
+
+    def _get(self, path):
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = resp.read().decode()
+        conn.close()
+        return resp.status, json.loads(body) if body else {}
+
+    def test_board_returns_200(self):
+        status, data = self._get("/board")
+        self.assertEqual(status, 200)
+        self.assertIn("workers", data)
+        self.assertIn("updated_at", data)
+
+    def test_board_reflects_roster(self):
+        with gd._fleet_roster_lock:
+            gd._fleet_roster["board-w"] = {
+                "status": "idle",
+                "healthy": True,
+                "pipeline": {"stage": "idle"},
+                "task": {},
+                "idle_seconds": 100,
+                "maintenance": False,
+                "last_heartbeat": "2026-03-29T12:00:00Z",
+            }
+        status, data = self._get("/board")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["workers"]), 1)
+        self.assertEqual(data["workers"][0]["worker_id"], "board-w")
+
+    def test_board_has_tasks_field(self):
+        status, data = self._get("/board")
+        self.assertIn("tasks", data)
 
 
 if __name__ == "__main__":
