@@ -632,6 +632,56 @@ with open('TODO.md', 'w') as f:
     return 0
   fi
 
+  # Handle REFACTOR_FIRST: create a separate refactor PR before the feature
+  if [ "$review_verdict" = "REFACTOR_FIRST" ]; then
+    echo "  [REVIEW] Codebase needs refactoring before feature work."
+    local refactor_branch="continuous-claude/refactor-for-task-${task_num}"
+
+    # Switch to a refactor branch off main
+    git checkout "$BRANCH" 2>/dev/null
+    git pull origin "$BRANCH" 2>/dev/null
+    git checkout -b "$refactor_branch"
+    git push -u origin "$refactor_branch" 2>/dev/null
+
+    local refactor_prompt="You are instance '${INSTANCE_ID}' preparing for task #${task_num}.
+
+TASK (upcoming): ${task_desc}
+
+The code review at ${review_file} identified that the codebase needs refactoring
+before this feature can be cleanly implemented.
+
+Read ${review_file} carefully, especially the 'Refactoring Needed' and 'Dead Code' sections.
+
+Your job is to ONLY refactor — do NOT implement the feature itself:
+1. Remove dead code identified in the review
+2. Consolidate duplicate implementations
+3. Clean up files that conflict with the upcoming feature
+4. Run existing tests to make sure refactoring didn't break anything: ${test_run_cmd}
+5. Commit all changes: git add -A && git commit -m 'refactor: clean up codebase for task ${task_num}'
+6. Push: git push origin ${refactor_branch}
+
+CRITICAL: Do NOT implement the feature. Only clean up and refactor.
+CRITICAL: All existing tests must still pass after refactoring."
+
+    if run_stage_with_retry "REFACTOR" "2b" "$refactor_prompt" "$stage_log"; then
+      # Create and merge refactor PR
+      gh pr create --title "refactor: clean up codebase for task ${task_num}" \
+        --body "Refactoring identified by REVIEW stage before implementing: ${task_desc}" 2>/dev/null || true
+      gh pr merge --squash --delete-branch 2>/dev/null || true
+      git checkout "$BRANCH" && git pull origin "$BRANCH"
+    else
+      echo "  [REFACTOR] Failed — continuing with feature anyway"
+      git checkout "$BRANCH" 2>/dev/null
+      git pull origin "$BRANCH" 2>/dev/null
+      git branch -D "$refactor_branch" 2>/dev/null || true
+      git push origin --delete "$refactor_branch" 2>/dev/null || true
+    fi
+
+    # Recreate the feature branch on the now-clean main
+    git checkout -b "$branch_name"
+    git push -u origin "$branch_name" 2>/dev/null
+  fi
+
   # ===== STAGE 3: PLAN =====
   local plan_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
