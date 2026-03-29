@@ -52,14 +52,14 @@ class TestReviewStageStructure(unittest.TestCase):
             elif header_lines:
                 break
         header = "\n".join(header_lines)
-        self.assertIn("7-stage", header)
+        self.assertIn("8-stage", header)
         self.assertIn("REVIEW", header)
 
     def test_stage_numbers_sequential(self):
-        """Stage comments are numbered 1-7 with no gaps or duplicates."""
+        """Stage comments are numbered 0-7 with no gaps or duplicates."""
         stage_pattern = re.compile(r"# ===== STAGE (\d+):")
         stage_nums = [int(m.group(1)) for m in stage_pattern.finditer(self.script)]
-        self.assertEqual(stage_nums, [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(stage_nums, [0, 1, 2, 3, 4, 5, 6, 7])
 
     def test_stage_names_match(self):
         """Stage names in comments match expected order."""

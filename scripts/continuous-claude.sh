@@ -1,10 +1,10 @@
 #!/bin/bash
 # Continuous Claude runner -- loops through TODO.md tasks via micro-PRs.
 # Each task runs through an 8-stage TDD pipeline with separate claude invocations:
-#   0. WHY       -> /tmp/task-{N}-why.md (task justification; PROCEED or SKIP)
-#   1. RESEARCH  -> /tmp/task-{N}-research.md
-#   2. REVIEW    -> /tmp/task-{N}-review.md (codebase audit for duplicates/dead code)
-#   3. PLAN      -> /tmp/task-{N}-plan.md
+#   0. WHY       -> /data/pipeline/task-{N}/00-why.md (task justification; PROCEED or SKIP)
+#   1. RESEARCH  -> /data/pipeline/task-{N}/01-research.md
+#   2. REVIEW    -> /data/pipeline/task-{N}/02-review.md (codebase audit for duplicates/dead code)
+#   3. PLAN      -> /data/pipeline/task-{N}/03-plan.md
 #   4. TESTS     -> write failing tests, commit to branch
 #   5. IMPLEMENT -> write code until tests pass
 #   6. VERIFY    -> full suite + lint + secret check
@@ -369,6 +369,97 @@ run_stage_with_retry() {
   return 1
 }
 
+# --- Reviewer Claude: separate invocation to review stage output ---
+# After each stage (except PR), a separate Claude reviews the output.
+# Returns 0 if approved (rating >= 3), 1 if rejected.
+# Writes review to pipeline_dir/review-{stage_name}.md
+run_reviewer() {
+  local stage_name="$1"
+  local pipeline_dir="$2"
+  local stage_log="$3"
+  local max_rejections="${4:-2}"
+
+  local review_file="${pipeline_dir}/review-${stage_name}.md"
+
+  local reviewer_prompt="You are a REVIEWER. You did NOT write the code or analysis being reviewed.
+Read ALL .md files in ${pipeline_dir}/ to understand the full pipeline context.
+Focus your review on the latest stage output: ${stage_name}.
+
+Rate the ${stage_name} output on a scale of 1-5:
+- 1: Completely inadequate, missing key requirements
+- 2: Major issues that need rework
+- 3: Acceptable with minor issues
+- 4: Good quality, minor suggestions only
+- 5: Excellent, no changes needed
+
+Write your review to ${review_file}. The LAST LINE must be exactly one of:
+  REVIEW: APPROVE (rating >= 3)
+  REVIEW: REJECT (rating < 3, with specific reasons)
+
+Be specific about what needs to change if rejecting."
+
+  local attempt=0
+  while [ "$attempt" -lt "$max_rejections" ]; do
+    echo "  [Reviewer: ${stage_name}] Review attempt $((attempt + 1))/${max_rejections}"
+
+    local review_exit=0
+    claude --print \
+      --dangerously-skip-permissions \
+      "$reviewer_prompt" \
+      2>&1 || review_exit=$?
+
+    if [ "$review_exit" -ne 0 ]; then
+      echo "  [Reviewer: ${stage_name}] Claude reviewer failed (exit ${review_exit}) — treating as approved"
+      return 0
+    fi
+
+    if [ ! -f "$review_file" ]; then
+      echo "  [Reviewer: ${stage_name}] No review file written — treating as approved"
+      return 0
+    fi
+
+    local verdict
+    verdict=$(grep -oE 'REVIEW: (APPROVE|REJECT)' "$review_file" | tail -1 || true)
+
+    if echo "$verdict" | grep -q "APPROVE"; then
+      echo "  [Reviewer: ${stage_name}] APPROVED"
+      # Log review result
+      python3 -c "
+import json, os, sys
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+data.setdefault('reviews', {})[sys.argv[2]] = {'status': 'approved', 'attempt': int(sys.argv[3])}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+" "$stage_log" "$stage_name" "$((attempt + 1))" 2>/dev/null || true
+      return 0
+    fi
+
+    echo "  [Reviewer: ${stage_name}] REJECTED (attempt $((attempt + 1))/${max_rejections})"
+    attempt=$((attempt + 1))
+
+    if [ "$attempt" -ge "$max_rejections" ]; then
+      echo "  [Reviewer: ${stage_name}] Max rejections reached — marking task as blocked"
+      python3 -c "
+import json, os, sys
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+data.setdefault('reviews', {})[sys.argv[2]] = {'status': 'rejected', 'attempts': int(sys.argv[3])}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+" "$stage_log" "$stage_name" "$attempt" 2>/dev/null || true
+      return 1
+    fi
+  done
+  return 0
+}
+
 # --- Detect the test framework used in a repo ---
 # Outputs a multi-line string: FRAMEWORK, RUN_CMD, NOTES
 # Usage: read -r FRAMEWORK RUN_CMD NOTES < <(detect_test_framework /path/to/repo)
@@ -480,11 +571,18 @@ run_pipeline() {
   local pr_title="$3"
   local branch_name="continuous-claude/task-${task_num}"
 
-  local why_file="/tmp/task-${task_num}-why.md"
-  local research_file="/tmp/task-${task_num}-research.md"
-  local review_file="/tmp/task-${task_num}-review.md"
-  local plan_file="/tmp/task-${task_num}-plan.md"
-  local stage_log="/data/task-${task_num}-stages.json"
+  local pipeline_dir="/data/pipeline/task-${task_num}"
+  mkdir -p "$pipeline_dir"
+
+  local why_file="${pipeline_dir}/00-why.md"
+  local research_file="${pipeline_dir}/01-research.md"
+  local review_file="${pipeline_dir}/02-review.md"
+  local plan_file="${pipeline_dir}/03-plan.md"
+  local tests_file="${pipeline_dir}/04-tests.md"
+  local implement_file="${pipeline_dir}/05-implement.md"
+  local verify_file="${pipeline_dir}/06-verify.md"
+  local pr_file="${pipeline_dir}/07-pr.md"
+  local stage_log="${pipeline_dir}/stage-log.json"
 
   # Detect test framework for this repo
   local fw_lines
@@ -576,6 +674,9 @@ CRITICAL: Write the analysis to ${why_file} using the Write tool. The last line 
 
 TASK: ${task_desc}
 
+PIPELINE FOLDER: ${pipeline_dir}
+Before starting, read ALL .md files in ${pipeline_dir}/ to understand prior stage outputs.
+
 STAGE: RESEARCH
 Your job in this stage is ONLY to research. Do NOT write any implementation code yet.
 
@@ -599,6 +700,12 @@ CRITICAL: Write the research summary to ${research_file} using the Write tool."
     return 1
   fi
   echo "  GATE 1 PASSED: Research output exists ($(wc -c < "$research_file") chars)"
+
+  # Reviewer: RESEARCH
+  if ! run_reviewer "RESEARCH" "$pipeline_dir" "$stage_log"; then
+    echo "  Reviewer rejected RESEARCH output — aborting task"
+    return 1
+  fi
 
   # ===== STAGE 2: REVIEW =====
   local review_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
@@ -763,6 +870,12 @@ CRITICAL: Write the plan to ${plan_file} using the Write tool."
   fi
   echo "  GATE 3 PASSED: Plan output exists ($(wc -c < "$plan_file") chars)"
 
+  # Reviewer: PLAN
+  if ! run_reviewer "PLAN" "$pipeline_dir" "$stage_log"; then
+    echo "  Reviewer rejected PLAN output — aborting task"
+    return 1
+  fi
+
   # ===== STAGE 4: TESTS FIRST =====
   local tests_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
@@ -845,6 +958,12 @@ CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token
     return 1
   fi
   echo "  GATE 6 PASSED: All tests pass"
+
+  # Reviewer: IMPLEMENT
+  if ! run_reviewer "IMPLEMENT" "$pipeline_dir" "$stage_log"; then
+    echo "  Reviewer rejected IMPLEMENT output — aborting task"
+    return 1
+  fi
 
   # ===== STAGE 6: VERIFY =====
   local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.

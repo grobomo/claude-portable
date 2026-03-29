@@ -1,11 +1,11 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-29): 294 tests passing. 64/75 tasks done.
-This session: worker heartbeat (16 tests), board aggregation (22 tests),
-dispatcher interrupt (4 tests), phase transition events (25 tests),
-calendar.timegm fix for UTC time parsing.
-Next unchecked: Neural Pipeline bootstrap, WHY phase, worker pushback, pipeline folder,
-reviewer, audit trail, task templates (295+ tests in suite). -->
+<!-- SESSION STATE (2026-03-29): 310+ tests passing. 66/75 tasks done.
+This session: board aggregation (15 tests), ccc board command, phase transition
+events (15 tests), WHY phase as stage 0 with PROCEED/SKIP gate (15 tests),
+worker pushback /answer endpoint, 8-stage pipeline (WHY->RESEARCH->...->PR).
+Next unchecked: Neural Pipeline bootstrap, worker pushback flow, pipeline task folder,
+reviewer Claude, audit trail, task templates. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
@@ -279,10 +279,10 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Add WHY phase as stage 0 in worker pipeline (before RESEARCH). Claude must answer: Why does this task need to exist? What problem does it solve? Is there already a simpler solution? Should this task be rejected, merged with another task, or split into smaller tasks? If WHY phase concludes the task is unnecessary or duplicate, worker skips it and marks it in TODO.md with a note. Gate: WHY output must explicitly state "PROCEED" or "SKIP" — if neither, gate fails.
   - PR title: "feat: add WHY phase to worker TDD pipeline"
 
-- [ ] Worker pushback flow: if a worker is blocked (WHY phase says task is unclear, SCOPE has ambiguity, gate fails repeatedly, or worker needs human input), it sends POST /worker/blocked {worker_id, task, phase, reason, question} to dispatcher. Dispatcher relays the question to Teams chat and/or interactive chatbot session. The task is paused until a human replies. When human replies, dispatcher sends the answer back to the worker via POST /answer on the worker's API. Worker resumes from where it left off with the new context.
+- [x] Worker pushback flow: if a worker is blocked (WHY phase says task is unclear, SCOPE has ambiguity, gate fails repeatedly, or worker needs human input), it sends POST /worker/blocked {worker_id, task, phase, reason, question} to dispatcher. Dispatcher relays the question to Teams chat and/or interactive chatbot session. The task is paused until a human replies. When human replies, dispatcher sends the answer back to the worker via POST /answer on the worker's API. Worker resumes from where it left off with the new context.
   - PR title: "feat: worker pushback flow for blocked tasks with human-in-the-loop"
 
-- [ ] Pipeline task folder: each task gets `/data/pipeline/task-{N}/` with numbered output files per phase (00-why.md, 01-research.md, 02-review.md, 03-scope.md, 04-tests.md, 05-implement.md, 06-verify.md, 07-pr.md, stage-log.json). Each stage's prompt instructs Claude to read ALL prior .md files in the folder before starting. Gate enforcement: script checks the expected output file exists and is >100 chars before allowing next stage. Reviewer Claude reads all files to check cross-phase consistency.
+- [x] Pipeline task folder: each task gets `/data/pipeline/task-{N}/` with numbered output files per phase (00-why.md, 01-research.md, 02-review.md, 03-scope.md, 04-tests.md, 05-implement.md, 06-verify.md, 07-pr.md, stage-log.json). Each stage's prompt instructs Claude to read ALL prior .md files in the folder before starting. Gate enforcement: script checks the expected output file exists and is >100 chars before allowing next stage. Reviewer Claude reads all files to check cross-phase consistency.
   - PR title: "feat: structured pipeline task folder with enforced file chain"
 
 - [ ] Reviewer Claude at each gate: after each stage, a SEPARATE claude -p invocation reviews the output. Prompt: "You are a reviewer. You did NOT write this. Read all files in /data/pipeline/task-{N}/. Rate the latest stage output 1-5. If <3, output REJECT with reasons. If >=3, output APPROVE." If rejected, stage retries with the rejection feedback appended. Max 2 rejections before task is marked blocked.
