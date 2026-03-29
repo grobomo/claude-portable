@@ -1186,12 +1186,20 @@ def _relay_git_pull() -> bool:
             log.warning("relay git clone error: %s", e)
             return False
     try:
+        # Abort any stuck rebase/merge from previous failed pull
+        subprocess.run(["git", "rebase", "--abort"], cwd=RELAY_DIR,
+                        capture_output=True, timeout=5)
+        subprocess.run(["git", "merge", "--abort"], cwd=RELAY_DIR,
+                        capture_output=True, timeout=5)
+        # Fetch and try fast-forward first
+        subprocess.run(["git", "fetch", "origin", "main"], cwd=RELAY_DIR,
+                        capture_output=True, text=True, timeout=30)
         r = subprocess.run(
-            ["git", "pull", "--rebase", "origin", "main"],
-            cwd=RELAY_DIR, capture_output=True, text=True, timeout=30,
+            ["git", "reset", "--hard", "origin/main"],
+            cwd=RELAY_DIR, capture_output=True, text=True, timeout=10,
         )
         if r.returncode != 0:
-            log.warning("relay git pull failed: %s", r.stderr.strip())
+            log.warning("relay git reset failed: %s", r.stderr.strip())
             return False
         return True
     except Exception as e:
@@ -1200,22 +1208,50 @@ def _relay_git_pull() -> bool:
 
 
 def _relay_git_push(message: str) -> bool:
-    """Stage all changes and push to relay repo."""
+    """Stage all changes and push to relay repo.
+
+    On conflict: stash local changes, reset to remote, pop stash, recommit, push.
+    """
+    def _run(cmd, **kwargs):
+        return subprocess.run(cmd, cwd=RELAY_DIR, capture_output=True,
+                              text=True, timeout=kwargs.get("timeout", 10))
+
     try:
-        subprocess.run(["git", "add", "-A"], cwd=RELAY_DIR, capture_output=True, timeout=10)
-        r = subprocess.run(
-            ["git", "commit", "-m", message],
-            cwd=RELAY_DIR, capture_output=True, text=True, timeout=10,
-        )
+        _run(["git", "add", "-A"])
+        r = _run(["git", "commit", "-m", message])
         if r.returncode != 0 and "nothing to commit" not in r.stdout:
             log.warning("relay git commit failed: %s", r.stderr.strip())
             return False
-        r = subprocess.run(
-            ["git", "push", "origin", "main"],
-            cwd=RELAY_DIR, capture_output=True, text=True, timeout=30,
-        )
+
+        r = _run(["git", "push", "origin", "main"], timeout=30)
+        if r.returncode == 0:
+            return True
+
+        # Push rejected (concurrent push). Reset to remote, reapply our file moves.
+        log.info("relay push conflict, resetting to remote and reapplying...")
+        # Undo our commit but keep changes in working tree
+        _run(["git", "reset", "--soft", "HEAD~1"])
+        # Stash our changes
+        _run(["git", "stash"])
+        # Fast-forward to remote
+        _run(["git", "fetch", "origin", "main"], timeout=30)
+        _run(["git", "reset", "--hard", "origin/main"])
+        # Pop stash (our file moves) back
+        r = _run(["git", "stash", "pop"])
         if r.returncode != 0:
-            log.warning("relay git push failed: %s", r.stderr.strip())
+            # Stash conflict — drop stash, log, and let next poll cycle retry
+            _run(["git", "checkout", "--", "."])
+            _run(["git", "stash", "drop"])
+            log.warning("relay stash pop conflict, will retry next cycle")
+            return False
+        # Recommit and push
+        _run(["git", "add", "-A"])
+        r = _run(["git", "commit", "-m", message])
+        if r.returncode != 0 and "nothing to commit" not in r.stdout:
+            return False
+        r = _run(["git", "push", "origin", "main"], timeout=30)
+        if r.returncode != 0:
+            log.warning("relay retry push failed: %s", r.stderr.strip())
             return False
         return True
     except Exception as e:
