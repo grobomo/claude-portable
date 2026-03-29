@@ -152,6 +152,39 @@ class TestReviewVerdictParsing(unittest.TestCase):
         self.assertEqual(self._parse_verdict(review), "PROCEED")
 
 
+class TestRefactorFirstRule(unittest.TestCase):
+    """Verify the REFACTOR_FIRST handling in the pipeline."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SCRIPT_PATH) as f:
+            cls.script = f.read()
+
+    def test_refactor_first_branch_created(self):
+        """REFACTOR_FIRST creates a separate refactor branch."""
+        self.assertIn("refactor-for-task-", self.script)
+
+    def test_refactor_first_creates_pr(self):
+        """REFACTOR_FIRST creates and merges a refactor PR."""
+        self.assertIn("refactor: clean up codebase for task", self.script)
+
+    def test_refactor_first_does_not_implement(self):
+        """Refactor prompt explicitly says NOT to implement the feature."""
+        refactor_idx = self.script.index("REFACTOR_FIRST")
+        refactor_section = self.script[refactor_idx:refactor_idx + 3000]
+        self.assertIn("Do NOT implement the feature", refactor_section)
+
+    def test_feature_branch_recreated_after_refactor(self):
+        """After refactor PR merges, a new feature branch is created."""
+        refactor_section = self.script[self.script.index("REFACTOR_FIRST"):]
+        # After the refactor block, the feature branch_name should be re-created
+        self.assertIn("Recreate the feature branch", refactor_section)
+
+    def test_refactor_failure_continues(self):
+        """If refactor fails, feature work continues anyway."""
+        self.assertIn("continuing with feature anyway", self.script)
+
+
 class TestEnforcementGates(unittest.TestCase):
     """Verify enforcement gates are present and numbered correctly."""
 
