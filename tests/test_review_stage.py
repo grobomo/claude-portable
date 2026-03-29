@@ -67,7 +67,7 @@ class TestReviewStageStructure(unittest.TestCase):
         stage_names = [m.group(1) for m in stage_pattern.finditer(self.script)]
         self.assertEqual(
             stage_names,
-            ["RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
+            ["WHY", "RESEARCH", "REVIEW", "PLAN", "TESTS", "IMPLEMENT", "VERIFY", "PR"]
         )
 
     def test_run_stage_numbers_match_comments(self):
@@ -77,14 +77,14 @@ class TestReviewStageStructure(unittest.TestCase):
         )
         calls = {m.group(1): int(m.group(2)) for m in call_pattern.finditer(self.script)}
         expected = {
-            "RESEARCH": 1, "REVIEW": 2, "PLAN": 3, "TESTS": 4,
+            "WHY": 0, "RESEARCH": 1, "REVIEW": 2, "PLAN": 3, "TESTS": 4,
             "IMPLEMENT": 5, "VERIFY": 6, "PR": 7,
         }
         self.assertEqual(calls, expected)
 
     def test_review_file_variable_exists(self):
         """review_file variable is declared in run_pipeline."""
-        self.assertIn('review_file="/tmp/task-${task_num}-review.md"', self.script)
+        self.assertIn('review_file="${pipeline_dir}/02-review.md"', self.script)
 
     def test_review_prompt_includes_verdict_options(self):
         """REVIEW prompt requires one of three verdicts."""

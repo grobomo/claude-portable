@@ -1021,6 +1021,18 @@ If you cannot fix all issues after attempting, output: VERIFY_FAILED with detail
   done
   echo "  GATE 7 PASSED: No secrets, paths clean, syntax OK"
 
+  # --- Copy pipeline audit trail to repo before PR ---
+  local audit_dir=".pipeline/task-${task_num}"
+  if [ -d "$pipeline_dir" ]; then
+    echo "  Copying pipeline folder to ${audit_dir}/ for PR audit trail"
+    mkdir -p "$audit_dir"
+    cp -r "$pipeline_dir"/*.md "$audit_dir/" 2>/dev/null || true
+    cp -r "$pipeline_dir"/stage-log.json "$audit_dir/" 2>/dev/null || true
+    cp -r "$pipeline_dir"/review-*.md "$audit_dir/" 2>/dev/null || true
+    git add "$audit_dir/"
+    git commit -m "docs: add pipeline audit trail for task ${task_num}" 2>/dev/null || true
+  fi
+
   # ===== STAGE 7: PR =====
   local pr_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 

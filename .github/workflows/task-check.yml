@@ -1,0 +1,23 @@
+name: Task Template Check
+
+on:
+  push:
+    branches: [main]
+    paths: ['TODO.md']
+  pull_request:
+    branches: [main]
+    paths: ['TODO.md']
+
+jobs:
+  task-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check task template format
+        run: python scripts/check-task-template.py TODO.md

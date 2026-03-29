@@ -116,6 +116,26 @@ class TestCheckTasks(unittest.TestCase):
         errors = ct.check_tasks(tasks)
         self.assertEqual(errors, [])
 
+    def test_code_block_tasks_skipped(self):
+        """Tasks inside fenced code blocks should not be parsed."""
+        content = """\
+- [ ] Real task
+  - What: do stuff
+  - Why: because
+  - How: like this
+  - Acceptance: it works
+  - PR title: "feat: real"
+
+Example:
+```
+- [ ] Example task in code block
+  - PR title: "feat: example"
+```
+"""
+        tasks = ct.parse_tasks(content)
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]["description"], "Real task")
+
 
 if __name__ == "__main__":
     unittest.main()

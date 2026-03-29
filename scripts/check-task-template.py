@@ -18,8 +18,15 @@ def parse_tasks(content: str) -> list[dict]:
     lines = content.splitlines()
     tasks = []
     current_task = None
+    in_code_block = False
 
     for i, line in enumerate(lines):
+        # Skip fenced code blocks
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         # Unchecked task line
         if re.match(r"^\s*-\s+\[\s+\]\s+", line):
             if current_task:
