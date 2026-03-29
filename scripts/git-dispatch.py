@@ -419,7 +419,10 @@ def annotate_todo_with_deps(content: str, deps: dict[int, list[int]]) -> str:
                 insert_at += 1
             result_lines.insert(insert_at, new_line)
 
-    return "\n".join(result_lines)
+    result = "\n".join(result_lines)
+    if trailing_newline and not result.endswith("\n"):
+        result += "\n"
+    return result
 
 
 def build_dependency_analysis_prompt(todo_content: str) -> str:
