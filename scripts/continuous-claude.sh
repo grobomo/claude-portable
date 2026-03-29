@@ -658,6 +658,13 @@ CRITICAL: Write the plan to ${plan_file} using the Write tool."
 
   run_stage_with_retry "PLAN" "3" "$plan_prompt" "$stage_log" || return 1
 
+  # --- GATE 3: Plan output must exist and be >100 chars ---
+  if [ ! -f "$plan_file" ] || [ "$(wc -c < "$plan_file" 2>/dev/null || echo 0)" -lt 100 ]; then
+    echo "  GATE 3 FAILED: Plan output missing or too short (<100 chars)"
+    return 1
+  fi
+  echo "  GATE 3 PASSED: Plan output exists ($(wc -c < "$plan_file") chars)"
+
   # ===== STAGE 4: TESTS FIRST =====
   local tests_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
