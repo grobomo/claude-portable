@@ -692,7 +692,7 @@ CRITICAL: Do NOT change the tests -- only add implementation code
 CRITICAL: ALL tests must pass before committing (run: ${test_run_cmd})
 CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token\|key' --include='*.sh' --include='*.js' --include='*.py' (remove any real credentials)"
 
-  run_stage_with_retry "IMPLEMENT" "4" "$implement_prompt" "$stage_log" || return 1
+  run_stage_with_retry "IMPLEMENT" "5" "$implement_prompt" "$stage_log" || return 1
 
   # ===== STAGE 5: VERIFY =====
   local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
