@@ -270,7 +270,7 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Dispatcher can interrupt workers via API: POST to worker's /interrupt endpoint. Used by `ccc interrupt worker-1` and by dispatcher when reprioritizing tasks.
   - PR title: "feat: dispatcher interrupts workers via HTTP API"
 
-- [ ] Set up Neural Pipeline (react/) as a ccc-managed project. Create TODO.md in react/ with improvement tasks. Workers develop it using continuous-claude with branches/PRs against the react repo. First tasks: fix monitor status bar, make phases actually enforce gates, add API endpoint for status queries.
+- [x] Set up Neural Pipeline (react/) as a ccc-managed project. Create TODO.md in react/ with improvement tasks. Workers develop it using continuous-claude with branches/PRs against the react repo. First tasks: fix monitor status bar, make phases actually enforce gates, add API endpoint for status queries.
   - PR title: "feat: bootstrap Neural Pipeline as ccc-managed project"
 
 - [x] Worker sends immediate phase transition event to dispatcher when moving between stages (not waiting for next heartbeat). POST /worker/phase-change {worker_id, task, old_phase, new_phase, gate_result}. Dispatcher logs these for audit trail and updates board.json instantly.
@@ -285,17 +285,17 @@ Adapt the Neural Pipeline (react/tui.py) architecture for CCC workers. Each work
 - [x] Pipeline task folder: each task gets `/data/pipeline/task-{N}/` with numbered output files per phase (00-why.md, 01-research.md, 02-review.md, 03-scope.md, 04-tests.md, 05-implement.md, 06-verify.md, 07-pr.md, stage-log.json). Each stage's prompt instructs Claude to read ALL prior .md files in the folder before starting. Gate enforcement: script checks the expected output file exists and is >100 chars before allowing next stage. Reviewer Claude reads all files to check cross-phase consistency.
   - PR title: "feat: structured pipeline task folder with enforced file chain"
 
-- [ ] Reviewer Claude at each gate: after each stage, a SEPARATE claude -p invocation reviews the output. Prompt: "You are a reviewer. You did NOT write this. Read all files in /data/pipeline/task-{N}/. Rate the latest stage output 1-5. If <3, output REJECT with reasons. If >=3, output APPROVE." If rejected, stage retries with the rejection feedback appended. Max 2 rejections before task is marked blocked.
+- [x] Reviewer Claude at each gate: after each stage, a SEPARATE claude -p invocation reviews the output. Prompt: "You are a reviewer. You did NOT write this. Read all files in /data/pipeline/task-{N}/. Rate the latest stage output 1-5. If <3, output REJECT with reasons. If >=3, output APPROVE." If rejected, stage retries with the rejection feedback appended. Max 2 rejections before task is marked blocked.
   - PR title: "feat: separate reviewer Claude at each pipeline gate"
 
-- [ ] Commit pipeline folder to PR branch: the task folder `/data/pipeline/task-{N}/` is copied into the repo at `.pipeline/task-{N}/` and committed to the branch before PR creation. All phase outputs (why, research, review, scope, tests, implement, verify), stage-log.json, and reviewer feedback are included in the PR. This provides a full audit trail of how the task was completed. Reviewers can see the thinking process, not just the final code.
+- [x] Commit pipeline folder to PR branch: the task folder `/data/pipeline/task-{N}/` is copied into the repo at `.pipeline/task-{N}/` and committed to the branch before PR creation. All phase outputs (why, research, review, scope, tests, implement, verify), stage-log.json, and reviewer feedback are included in the PR. This provides a full audit trail of how the task was completed. Reviewers can see the thinking process, not just the final code.
   - PR title: "feat: include pipeline audit trail in PR commits"
 
 ## Task submission template (enforced)
 
 Every task in TODO.md must follow a standard template. A pre-commit hook or CI check rejects tasks that don't conform. Workers use this context to accurately complete work without guessing.
 
-- [ ] Define task template format in `.github/TASK_TEMPLATE.md`. Every unchecked TODO item must have these fields (indented under the checkbox line):
+- [x] Define task template format in `.github/TASK_TEMPLATE.md`. Every unchecked TODO item must have these fields (indented under the checkbox line):
   - **What**: one-line description of the deliverable
   - **Why**: what problem this solves, what breaks without it, user/conversation context that motivated it
   - **How**: technical approach, key files to modify, patterns to follow from existing code
