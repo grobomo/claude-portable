@@ -1,11 +1,11 @@
 # Teams Integration — Continuous Claude Tasks
 
-<!-- SESSION STATE (2026-03-28): 16 commits on main (not pushed), 101 tests passing.
-Key features shipped: git relay polling, fleet monitor, leader election, task routing,
-area affinity, task dependencies, config bundle system, worker health API.
-Untracked k8s files (Dockerfile.k8s, k8s/, scripts/k8s-dispatch.py) need to be
-committed or moved to teams-helper repo. Hook runners fixed (stdin parse, output format).
-Next: REVIEW stage in TDD pipeline, or worker zero-touch boot. Push when ready. -->
+<!-- SESSION STATE (2026-03-28): All commits pushed. 127 tests passing.
+Shipped this session: REVIEW stage (stage 2) in TDD pipeline with ALREADY_DONE auto-skip,
+7 enforcement gates between pipeline stages (bash checks, not prompts),
+archived k8s files to teams-helper scope, fixed personal paths in teams-dispatch.sh.
+Pipeline is now 7 stages: RESEARCH→REVIEW→PLAN→TESTS→IMPLEMENT→VERIFY→PR.
+Next: refactor-first rule, ccc cleanup, or worker zero-touch boot. -->
 
 ## Phase 0: Dedicated Dispatcher Instance
 
