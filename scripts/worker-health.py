@@ -401,6 +401,31 @@ def send_heartbeat(dispatcher_url):
         return False
 
 
+def send_phase_change(dispatcher_url, task_num, old_phase, new_phase, gate_result=None):
+    """POST immediate phase transition event to dispatcher. Best-effort."""
+    url = f"{dispatcher_url.rstrip('/')}/worker/phase-change"
+    payload = {
+        "worker_id": WORKER_ID,
+        "task_num": task_num,
+        "old_phase": old_phase,
+        "new_phase": new_phase,
+        "gate_result": gate_result,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    data = json.dumps(payload).encode()
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
 def heartbeat_loop():
     """Background thread: send heartbeat to dispatcher every HEARTBEAT_INTERVAL seconds."""
     if not DISPATCHER_URL:
