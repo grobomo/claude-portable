@@ -170,9 +170,11 @@ def set_pipeline_phase(task_num, phase):
     """Set current pipeline phase. Resets history if task_num changes."""
     state = _read_pipeline_state()
     old_task = state.get("task_num")
+    old_phase = state.get("current_phase")
 
     if old_task != task_num:
         # New task — reset
+        old_phase = None
         state = {
             "worker_id": WORKER_ID,
             "task_num": task_num,
@@ -200,6 +202,13 @@ def set_pipeline_phase(task_num, phase):
     })
 
     _write_pipeline_state(state)
+
+    # Notify dispatcher immediately (best-effort, non-blocking)
+    if DISPATCHER_URL:
+        try:
+            send_phase_change(DISPATCHER_URL, task_num, old_phase, phase)
+        except Exception:
+            pass
 
 
 def record_gate_result(task_num, phase, passed, detail=""):

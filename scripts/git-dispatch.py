@@ -1671,6 +1671,43 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif self.path == "/worker/phase-change":
+            worker_id = str(payload.get("worker_id", "unknown"))
+            task_num = payload.get("task_num")
+            old_phase = payload.get("old_phase")
+            new_phase = payload.get("new_phase")
+            gate_result = payload.get("gate_result")
+            ts = payload.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_id)
+                if entry:
+                    pipeline = entry.setdefault("pipeline", {})
+                    pipeline["stage"] = new_phase or "idle"
+                    entry["last_report"] = now
+                    entry["status"] = "busy" if new_phase and new_phase != "idle" else "idle"
+
+            # Append to audit log
+            log.info(
+                "Phase change: worker=%s task=%s %s->%s gate=%s",
+                worker_id, task_num, old_phase, new_phase, gate_result,
+            )
+
+            # Update board.json immediately
+            _update_board()
+
+            resp = json.dumps({
+                "status": "ok",
+                "worker_id": worker_id,
+                "phase": new_phase,
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         else:
             self.send_response(404)
             self.end_headers()
