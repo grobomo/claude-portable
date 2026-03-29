@@ -39,7 +39,7 @@ DISPATCHER_URL="${DISPATCHER_URL:-}"
 detect_task_file() {
   if [ -f "TODO.md" ]; then echo "TODO.md"; return; fi
   local speckit_tasks
-  speckit_tasks=$(ls -t .specs/*/tasks.md 2>/dev/null | head -1)
+  speckit_tasks=$(ls -t specs/*/tasks.md 2>/dev/null | head -1)
   if [ -n "$speckit_tasks" ]; then echo "$speckit_tasks"; return; fi
   echo "TODO.md"
 }

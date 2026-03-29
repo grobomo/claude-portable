@@ -1895,7 +1895,7 @@ def _move_relay_file(request_id: str, from_dir: str, to_dir: str, extra_fields: 
 def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
     """Generate spec-kit artifacts locally on the dispatcher using claude -p.
 
-    Returns path to temp directory containing .specs/ and .planning/, or None on failure.
+    Returns path to temp directory containing specs/ and .planning/, or None on failure.
     """
     spec_timeout = int(os.environ.get("SPEC_GENERATE_TIMEOUT", "300"))
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1941,7 +1941,7 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
         # Clean up old specs/planning from previous tasks on this worker
         subprocess.run(
             ssh_base + ["docker exec -w /workspace/boothapp claude-portable "
-                        "bash -c 'rm -rf .specs/ .planning/ TODO.md 2>/dev/null; true'"],
+                        "bash -c 'rm -rf specs/ .planning/ TODO.md 2>/dev/null; true'"],
             capture_output=True, text=True, timeout=10)
 
         # Create target dir on remote host
@@ -1965,7 +1965,7 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
             ssh_base + ["docker exec claude-portable mkdir -p /workspace/boothapp"],
             capture_output=True, text=True, timeout=10)
 
-        for subdir in [".specs", ".planning"]:
+        for subdir in ["specs", ".planning"]:
             subprocess.run(
                 ssh_base + [f"docker cp /tmp/spec-{request_id}/{subdir} "
                             f"claude-portable:/workspace/boothapp/{subdir}"],
@@ -2005,8 +2005,8 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
         "",
         f"RESULT_FILE={result_file}",
         "",
-        "# continuous-claude now reads .specs/*/tasks.md natively (no TODO.md conversion needed)",
-        "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ] && ls .specs/*/tasks.md >/dev/null 2>&1; then",
+        "# continuous-claude now reads specs/*/tasks.md natively (no TODO.md conversion needed)",
+        "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ] && ls specs/*/tasks.md >/dev/null 2>&1; then",
         "    CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
         "      bash /opt/claude-portable/scripts/continuous-claude.sh \\",
         "        https://github.com/altarr/boothapp.git main /workspace/boothapp \\",
@@ -2088,9 +2088,9 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
 
         # Modify prompt to reference the spec + enforce GSD
         spec_preamble = (
-            "A specification has been generated for this task in .specs/. "
+            "A specification has been generated for this task in specs/. "
             "GSD tracking is enforced — you MUST:\n"
-            "1. Read the spec files in .specs/ first\n"
+            "1. Read the spec files in specs/ first\n"
             "2. Create .planning/quick/001-<slug>/001-PLAN.md with Goal + Success Criteria from the spec\n"
             "3. Only then implement the code\n"
             "4. Verify every success criterion before creating your PR\n\n"
