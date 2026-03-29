@@ -205,7 +205,7 @@ The dispatcher must maintain a rolling cache of the Teams chat as txt files on d
 - [x] Reply capture: after Claude responds, append both the prompt and response to the user's history file AND to group-chat.txt. This ensures the next request sees the full conversation including Claude's own replies.
   - PR title: "feat: capture Claude replies into chat cache"
 
-- [ ] Test: send a message "what is 2+2", then immediately send "multiply that by 10". Verify Claude answers "40" because it has context from the first exchange.
+- [x] Test: send a message "what is 2+2", then immediately send "multiply that by 10". Verify Claude answers "40" because it has context from the first exchange.
   - PR title: "test: verify conversation continuity across messages"
 
 ## Worker management API
