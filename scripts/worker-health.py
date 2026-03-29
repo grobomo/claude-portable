@@ -85,8 +85,25 @@ def _get_current_task():
     return {"branch": branch, "task_num": task_num, "description": ""}
 
 
+PIPELINE_STATE_FILE = os.environ.get("PIPELINE_STATE_FILE", "/data/pipeline-state.json")
+
+
 def _get_pipeline_stage():
-    """Read current pipeline stage from stage log."""
+    """Read current pipeline stage from pipeline-state.json (primary) or legacy stage log."""
+    # Primary: read from worker-pipeline.py state file
+    try:
+        with open(PIPELINE_STATE_FILE, "r") as f:
+            state = json.load(f)
+        if state.get("status") == "idle":
+            return {"stage": "idle", "stages_complete": 0}
+        current = state.get("current_phase") or "idle"
+        phases = state.get("phases", {})
+        complete = sum(1 for p in phases.values() if p.get("status") == "passed")
+        return {"stage": current, "stages_complete": complete, "phases": phases}
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    # Fallback: legacy per-task stage log
     branch = _get_current_branch()
     m = re.search(r"task-(\d+)", branch) if branch else None
     if not m:
