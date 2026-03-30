@@ -2179,21 +2179,15 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
         "",
         "# continuous-claude now reads specs/*/tasks.md natively (no TODO.md conversion needed)",
         "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ] && ls specs/*/tasks.md >/dev/null 2>&1; then",
-        "    CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
-        "      bash /opt/claude-portable/scripts/continuous-claude.sh \\",
-        f"        {repo} {branch} {workdir} \\",
-        '        > "$RESULT_FILE" 2>&1',
-        '    cat "$RESULT_FILE"',
-        "  else",
-        f'    claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
+        "  CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
+        "    bash /opt/claude-portable/scripts/continuous-claude.sh \\",
+        f"      {repo} {branch} {workdir} \\",
         '      > "$RESULT_FILE" 2>&1',
-        '    cat "$RESULT_FILE"',
-        "  fi",
         "else",
         f'  claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
         '    > "$RESULT_FILE" 2>&1',
-        '  cat "$RESULT_FILE"',
         "fi",
+        'cat "$RESULT_FILE"',
     ]
     script_content = "\n".join(script_lines)
 
@@ -2217,8 +2211,8 @@ def _resolve_target(request_data: dict) -> tuple:
     return repo, workdir, branch
 
 
-def _dispatch_relay_request(request_id: str, request_data: dict):
-    """Dispatch a relay request to a worker via SSH + claude -p."""
+def _dispatch_relay_request(request_id: str, request_data: dict) -> bool:
+    """Dispatch a relay request to a worker via SSH + claude -p. Returns True on success."""
     sender = request_data.get("sender", "unknown")
     text = request_data.get("text", "")
     context = request_data.get("context", [])
@@ -2232,7 +2226,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         log.warning("RELAY %s: no idle worker available", request_id)
         _move_relay_file(request_id, "dispatched", "pending",
                          {"error": "no idle worker", "retry_after": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-        return
+        return False
 
     # Build prompt from request data
     context_str = "\n".join(str(c) for c in context[-25:])
@@ -2255,7 +2249,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         _move_relay_file(request_id, "dispatched", "failed",
                          {"error": f"no SSH key for {worker_name}"})
         _relay_git_push(f"relay: {request_id} failed (no SSH key)")
-        return
+        return False
 
     # Generate spec-kit artifacts locally, then SCP to worker
     spec_dir = None
@@ -2320,6 +2314,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             with _relay_stats_lock:
                 _relay_stats["completed"] += 1
             log.info("RELAY %s completed by %s", request_id, worker_name)
+            return True
         else:
             error_msg = r.stderr[:500] if r.stderr else f"empty response (rc={r.returncode}, stdout={r.stdout[:200]})"
             _move_relay_file(request_id, "dispatched", "failed", {
@@ -2331,6 +2326,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             with _relay_stats_lock:
                 _relay_stats["failed"] += 1
             log.warning("RELAY %s failed on %s: %s", request_id, worker_name, error_msg[:100])
+            return False
     except subprocess.TimeoutExpired:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": f"timeout ({RELAY_TASK_TIMEOUT}s)",
@@ -2340,6 +2336,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         with _relay_stats_lock:
             _relay_stats["failed"] += 1
         log.warning("RELAY %s timed out on %s", request_id, worker_name)
+        return False
     except Exception as e:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": str(e),
@@ -2349,6 +2346,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         with _relay_stats_lock:
             _relay_stats["failed"] += 1
         log.error("RELAY %s error: %s", request_id, e)
+        return False
     finally:
         with _fleet_roster_lock:
             entry = _fleet_roster.get(worker_name)
@@ -2430,10 +2428,10 @@ def _dispatch_poll_tick():
 def _dispatch_api_task(task_id: str, task_data: dict):
     """Dispatch an API-submitted task to a worker. Same as relay but no git."""
     try:
-        _dispatch_relay_request(task_id, task_data)
+        success = _dispatch_relay_request(task_id, task_data)
         with _api_history_lock:
             if task_id in _api_task_history:
-                _api_task_history[task_id]["status"] = "completed"
+                _api_task_history[task_id]["status"] = "completed" if success else "failed"
     except Exception as e:
         log.error("API task %s failed: %s", task_id, e)
         with _api_history_lock:
