@@ -2133,7 +2133,7 @@ def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
 
     Returns path to temp directory containing .specs/ and .planning/, or None on failure.
     """
-    spec_timeout = int(os.environ.get("SPEC_GENERATE_TIMEOUT", "300"))
+    spec_timeout = int(os.environ.get("SPEC_GENERATE_TIMEOUT", "600"))
     script_dir = os.path.dirname(os.path.abspath(__file__))
     spec_script = os.path.join(script_dir, "spec-generate.sh")
 
