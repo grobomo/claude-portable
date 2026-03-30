@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoothApp — Welcome</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    max-width: 800px;
+    width: 100%;
+  }
+
+  /* ── Logo ─────────────────────────────────────────────────── */
+  .logo {
+    width: 120px;
+    height: 120px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #58a6ff 0%, #1f6feb 50%, #388bfd 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    box-shadow: 0 8px 32px rgba(88, 166, 255, 0.25);
+  }
+
+  /* ── Header ───────────────────────────────────────────────── */
+  .header {
+    text-align: center;
+  }
+
+  .header h1 {
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: #e6edf3;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .header h1 span {
+    color: #58a6ff;
+  }
+
+  .header .subtitle {
+    font-size: 1.4rem;
+    color: #8b949e;
+    margin-top: 0.5rem;
+  }
+
+  /* ── Recording Indicator ──────────────────────────────────── */
+  .status-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 2rem 3rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 600px;
+    justify-content: center;
+    transition: border-color 0.4s ease;
+  }
+
+  .status-card.active {
+    border-color: #f85149;
+    box-shadow: 0 0 24px rgba(248, 81, 73, 0.15);
+  }
+
+  .status-card.error {
+    border-color: #d29922;
+    box-shadow: 0 0 24px rgba(210, 153, 34, 0.15);
+  }
+
+  .indicator {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #484f58;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .indicator.active {
+    background: #f85149;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .indicator.error {
+    background: #d29922;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.5); }
+    50% { box-shadow: 0 0 0 12px rgba(248, 81, 73, 0); }
+  }
+
+  .indicator.error {
+    animation-name: pulse-warn;
+  }
+
+  @keyframes pulse-warn {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.5); }
+    50% { box-shadow: 0 0 0 12px rgba(210, 153, 34, 0); }
+  }
+
+  .status-text {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .status-card.active .status-text {
+    color: #f85149;
+  }
+
+  .status-card.error .status-text {
+    color: #d29922;
+  }
+
+  /* ── Session Info ─────────────────────────────────────────── */
+  .session-info {
+    text-align: center;
+    display: none;
+  }
+
+  .session-info.visible {
+    display: block;
+  }
+
+  .visitor-name {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #58a6ff;
+  }
+
+  .elapsed {
+    font-size: 1.4rem;
+    color: #8b949e;
+    margin-top: 0.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── QR Code ──────────────────────────────────────────────── */
+  .qr-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  .qr-placeholder {
+    width: 200px;
+    height: 200px;
+    background: #161b22;
+    border: 2px dashed #30363d;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: #484f58;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+  }
+
+  .qr-caption {
+    font-size: 1.4rem;
+    color: #8b949e;
+  }
+
+  /* ── Footer ───────────────────────────────────────────────── */
+  .footer {
+    font-size: 1rem;
+    color: #484f58;
+    margin-top: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="logo">LOGO</div>
+
+  <div class="header">
+    <h1>Welcome to <span>BoothApp</span> Demo</h1>
+    <p class="subtitle">Live demo capture &amp; analysis</p>
+  </div>
+
+  <div class="status-card" id="statusCard">
+    <div class="indicator" id="indicator"></div>
+    <div class="status-text" id="statusText">WAITING FOR SESSION</div>
+  </div>
+
+  <div class="session-info" id="sessionInfo">
+    <div class="visitor-name" id="visitorName"></div>
+    <div class="elapsed" id="elapsed"></div>
+  </div>
+
+  <div class="qr-section">
+    <div class="qr-placeholder">QR CODE</div>
+    <p class="qr-caption">Scan for follow-up link</p>
+  </div>
+
+  <div class="footer">BoothApp &mdash; Smells Like Machine Learning</div>
+</div>
+
+<script>
+/**
+ * S3 Polling Configuration
+ * Source of truth: boothapp/infra/config.js
+ * Update these if infra/config.js values change.
+ */
+var SESSION_BUCKET = "boothapp-sessions-752266476357";
+var AWS_REGION     = "us-east-1";
+var POLL_INTERVAL  = 3000;
+
+var S3_BASE = "https://" + SESSION_BUCKET + ".s3." + AWS_REGION + ".amazonaws.com";
+
+/* ── DOM refs ────────────────────────────────────────────── */
+var statusCard  = document.getElementById("statusCard");
+var indicator   = document.getElementById("indicator");
+var statusText  = document.getElementById("statusText");
+var sessionInfo = document.getElementById("sessionInfo");
+var visitorName = document.getElementById("visitorName");
+var elapsedEl   = document.getElementById("elapsed");
+
+/* ── State ───────────────────────────────────────────────── */
+var currentState = "idle";   // idle | active | error
+var sessionStart = null;
+var timerHandle  = null;
+
+function setState(state, data) {
+  if (state === currentState && state !== "active") return;
+  currentState = state;
+
+  // Reset classes
+  statusCard.className = "status-card";
+  indicator.className  = "indicator";
+
+  if (state === "active") {
+    statusCard.classList.add("active");
+    indicator.classList.add("active");
+    statusText.textContent = "RECORDING";
+    sessionInfo.classList.add("visible");
+    if (data && data.visitor_name) {
+      visitorName.textContent = data.visitor_name;
+    }
+    if (data && data.started_at) {
+      sessionStart = new Date(data.started_at);
+      startTimer();
+    }
+  } else if (state === "error") {
+    statusCard.classList.add("error");
+    indicator.classList.add("error");
+    statusText.textContent = "CONNECTION ERROR";
+    sessionInfo.classList.remove("visible");
+    stopTimer();
+  } else {
+    statusText.textContent = "WAITING FOR SESSION";
+    sessionInfo.classList.remove("visible");
+    sessionStart = null;
+    stopTimer();
+  }
+}
+
+/* ── Elapsed timer ───────────────────────────────────────── */
+function startTimer() {
+  stopTimer();
+  updateElapsed();
+  timerHandle = setInterval(updateElapsed, 1000);
+}
+
+function stopTimer() {
+  if (timerHandle) {
+    clearInterval(timerHandle);
+    timerHandle = null;
+  }
+  elapsedEl.textContent = "";
+}
+
+function updateElapsed() {
+  if (!sessionStart) return;
+  var diff = Math.floor((Date.now() - sessionStart.getTime()) / 1000);
+  var h = Math.floor(diff / 3600);
+  var m = Math.floor((diff % 3600) / 60);
+  var s = diff % 60;
+  var parts = [];
+  if (h > 0) parts.push(h + "h");
+  parts.push(m + "m");
+  parts.push(s + "s");
+  elapsedEl.textContent = parts.join(" ");
+}
+
+/* ── S3 polling ──────────────────────────────────────────── */
+function poll() {
+  fetch(S3_BASE + "/active-session.json", { mode: "cors" })
+    .then(function(res) {
+      if (res.status === 404 || res.status === 403) {
+        setState("idle");
+        return null;
+      }
+      if (!res.ok) {
+        setState("error");
+        return null;
+      }
+      return res.json();
+    })
+    .then(function(data) {
+      if (!data) return;
+      if (data.active) {
+        setState("active", data);
+      } else {
+        setState("idle");
+      }
+    })
+    .catch(function() {
+      setState("error");
+    });
+}
+
+/* ── Start ───────────────────────────────────────────────── */
+poll();
+setInterval(poll, POLL_INTERVAL);
+</script>
+</body>
+</html>
