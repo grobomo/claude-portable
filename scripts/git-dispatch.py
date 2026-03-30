@@ -146,26 +146,41 @@ def get_state():
 # ── Git helpers ────────────────────────────────────────────────────────────────
 
 def git_pull(repo_dir: str) -> bool:
-    """Pull latest main branch. Returns True on success."""
+    """Fetch and force-sync local main to origin/main. Returns True on success.
+
+    The dispatcher never makes local commits, so a hard reset is safe and
+    avoids the stuck-rebase problem that 'git pull --rebase' can cause.
+    """
     try:
-        result = subprocess.run(
-            ["git", "pull", "--rebase", "origin", "main"],
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", "main"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
             timeout=60,
         )
-        if result.returncode == 0:
-            log.debug("git pull succeeded: %s", result.stdout.strip())
-            return True
-        else:
-            log.warning("git pull failed: %s", result.stderr.strip())
+        if fetch.returncode != 0:
+            log.warning("git fetch failed: %s", fetch.stderr.strip())
             return False
+
+        reset = subprocess.run(
+            ["git", "reset", "--hard", "origin/main"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if reset.returncode != 0:
+            log.warning("git reset failed: %s", reset.stderr.strip())
+            return False
+
+        log.debug("git fetch+reset succeeded: %s", reset.stdout.strip())
+        return True
     except subprocess.TimeoutExpired:
-        log.warning("git pull timed out")
+        log.warning("git fetch/reset timed out")
         return False
     except Exception as e:
-        log.warning("git pull error: %s", e)
+        log.warning("git fetch/reset error: %s", e)
         return False
 
 
@@ -2828,7 +2843,7 @@ def _get_s3_bucket() -> str:
             capture_output=True, text=True, timeout=10,
         )
         if r.returncode == 0 and r.stdout.strip():
-            return f"claude-portable-state-{r.stdout.strip()}"
+            return f"hackathon26-state-{r.stdout.strip()}"
     except Exception:
         pass
     return ""
