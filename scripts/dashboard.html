@@ -268,6 +268,48 @@ body {
 
 <script>
 (function() {
+  // -- Demo Mode --
+  // Activates with ?demo in URL or when API is unreachable (e.g., opened as local file)
+  var DEMO = window.location.search.indexOf('demo') !== -1;
+  var apiFailed = false;
+
+  var MOCK_TASKS = [
+    { id: 'tsk-0041', status: 'running', description: 'Refactor authentication middleware to support OAuth2 PKCE flow', worker: 'worker-az-01', duration: 847, last_activity: new Date(Date.now() - 12000).toISOString() },
+    { id: 'tsk-0042', status: 'running', description: 'Add retry logic to S3 upload pipeline with exponential backoff', worker: 'worker-az-03', duration: 423, last_activity: new Date(Date.now() - 5000).toISOString() },
+    { id: 'tsk-0043', status: 'pending', description: 'Write integration tests for Teams webhook dispatcher', worker: null, duration: null, last_activity: null },
+    { id: 'tsk-0044', status: 'pending', description: 'Update CloudFormation template for new IAM boundary policy', worker: null, duration: null, last_activity: null },
+    { id: 'tsk-0038', status: 'completed', description: 'Fix race condition in worker heartbeat monitor', worker: 'worker-az-02', duration: 1205, last_activity: new Date(Date.now() - 3600000).toISOString() },
+    { id: 'tsk-0039', status: 'completed', description: 'Add fleet dashboard HTML with dark theme', worker: 'worker-az-01', duration: 632, last_activity: new Date(Date.now() - 7200000).toISOString() },
+    { id: 'tsk-0040', status: 'completed', description: 'Implement task queue priority sorting', worker: 'worker-az-03', duration: 918, last_activity: new Date(Date.now() - 5400000).toISOString() },
+    { id: 'tsk-0037', status: 'failed', description: 'Deploy canary to staging (timeout waiting for health check)', worker: 'worker-az-02', duration: 300, last_activity: new Date(Date.now() - 9000000).toISOString() }
+  ];
+
+  var MOCK_WORKERS = [
+    { id: 'worker-az-01', name: 'worker-az-01', status: 'busy', uptime: 86400, tasks_completed: 14, current_task: 'tsk-0041: Refactor auth middleware', last_file: 'src/auth/oauth2.js', last_file_time: new Date(Date.now() - 12000).toISOString(), last_commit: 'feat: add PKCE challenge generation', cpu_pct: 67, mem_pct: 54, zombie_count: 0 },
+    { id: 'worker-az-02', name: 'worker-az-02', status: 'idle', uptime: 72000, tasks_completed: 11, current_task: null, last_file: 'tests/heartbeat_test.py', last_file_time: new Date(Date.now() - 3600000).toISOString(), last_commit: 'fix: heartbeat race condition', cpu_pct: 12, mem_pct: 38, zombie_count: 0 },
+    { id: 'worker-az-03', name: 'worker-az-03', status: 'busy', uptime: 43200, tasks_completed: 8, current_task: 'tsk-0042: S3 retry logic', last_file: 'lib/s3_upload.py', last_file_time: new Date(Date.now() - 5000).toISOString(), last_commit: 'feat: exponential backoff for S3', cpu_pct: 45, mem_pct: 61, zombie_count: 1 },
+    { id: 'worker-az-04', name: 'worker-az-04', status: 'unreachable', uptime: 0, tasks_completed: 3, current_task: null, last_file: null, last_file_time: null, last_commit: 'chore: update deps', cpu_pct: 0, mem_pct: 0, zombie_count: 0 }
+  ];
+
+  var MOCK_STATS = { total_workers: 4, idle: 1, busy: 2, tasks_today: 12, success_rate: 87 };
+
+  var MOCK_LOG_LINES = [
+    '[2026-03-29 10:14:02] Reading spec file .specs/oauth2-pkce/spec.md',
+    '[2026-03-29 10:14:03] Goal: Refactor authentication middleware to support OAuth2 PKCE',
+    '[2026-03-29 10:14:03] Creating plan: .planning/quick/001-oauth2-pkce/001-PLAN.md',
+    '[2026-03-29 10:14:05] Plan written. Starting implementation.',
+    '[2026-03-29 10:14:06] Edit src/auth/oauth2.js -- add generateChallenge()',
+    '[2026-03-29 10:14:08] Edit src/auth/oauth2.js -- add verifyChallenge()',
+    '[2026-03-29 10:14:10] Write tests/auth/pkce_test.js -- 6 test cases',
+    '[2026-03-29 10:14:12] Bash: npm test -- --grep "PKCE"',
+    '[2026-03-29 10:14:15]   PASS tests/auth/pkce_test.js (6/6)',
+    '[2026-03-29 10:14:15] All success criteria met. Creating PR.',
+    '[2026-03-29 10:14:17] git checkout -b feat/oauth2-pkce',
+    '[2026-03-29 10:14:18] git push -u origin feat/oauth2-pkce',
+    '[2026-03-29 10:14:20] gh pr create --title "feat: OAuth2 PKCE support"',
+    '[2026-03-29 10:14:21] PR #56 created. Waiting for next task.',
+  ];
+
   // -- State --
   var expandedWorker = null;
   var liveLogInterval = null;
@@ -347,10 +389,22 @@ body {
   }
 
   // -- Fetch helpers --
+  function useMock() { return DEMO || apiFailed; }
+
   function fetchJSON(url) {
+    if (useMock()) {
+      if (url === '/api/tasks') return Promise.resolve(MOCK_TASKS);
+      if (url === '/api/workers') return Promise.resolve(MOCK_WORKERS);
+      if (url === '/api/stats') return Promise.resolve(MOCK_STATS);
+      return Promise.resolve({});
+    }
     return fetch(url).then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
+    }).catch(function(err) {
+      // If first fetch fails, switch to demo mode permanently
+      apiFailed = true;
+      return fetchJSON(url);
     });
   }
 
@@ -444,6 +498,11 @@ body {
   function fetchLiveLog(workerId) {
     var el = document.getElementById('live-log-' + workerId);
     if (!el) return;
+    if (useMock()) {
+      el.textContent = MOCK_LOG_LINES.join('\n');
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
     fetch('/api/workers/' + encodeURIComponent(workerId) + '/live')
       .then(function(r) { return r.ok ? r.text() : Promise.reject('HTTP ' + r.status); })
       .then(function(text) {
@@ -508,9 +567,22 @@ body {
       });
   }
 
+  // Demo mode indicator
+  function updateDemoIndicator() {
+    var existing = document.getElementById('demo-badge');
+    if (useMock() && !existing) {
+      var badge = document.createElement('span');
+      badge.id = 'demo-badge';
+      badge.style.cssText = 'background:#4a3f00;color:#f0c040;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-left:12px';
+      badge.textContent = 'DEMO';
+      document.querySelector('.header h1').appendChild(badge);
+    }
+  }
+
   // Initial load + auto-refresh
   refresh();
-  setInterval(refresh, 15000);
+  setTimeout(updateDemoIndicator, 500);
+  setInterval(function() { refresh(); updateDemoIndicator(); }, 15000);
 })();
 </script>
 </body>
