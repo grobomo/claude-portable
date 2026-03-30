@@ -27,6 +27,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt="%H:%M:%S")
@@ -1473,7 +1474,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             if not _check_bearer_auth(self):
                 return
             # GET /tasks?status=<state> -- list tasks, optionally filtered
-            from urllib.parse import urlparse, parse_qs
             parsed = urlparse(self.path)
             qs = parse_qs(parsed.query)
             filter_status = qs.get("status", [None])[0]
