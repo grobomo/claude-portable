@@ -1744,6 +1744,81 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif self.path == "/api/submit":
+            # Direct task submission via HTTP API (replaces git bridge for local/team use)
+            api_token = os.environ.get("API_TOKEN", "")
+            if api_token:
+                auth = self.headers.get("Authorization", "")
+                if auth != f"Bearer {api_token}":
+                    resp = json.dumps({"error": "unauthorized"}).encode()
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+
+            text = payload.get("text", "")
+            if not text:
+                resp = json.dumps({"error": "missing 'text' field"}).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+
+            import hashlib
+            ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            epoch = int(time.time())
+            short_hash = hashlib.sha256(f"{epoch}{text}".encode()).hexdigest()[:8]
+            task_id = f"{epoch}-{short_hash}"
+
+            task_data = {
+                "sender": payload.get("sender", "api"),
+                "text": text,
+                "context": payload.get("context", []),
+                "timestamp": ts,
+                "chat_id": "api",
+            }
+            # Per-task target repo override
+            if payload.get("target_repo"):
+                task_data["target_repo"] = payload["target_repo"]
+            if payload.get("target_workdir"):
+                task_data["target_workdir"] = payload["target_workdir"]
+
+            with _api_queue_lock:
+                _api_task_queue[task_id] = task_data
+
+            log.info("API submit: task_id=%s text=%s", task_id, text[:80])
+
+            resp = json.dumps({
+                "task_id": task_id,
+                "status": "pending",
+                "message": "Task queued for dispatch",
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif self.path == "/api/tasks":
+            # List recent tasks from the API queue + completed history
+            with _api_queue_lock:
+                pending = {k: {**v, "status": "pending"} for k, v in _api_task_queue.items()}
+            with _api_history_lock:
+                history = dict(_api_task_history)
+            all_tasks = {**history, **pending}
+            # Sort by timestamp descending, limit 50
+            sorted_tasks = sorted(all_tasks.items(), key=lambda x: x[1].get("timestamp", ""), reverse=True)[:50]
+            resp = json.dumps(dict(sorted_tasks), indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -1775,6 +1850,13 @@ RELAY_POLL_INTERVAL = int(os.environ.get("RELAY_POLL_INTERVAL", "30"))
 TARGET_REPO_URL = os.environ.get("TARGET_REPO_URL", "https://github.com/altarr/boothapp.git")
 TARGET_WORKDIR = os.environ.get("TARGET_WORKDIR", "/workspace/boothapp")
 TARGET_BRANCH = os.environ.get("TARGET_BRANCH", "main")
+
+# API task queue — direct HTTP submissions (replaces git bridge)
+import threading as _threading
+_api_queue_lock = _threading.Lock()
+_api_task_queue = {}  # task_id -> task_data (pending)
+_api_history_lock = _threading.Lock()
+_api_task_history = {}  # task_id -> task_data (dispatched/completed/failed)
 
 _relay_stats = {
     "last_poll": None,
@@ -2289,6 +2371,44 @@ def _relay_poll_tick():
             name=f"relay-{request_id}",
         )
         t.start()
+
+    # --- Drain API task queue (HTTP-submitted tasks) ---
+    with _api_queue_lock:
+        api_tasks = list(_api_task_queue.items())
+
+    for task_id, task_data in api_tasks:
+        log.info("API dispatch: task_id=%s text=%s", task_id, task_data.get("text", "")[:60])
+
+        # Move from queue to history as dispatched
+        with _api_queue_lock:
+            _api_task_queue.pop(task_id, None)
+        with _api_history_lock:
+            _api_task_history[task_id] = {**task_data, "status": "dispatched",
+                                           "dispatched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+        # Dispatch in background thread
+        t = threading.Thread(
+            target=_dispatch_api_task,
+            args=(task_id, task_data),
+            daemon=True,
+            name=f"api-{task_id}",
+        )
+        t.start()
+
+
+def _dispatch_api_task(task_id: str, task_data: dict):
+    """Dispatch an API-submitted task to a worker. Same as relay but no git."""
+    try:
+        _dispatch_relay_request(task_id, task_data)
+        with _api_history_lock:
+            if task_id in _api_task_history:
+                _api_task_history[task_id]["status"] = "completed"
+    except Exception as e:
+        log.error("API task %s failed: %s", task_id, e)
+        with _api_history_lock:
+            if task_id in _api_task_history:
+                _api_task_history[task_id]["status"] = "failed"
+                _api_task_history[task_id]["error"] = str(e)
 
 
 def start_health_server():
