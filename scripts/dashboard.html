@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Portable -- Fleet Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+}
+.header h1 { font-size: 22px; font-weight: 600; }
+.header .refresh-info { font-size: 13px; color: #888; }
+.header .refresh-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #4ecca3;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Fleet Summary Bar */
+.fleet-bar {
+  display: flex;
+  gap: 24px;
+  padding: 14px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+  flex-wrap: wrap;
+}
+.fleet-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+}
+.fleet-stat .value { font-size: 28px; font-weight: 700; color: #4ecca3; }
+.fleet-stat .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 24px;
+  background: #16213e;
+  border-bottom: 2px solid #0f3460;
+}
+.tab {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  color: #888;
+  transition: all 0.2s;
+  user-select: none;
+}
+.tab:hover { color: #e0e0e0; }
+.tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
+
+.tab-content { display: none; padding: 20px 24px; }
+.tab-content.active { display: block; }
+
+/* Tasks Table */
+.tasks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.tasks-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  border-bottom: 1px solid #0f3460;
+  position: sticky;
+  top: 0;
+  background: #1a1a2e;
+}
+.tasks-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #0f3460;
+  vertical-align: middle;
+}
+.tasks-table tr:hover { background: #16213e; }
+
+/* Status Badges */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.badge-completed { background: #1b4332; color: #4ecca3; }
+.badge-running, .badge-dispatched { background: #4a3f00; color: #f0c040; }
+.badge-failed { background: #3d0000; color: #e74c3c; }
+.badge-pending { background: #2a2a3e; color: #888; }
+
+.desc-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mono { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; }
+
+/* Worker Cards Grid */
+.workers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.worker-card {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.worker-card:hover { border-color: #4ecca3; transform: translateY(-1px); }
+.worker-card.expanded { grid-column: 1 / -1; }
+
+.worker-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-idle { background: #4ecca3; }
+.dot-busy { background: #f0c040; }
+.dot-unreachable { background: #e74c3c; }
+
+.worker-name { font-size: 17px; font-weight: 600; }
+.worker-meta { display: flex; gap: 20px; font-size: 13px; color: #888; flex-wrap: wrap; }
+.worker-meta span { white-space: nowrap; }
+
+/* Expanded Worker Detail */
+.worker-detail { margin-top: 14px; display: none; }
+.worker-card.expanded .worker-detail { display: block; }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.detail-item { font-size: 13px; }
+.detail-item .label { color: #888; margin-bottom: 2px; }
+.detail-item .value { color: #e0e0e0; font-family: monospace; word-break: break-all; }
+
+/* Resource Bars */
+.bar-container {
+  background: #0f3460;
+  border-radius: 4px;
+  height: 16px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s;
+}
+.bar-cpu { background: #4ecca3; }
+.bar-mem { background: #e2b340; }
+
+/* Live Log */
+.live-log {
+  background: #0d1117;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8b949e;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Loading / Error */
+.status-msg {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-size: 15px;
+}
+.error-msg { color: #e74c3c; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1a2e; }
+::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4ecca3; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Claude Portable -- Fleet Dashboard</h1>
+  <div class="refresh-info"><span class="refresh-dot"></span>Auto-refresh <span id="countdown">15</span>s</div>
+</div>
+
+<div class="fleet-bar" id="fleet-bar">
+  <div class="fleet-stat"><span class="value" id="stat-workers">--</span><span class="label">Workers</span></div>
+  <div class="fleet-stat"><span class="value" id="stat-idle">--</span><span class="label">Idle</span></div>
+  <div class="fleet-stat"><span class="value" id="stat-busy">--</span><span class="label">Busy</span></div>
+  <div class="fleet-stat"><span class="value" id="stat-tasks-today">--</span><span class="label">Tasks Today</span></div>
+  <div class="fleet-stat"><span class="value" id="stat-success-rate">--</span><span class="label">Success Rate</span></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="tasks">Tasks</div>
+  <div class="tab" data-tab="infra">Infra Health</div>
+</div>
+
+<div class="tab-content active" id="tab-tasks">
+  <table class="tasks-table">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Task ID</th>
+        <th>Description</th>
+        <th>Worker</th>
+        <th>Duration</th>
+        <th>Last Activity</th>
+      </tr>
+    </thead>
+    <tbody id="tasks-body">
+      <tr><td colspan="6" class="status-msg">Loading tasks...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="tab-content" id="tab-infra">
+  <div class="workers-grid" id="workers-grid">
+    <div class="status-msg">Loading workers...</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // -- State --
+  var expandedWorker = null;
+  var liveLogInterval = null;
+
+  // -- Tabs --
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // -- Countdown --
+  var countdownEl = document.getElementById('countdown');
+  var countdown = 15;
+  setInterval(function() {
+    countdown--;
+    if (countdown <= 0) countdown = 15;
+    countdownEl.textContent = countdown;
+  }, 1000);
+
+  // -- Helpers --
+  function formatDuration(seconds) {
+    if (!seconds && seconds !== 0) return '--';
+    var s = Math.floor(seconds);
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    return h + 'h ' + m + 'm';
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return '--';
+    var d = new Date(ts);
+    var now = Date.now();
+    var diff = Math.floor((now - d.getTime()) / 1000);
+    if (diff < 0) diff = 0;
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  function truncate(str, len) {
+    if (!str) return '--';
+    return str.length > len ? str.substring(0, len) + '...' : str;
+  }
+
+  function badgeClass(status) {
+    var s = (status || '').toLowerCase();
+    if (s === 'completed') return 'badge-completed';
+    if (s === 'running' || s === 'dispatched') return 'badge-' + s;
+    if (s === 'failed') return 'badge-failed';
+    return 'badge-pending';
+  }
+
+  function statusDotClass(status) {
+    var s = (status || '').toLowerCase();
+    if (s === 'idle') return 'dot-idle';
+    if (s === 'busy') return 'dot-busy';
+    return 'dot-unreachable';
+  }
+
+  var STATUS_ORDER = { running: 0, dispatched: 0, pending: 1, completed: 2, failed: 3 };
+  function taskSortKey(t) {
+    var s = (t.status || '').toLowerCase();
+    return STATUS_ORDER[s] !== undefined ? STATUS_ORDER[s] : 4;
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  // -- Fetch helpers --
+  function fetchJSON(url) {
+    return fetch(url).then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  // -- Render Tasks --
+  function renderTasks(tasks) {
+    var tbody = document.getElementById('tasks-body');
+    if (!tasks || !tasks.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="status-msg">No tasks found</td></tr>';
+      return;
+    }
+    tasks.sort(function(a, b) { return taskSortKey(a) - taskSortKey(b); });
+    var html = '';
+    tasks.forEach(function(t) {
+      html += '<tr>'
+        + '<td><span class="badge ' + badgeClass(t.status) + '">' + escapeHtml(t.status) + '</span></td>'
+        + '<td class="mono">' + escapeHtml(t.id || t.task_id || '--') + '</td>'
+        + '<td class="desc-cell" title="' + escapeHtml(t.description) + '">' + escapeHtml(truncate(t.description, 60)) + '</td>'
+        + '<td>' + escapeHtml(t.worker || '--') + '</td>'
+        + '<td class="mono">' + formatDuration(t.duration) + '</td>'
+        + '<td>' + timeAgo(t.last_activity) + '</td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+  }
+
+  // -- Render Workers --
+  function renderWorkers(workers) {
+    var grid = document.getElementById('workers-grid');
+    if (!workers || !workers.length) {
+      grid.innerHTML = '<div class="status-msg">No workers found</div>';
+      return;
+    }
+    var html = '';
+    workers.forEach(function(w) {
+      var id = w.id || w.worker_id || w.name;
+      var isExpanded = expandedWorker === id;
+      html += '<div class="worker-card' + (isExpanded ? ' expanded' : '') + '" data-worker-id="' + escapeHtml(id) + '">'
+        + '<div class="worker-header">'
+        + '<span class="status-dot ' + statusDotClass(w.status) + '"></span>'
+        + '<span class="worker-name">' + escapeHtml(w.name || id) + '</span>'
+        + '</div>'
+        + '<div class="worker-meta">'
+        + '<span>Uptime: ' + formatDuration(w.uptime) + '</span>'
+        + '<span>Completed: ' + (w.tasks_completed != null ? w.tasks_completed : '--') + '</span>'
+        + '<span>Current: ' + escapeHtml(truncate(w.current_task, 30) || 'none') + '</span>'
+        + '</div>'
+        + '<div class="worker-detail">'
+        + '<div class="detail-grid">'
+        + '<div class="detail-item"><div class="label">Last File Modified</div><div class="value">' + escapeHtml(w.last_file || '--') + '</div></div>'
+        + '<div class="detail-item"><div class="label">Last File Time</div><div class="value">' + (w.last_file_time ? new Date(w.last_file_time).toLocaleString() : '--') + '</div></div>'
+        + '<div class="detail-item"><div class="label">Last Git Commit</div><div class="value">' + escapeHtml(truncate(w.last_commit, 50) || '--') + '</div></div>'
+        + '<div class="detail-item"><div class="label">Zombies</div><div class="value">' + (w.zombie_count != null ? w.zombie_count : '--') + '</div></div>'
+        + '</div>'
+        + '<div class="detail-item" style="margin-bottom:8px"><div class="label">CPU</div>'
+        + '<div class="bar-container"><div class="bar-fill bar-cpu" style="width:' + (w.cpu_pct || 0) + '%"></div></div>'
+        + '<div style="font-size:12px;color:#888;margin-top:2px">' + (w.cpu_pct != null ? w.cpu_pct + '%' : '--') + '</div></div>'
+        + '<div class="detail-item"><div class="label">Memory</div>'
+        + '<div class="bar-container"><div class="bar-fill bar-mem" style="width:' + (w.mem_pct || 0) + '%"></div></div>'
+        + '<div style="font-size:12px;color:#888;margin-top:2px">' + (w.mem_pct != null ? w.mem_pct + '%' : '--') + '</div></div>'
+        + '<div class="live-log" id="live-log-' + escapeHtml(id) + '">Loading live output...</div>'
+        + '</div>'
+        + '</div>';
+    });
+    grid.innerHTML = html;
+
+    // Attach click handlers
+    grid.querySelectorAll('.worker-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        // Don't collapse if clicking inside the log
+        if (e.target.closest('.live-log')) return;
+        var wid = card.dataset.workerId;
+        if (expandedWorker === wid) {
+          expandedWorker = null;
+          stopLiveLog();
+        } else {
+          expandedWorker = wid;
+          startLiveLog(wid);
+        }
+        // Re-render to update expanded state
+        renderWorkers(lastWorkers);
+      });
+    });
+
+    // If a worker is expanded, fetch its live log immediately
+    if (expandedWorker) {
+      fetchLiveLog(expandedWorker);
+    }
+  }
+
+  // -- Live Log --
+  function fetchLiveLog(workerId) {
+    var el = document.getElementById('live-log-' + workerId);
+    if (!el) return;
+    fetch('/api/workers/' + encodeURIComponent(workerId) + '/live')
+      .then(function(r) { return r.ok ? r.text() : Promise.reject('HTTP ' + r.status); })
+      .then(function(text) {
+        if (!el) return;
+        // Last 50 lines
+        var lines = text.split('\n');
+        if (lines.length > 50) lines = lines.slice(-50);
+        el.textContent = lines.join('\n');
+        el.scrollTop = el.scrollHeight;
+      })
+      .catch(function(err) {
+        if (el) el.textContent = 'Error fetching live output: ' + err;
+      });
+  }
+
+  function startLiveLog(workerId) {
+    stopLiveLog();
+    fetchLiveLog(workerId);
+    liveLogInterval = setInterval(function() { fetchLiveLog(workerId); }, 3000);
+  }
+
+  function stopLiveLog() {
+    if (liveLogInterval) { clearInterval(liveLogInterval); liveLogInterval = null; }
+  }
+
+  // -- Fleet Stats --
+  function renderStats(stats) {
+    document.getElementById('stat-workers').textContent = stats.total_workers != null ? stats.total_workers : '--';
+    document.getElementById('stat-idle').textContent = stats.idle != null ? stats.idle : '--';
+    document.getElementById('stat-busy').textContent = stats.busy != null ? stats.busy : '--';
+    document.getElementById('stat-tasks-today').textContent = stats.tasks_today != null ? stats.tasks_today : '--';
+    document.getElementById('stat-success-rate').textContent = stats.success_rate != null ? stats.success_rate + '%' : '--';
+  }
+
+  // -- Main refresh --
+  var lastWorkers = [];
+
+  function refresh() {
+    countdown = 15;
+
+    fetchJSON('/api/tasks')
+      .then(function(data) { renderTasks(Array.isArray(data) ? data : data.tasks || []); })
+      .catch(function(err) {
+        document.getElementById('tasks-body').innerHTML =
+          '<tr><td colspan="6" class="status-msg error-msg">Failed to load tasks: ' + escapeHtml(String(err)) + '</td></tr>';
+      });
+
+    fetchJSON('/api/workers')
+      .then(function(data) {
+        lastWorkers = Array.isArray(data) ? data : data.workers || [];
+        renderWorkers(lastWorkers);
+      })
+      .catch(function(err) {
+        document.getElementById('workers-grid').innerHTML =
+          '<div class="status-msg error-msg">Failed to load workers: ' + escapeHtml(String(err)) + '</div>';
+      });
+
+    fetchJSON('/api/stats')
+      .then(function(data) { renderStats(data); })
+      .catch(function() {
+        renderStats({});
+      });
+  }
+
+  // Initial load + auto-refresh
+  refresh();
+  setInterval(refresh, 15000);
+})();
+</script>
+</body>
+</html>
