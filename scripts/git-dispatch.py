@@ -1093,7 +1093,7 @@ def _ssh_check_claude_process(worker_ip: str, worker_name: str) -> bool | None:
 
     Returns True if active, False if idle, None if SSH failed (unreachable).
     """
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", os.path.expanduser("~/.ssh/ccc-keys"))
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
@@ -1369,6 +1369,28 @@ class HealthHandler(BaseHTTPRequestHandler):
             with _relay_stats_lock:
                 stats = dict(_relay_stats)
             body = json.dumps(stats, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/workers":
+            with _fleet_roster_lock:
+                roster = dict(_fleet_roster)
+            body = json.dumps(roster, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/tasks":
+            with _api_queue_lock:
+                pending = {k: {**v, "status": "pending"} for k, v in _api_task_queue.items()}
+            with _api_history_lock:
+                history = dict(_api_task_history)
+            all_tasks = {**history, **pending}
+            sorted_tasks = sorted(all_tasks.items(), key=lambda x: x[1].get("timestamp", ""), reverse=True)[:50]
+            body = json.dumps(dict(sorted_tasks), indent=2).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -1843,7 +1865,7 @@ RELAY_REPO = os.environ.get(
     "https://github.com/joel-ginsberg_tmemu/ccc-rone-bridge.git",
 )
 RELAY_DIR = os.environ.get("RELAY_REPO_DIR", "/data/relay-repo")
-RELAY_POLL_INTERVAL = int(os.environ.get("RELAY_POLL_INTERVAL", "30"))
+RELAY_POLL_INTERVAL = int(os.environ.get("RELAY_POLL_INTERVAL", "3"))  # API queue is in-memory, cheap
 
 # Target repo config — where workers do their work.
 # Per-task override via bridge JSON: {"target_repo": "...", "target_workdir": "..."}
@@ -2167,7 +2189,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     result_file = f"/tmp/relay-result-{request_id}.txt"
 
     # Find SSH key
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", os.path.expanduser("~/.ssh/ccc-keys"))
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
@@ -2279,114 +2301,67 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
 
 
 def relay_poll_loop():
-    """Background thread: poll relay repo for pending requests, dispatch to workers."""
-    log.info("Relay poll loop started (interval: %ds, repo: %s)", RELAY_POLL_INTERVAL, RELAY_REPO)
+    """Background thread: drain API task queue every few seconds."""
+    log.info("API dispatch loop started (interval: %ds)", RELAY_POLL_INTERVAL)
 
     while True:
         try:
-            _relay_poll_tick()
+            _dispatch_poll_tick()
         except Exception as e:
-            log.error("Relay poll tick error: %s", e)
+            log.error("Dispatch poll tick error: %s", e)
             with _relay_stats_lock:
                 _relay_stats["errors"] += 1
         time.sleep(RELAY_POLL_INTERVAL)
 
 
-def _relay_poll_tick():
-    """Single relay poll iteration."""
+def _dispatch_poll_tick():
+    """Single dispatch iteration — drain the API task queue."""
     if not is_primary():
         return
-    if not _relay_git_pull():
-        return
 
-    # Recover orphaned dispatched tasks (stuck longer than task timeout)
-    dispatched_dir = os.path.join(RELAY_DIR, "requests", "dispatched")
-    if os.path.isdir(dispatched_dir):
-        now = time.time()
-        for fname in os.listdir(dispatched_dir):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(dispatched_dir, fname)
-            try:
-                with open(fpath, "r") as f:
-                    data = json.load(f)
-                dispatched_at = data.get("dispatched_at", "")
-                if dispatched_at:
-                    import datetime
-                    dt = datetime.datetime.strptime(dispatched_at, "%Y-%m-%dT%H:%M:%SZ")
-                    age_s = now - dt.replace(tzinfo=datetime.timezone.utc).timestamp()
-                    if age_s > RELAY_TASK_TIMEOUT * 2:  # 2x timeout = definitely orphaned
-                        rid = fname.replace(".json", "")
-                        log.warning("RELAY %s: orphaned dispatched task (age=%ds), moving to failed",
-                                    rid, int(age_s))
-                        _move_relay_file(rid, "dispatched", "failed", {
-                            "error": f"orphaned dispatch (age={int(age_s)}s, timeout={RELAY_TASK_TIMEOUT}s)",
-                            "failed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        })
-                        _relay_git_push(f"relay: {rid} failed (orphaned dispatch)")
-            except Exception:
-                pass
-
-    pending_dir = os.path.join(RELAY_DIR, "requests", "pending")
-    if not os.path.isdir(pending_dir):
-        return
-
-    pending_files = [f for f in os.listdir(pending_dir) if f.endswith(".json")]
     with _relay_stats_lock:
         _relay_stats["last_poll"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        _relay_stats["pending"] = len(pending_files)
 
-    if not pending_files:
-        return
+    # Recover orphaned API tasks (dispatched but stuck longer than 2x timeout)
+    now = time.time()
+    with _api_history_lock:
+        orphaned = []
+        for tid, tdata in _api_task_history.items():
+            if tdata.get("status") != "dispatched":
+                continue
+            dispatched_at = tdata.get("dispatched_at", "")
+            if dispatched_at:
+                import datetime
+                try:
+                    dt = datetime.datetime.strptime(dispatched_at, "%Y-%m-%dT%H:%M:%SZ")
+                    age_s = now - dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+                    if age_s > RELAY_TASK_TIMEOUT * 2:
+                        orphaned.append((tid, age_s))
+                except ValueError:
+                    pass
+        for tid, age_s in orphaned:
+            log.warning("API task %s: orphaned (age=%ds), marking failed", tid, int(age_s))
+            _api_task_history[tid]["status"] = "failed"
+            _api_task_history[tid]["error"] = f"orphaned dispatch (age={int(age_s)}s)"
 
-    log.info("RELAY: %d pending request(s)", len(pending_files))
-
-    for filename in pending_files:
-        request_id = filename.replace(".json", "")
-        filepath = os.path.join(pending_dir, filename)
-        try:
-            with open(filepath, "r") as f:
-                request_data = json.load(f)
-        except Exception as e:
-            log.warning("RELAY: bad JSON in %s: %s", filename, e)
-            continue
-
-        # Move to dispatched/ before processing
-        moved = _move_relay_file(request_id, "pending", "dispatched", {
-            "worker": "",
-            "dispatched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        })
-        if not moved:
-            continue
-
-        _relay_git_push(f"relay: dispatching {request_id}")
-        with _relay_stats_lock:
-            _relay_stats["dispatched"] += 1
-
-        # Dispatch in background thread so we can process multiple requests
-        t = threading.Thread(
-            target=_dispatch_relay_request,
-            args=(request_id, request_data),
-            daemon=True,
-            name=f"relay-{request_id}",
-        )
-        t.start()
-
-    # --- Drain API task queue (HTTP-submitted tasks) ---
+    # Drain pending API tasks
     with _api_queue_lock:
         api_tasks = list(_api_task_queue.items())
+
+    if not api_tasks:
+        return
 
     for task_id, task_data in api_tasks:
         log.info("API dispatch: task_id=%s text=%s", task_id, task_data.get("text", "")[:60])
 
-        # Move from queue to history as dispatched
         with _api_queue_lock:
             _api_task_queue.pop(task_id, None)
         with _api_history_lock:
             _api_task_history[task_id] = {**task_data, "status": "dispatched",
                                            "dispatched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        with _relay_stats_lock:
+            _relay_stats["dispatched"] = _relay_stats.get("dispatched", 0) + 1
 
-        # Dispatch in background thread
         t = threading.Thread(
             target=_dispatch_api_task,
             args=(task_id, task_data),
@@ -2746,16 +2721,14 @@ def main():
     )
     fleet_monitor.start()
 
-    # Start git relay poller (RONE ↔ CCC bridge)
+    # Start API dispatch loop (drains HTTP-submitted tasks)
     relay_thread = threading.Thread(
         target=relay_poll_loop,
         daemon=True,
-        name="relay-poller",
+        name="api-dispatch",
     )
     relay_thread.start()
-    log.info("  Relay repo:    %s", RELAY_REPO)
-    log.info("  Relay dir:     %s", RELAY_DIR)
-    log.info("  Relay poll:    %ds", RELAY_POLL_INTERVAL)
+    log.info("  API dispatch:  %ds poll interval", RELAY_POLL_INTERVAL)
 
     # Start dependency analysis loop (auto-annotates TODO.md)
     dep_thread = threading.Thread(
