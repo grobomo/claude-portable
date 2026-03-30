@@ -2141,10 +2141,35 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             _update_board()
 
+            # Use brain to suggest resolution if available
+            suggestion = ""
+            if os.environ.get("DISPATCHER_BRAIN_ENABLED", "1") == "1":
+                try:
+                    brain_dir = os.path.join(os.path.dirname(os.path.dirname(
+                        os.path.abspath(__file__))), "brain")
+                    parent = os.path.dirname(brain_dir)
+                    if parent not in sys.path:
+                        sys.path.insert(0, parent)
+                    from brain.storage import Storage as BrainStorage
+                    from brain.blockers import BlockerResolver
+                    bstorage = BrainStorage(data_dir=os.environ.get(
+                        "BRAIN_DATA_DIR", os.path.join(brain_dir, ".data")))
+                    resolver = BlockerResolver(bstorage)
+                    result = resolver.suggest_resolution(
+                        reason or question, worker_id=worker_id,
+                        task_id=str(task_num) if task_num else None)
+                    suggestion = result.get("recommended_action", "")
+                    resolver.record_blocker(
+                        reason or question, worker_id=worker_id,
+                        task_id=str(task_num) if task_num else None)
+                except Exception as e:
+                    log.debug("Brain blocker resolution failed: %s", e)
+
             resp = json.dumps({
                 "status": "ok",
                 "worker_id": worker_id,
                 "message": "blocked status recorded",
+                "suggestion": suggestion,
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -2379,11 +2404,83 @@ def _move_relay_file(request_id: str, from_dir: str, to_dir: str, extra_fields: 
         return None
 
 
-def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
-    """Generate spec-kit artifacts locally on the dispatcher using claude -p.
+def _generate_spec_via_brain(task_text: str, request_id: str,
+                              target_repo: str | None = None) -> str | None:
+    """Generate spec-kit artifacts using the brain conversation manager.
+
+    Uses persistent Anthropic API conversation for context-aware spec generation.
+    Falls back to spec-generate.sh if brain fails.
 
     Returns path to temp directory containing .specs/ and .planning/, or None on failure.
     """
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix=f"spec-{request_id}-")
+
+    repo_dir = target_repo or os.environ.get(
+        "BRAIN_TARGET_REPO", "/workspace/boothapp")
+
+    try:
+        brain_dir = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "brain")
+        parent = os.path.dirname(brain_dir)
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
+
+        from brain.storage import Storage
+        from brain.fleet import Fleet
+        from brain.conversation import ConversationManager
+
+        data_dir = os.environ.get("BRAIN_DATA_DIR", os.path.join(brain_dir, ".data"))
+
+        storage = Storage(data_dir=data_dir)
+        fleet = Fleet(storage)
+        mgr = ConversationManager(
+            storage=storage,
+            repo_dir=repo_dir,
+            fleet_summary=fleet.get_summary(),
+        )
+
+        log.info("RELAY %s: generating spec via brain...", request_id)
+        result = mgr.generate_spec(task_text, request_id)
+
+        # Build slug from first 4 words
+        words = re.sub(r'[^a-z0-9 ]', '', task_text.lower()).split()[:4]
+        slug = '-'.join(words) if words else "task"
+
+        spec_dir = os.path.join(tmpdir, ".specs", slug)
+        os.makedirs(spec_dir, exist_ok=True)
+
+        with open(os.path.join(spec_dir, "spec.md"), "w") as f:
+            f.write(result["spec"])
+        with open(os.path.join(spec_dir, "plan.md"), "w") as f:
+            f.write(result["plan"])
+        with open(os.path.join(spec_dir, "tasks.md"), "w") as f:
+            f.write(result["tasks"])
+
+        planning_dir = os.path.join(tmpdir, ".planning")
+        os.makedirs(os.path.join(planning_dir, "quick"), exist_ok=True)
+        with open(os.path.join(planning_dir, "config.json"), "w") as f:
+            json.dump({
+                "mode": "yolo",
+                "depth": "quick",
+                "auto_initialized": True,
+                "workflow": {"verifier": True},
+                "spec_dir": f".specs/{slug}",
+            }, f, indent=2)
+
+        log.info("RELAY %s: brain spec generated at %s", request_id, tmpdir)
+        return tmpdir
+
+    except Exception as e:
+        log.warning("RELAY %s: brain spec generation failed (%s), "
+                    "falling back to spec-generate.sh", request_id, e)
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return _generate_spec_via_shell(task_text, request_id)
+
+
+def _generate_spec_via_shell(task_text: str, request_id: str) -> str | None:
+    """Fallback: generate spec-kit artifacts using spec-generate.sh (3 cold claude -p calls)."""
     spec_timeout = int(os.environ.get("SPEC_GENERATE_TIMEOUT", "600"))
     script_dir = os.path.dirname(os.path.abspath(__file__))
     spec_script = os.path.join(script_dir, "spec-generate.sh")
@@ -2402,18 +2499,33 @@ def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
             env={**os.environ, "SPEC_TIMEOUT": str(spec_timeout // 3)},
         )
         if r.returncode == 0:
-            log.info("RELAY %s: spec generated locally at %s", request_id, tmpdir)
+            log.info("RELAY %s: spec generated via shell at %s", request_id, tmpdir)
             return tmpdir
         else:
-            log.warning("RELAY %s: spec generation failed: %s", request_id, r.stderr[:200])
-            # Still return tmpdir — fallback spec.md was written by the script
+            log.warning("RELAY %s: shell spec generation failed: %s", request_id, r.stderr[:200])
             return tmpdir
     except subprocess.TimeoutExpired:
-        log.warning("RELAY %s: spec generation timed out", request_id)
-        return tmpdir  # partial spec may exist
+        log.warning("RELAY %s: shell spec generation timed out", request_id)
+        return tmpdir
     except Exception as e:
-        log.error("RELAY %s: spec generation error: %s", request_id, e)
+        log.error("RELAY %s: shell spec generation error: %s", request_id, e)
         return None
+
+
+def _generate_spec_locally(task_text: str, request_id: str) -> str | None:
+    """Generate spec-kit artifacts locally on the dispatcher.
+
+    Uses brain (persistent Anthropic API conversation) by default.
+    Falls back to spec-generate.sh if brain is disabled or fails.
+    Set DISPATCHER_BRAIN_ENABLED=0 to skip brain and use shell directly.
+
+    Returns path to temp directory containing .specs/ and .planning/, or None on failure.
+    """
+    use_brain = os.environ.get("DISPATCHER_BRAIN_ENABLED", "1") == "1"
+    if use_brain:
+        return _generate_spec_via_brain(task_text, request_id)
+    else:
+        return _generate_spec_via_shell(task_text, request_id)
 
 
 def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
