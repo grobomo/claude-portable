@@ -1440,12 +1440,16 @@ def _check_bearer_auth(handler) -> bool:
     return True
 
 
-def _send_json(handler, status: int, data: dict):
+def _send_json(handler, status: int, data: dict, *, cors: bool = False):
     """Helper to send a JSON response."""
     body = json.dumps(data, indent=2).encode()
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))
+    if cors:
+        handler.send_header("Access-Control-Allow-Origin", "*")
+        handler.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -1695,6 +1699,27 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 _send_json(self, 200, dict(task))
 
+        # ── Dashboard API endpoints (public, no auth) ─────────────────
+        elif self.path == "/api/tasks":
+            tasks = _api_get_tasks()
+            _send_json(self, 200, tasks, cors=True)
+        elif self.path == "/api/workers":
+            workers = _api_get_workers()
+            _send_json(self, 200, workers, cors=True)
+        elif self.path == "/api/stats":
+            stats = _api_get_stats()
+            _send_json(self, 200, stats, cors=True)
+        elif self.path.startswith("/api/workers/") and self.path.endswith("/live"):
+            parts = self.path.split("/")
+            if len(parts) == 5:
+                worker_id = parts[3]
+                result = _api_get_worker_live(worker_id)
+                status_code = result.pop("_status", 200)
+                _send_json(self, status_code, result, cors=True)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -1723,47 +1748,19 @@ class HealthHandler(BaseHTTPRequestHandler):
             log.info("Task cancelled: id=%s", task_id)
             _send_json(self, 200, dict(task))
 
-        elif self.path == "/api/tasks":
-            tasks = _api_get_tasks()
-            body = json.dumps(tasks, indent=2).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
+        else:
+            self.send_response(404)
             self.end_headers()
-            self.wfile.write(body)
-        elif self.path == "/api/workers":
-            workers = _api_get_workers()
-            body = json.dumps(workers, indent=2).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
+
+    def do_OPTIONS(self):
+        """CORS preflight for /api/* endpoints."""
+        if self.path.startswith("/api/"):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
             self.end_headers()
-            self.wfile.write(body)
-        elif self.path == "/api/stats":
-            stats = _api_get_stats()
-            body = json.dumps(stats, indent=2).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        elif self.path.startswith("/api/workers/") and self.path.endswith("/live"):
-            # /api/workers/{worker_id}/live
-            parts = self.path.split("/")
-            # ['', 'api', 'workers', '{worker_id}', 'live']
-            if len(parts) == 5:
-                worker_id = parts[3]
-                result = _api_get_worker_live(worker_id)
-                status_code = result.pop("_status", 200)
-                body = json.dumps(result, indent=2).encode()
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                self.send_response(404)
-                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
