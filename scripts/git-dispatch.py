@@ -1990,7 +1990,11 @@ def _relay_git_push(message: str) -> bool:
     """Stage all changes and push to relay repo.
 
     On conflict: stash local changes, reset to remote, pop stash, recommit, push.
+    No-op if relay repo doesn't exist (API-only mode).
     """
+    if not os.path.isdir(os.path.join(RELAY_DIR, ".git")):
+        return True  # No relay repo — API-only mode, nothing to push
+
     def _run(cmd, **kwargs):
         return subprocess.run(cmd, cwd=RELAY_DIR, capture_output=True,
                               text=True, timeout=kwargs.get("timeout", 10))
@@ -2039,7 +2043,10 @@ def _relay_git_push(message: str) -> bool:
 
 
 def _move_relay_file(request_id: str, from_dir: str, to_dir: str, extra_fields: dict = None):
-    """Move a relay request JSON between directories, optionally adding fields."""
+    """Move a relay request JSON between directories, optionally adding fields.
+    No-op if relay repo doesn't exist (API-only mode)."""
+    if not os.path.isdir(os.path.join(RELAY_DIR, ".git")):
+        return None  # API-only mode
     src = os.path.join(RELAY_DIR, "requests", from_dir, f"{request_id}.json")
     dst_dir = os.path.join(RELAY_DIR, "requests", to_dir)
     dst = os.path.join(dst_dir, f"{request_id}.json")
