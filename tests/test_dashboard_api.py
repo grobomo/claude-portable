@@ -286,5 +286,108 @@ class TestHttpEndpoints(unittest.TestCase):
             self.assertEqual(e.code, 404)
 
 
+class TestDashboardHtml(unittest.TestCase):
+    """Test that GET / serves the dashboard HTML."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = HTTPServer(("127.0.0.1", 0), gd.HealthHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def test_root_returns_html(self):
+        import urllib.request
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            ct = resp.headers.get("Content-Type", "")
+            body = resp.read().decode()
+        self.assertIn("text/html", ct)
+        self.assertIn("<title>CCC Fleet Dashboard</title>", body)
+
+    def test_health_returns_json(self):
+        data, status = _json_get(self.server, "/health")
+        self.assertEqual(status, 200)
+        self.assertIn("uptime_seconds", data)
+
+
+class TestApiSubmit(unittest.TestCase):
+    """Test POST /api/submit endpoint."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = HTTPServer(("127.0.0.1", 0), gd.HealthHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def setUp(self):
+        self._orig_store = dict(gd._task_store)
+        gd._task_store.clear()
+
+    def tearDown(self):
+        gd._task_store.clear()
+        gd._task_store.update(self._orig_store)
+
+    def _post(self, path, payload):
+        import urllib.request
+        import urllib.error
+        url = f"http://127.0.0.1:{self.server.server_address[1]}{path}"
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(url, data=data,
+                                     headers={"Content-Type": "application/json"},
+                                     method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode()), resp.status
+        except urllib.error.HTTPError as e:
+            return json.loads(e.read().decode()), e.code
+
+    def test_submit_creates_task(self):
+        data, status = self._post("/api/submit", {"text": "Build feature X"})
+        self.assertEqual(status, 201)
+        self.assertEqual(data["state"], "PENDING")
+        self.assertEqual(data["text"], "Build feature X")
+        self.assertEqual(data["sender"], "dashboard")
+        self.assertIn("id", data)
+
+    def test_submit_empty_text_returns_400(self):
+        data, status = self._post("/api/submit", {"text": ""})
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
+
+    def test_submit_missing_text_returns_400(self):
+        data, status = self._post("/api/submit", {"priority": "high"})
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
+
+    def test_submit_invalid_priority_defaults_normal(self):
+        data, status = self._post("/api/submit", {"text": "Task Y", "priority": "bogus"})
+        self.assertEqual(status, 201)
+        self.assertEqual(data["priority"], "normal")
+
+    def test_submit_custom_priority(self):
+        data, status = self._post("/api/submit", {"text": "Urgent", "priority": "critical"})
+        self.assertEqual(status, 201)
+        self.assertEqual(data["priority"], "critical")
+
+    def test_submit_cors_headers(self):
+        import urllib.request
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/api/submit"
+        data = json.dumps({"text": "CORS test"}).encode()
+        req = urllib.request.Request(url, data=data,
+                                     headers={"Content-Type": "application/json"},
+                                     method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            acao = resp.headers.get("Access-Control-Allow-Origin", "")
+        self.assertEqual(acao, "*")
+
+
 if __name__ == "__main__":
     unittest.main()
