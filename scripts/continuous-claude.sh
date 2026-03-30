@@ -965,8 +965,70 @@ CRITICAL: Check for secrets before committing: grep -rn 'password\|secret\|token
     return 1
   fi
 
-  # ===== STAGE 6: VERIFY =====
-  local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
+  # ===== STAGE 6: VERIFY (via verify-integration.sh) =====
+  local verify_results_file="${pipeline_dir}/06-verify-results.json"
+  local verify_script="/opt/claude-portable/scripts/test/verify-integration.sh"
+  # Fallback: check repo-local path
+  if [ ! -f "$verify_script" ]; then
+    verify_script="${WORKDIR}/scripts/test/verify-integration.sh"
+  fi
+
+  echo "  Running verify-integration.sh..."
+  if [ -f "$verify_script" ]; then
+    # Run the structured verification script
+    VERIFY_BASE_BRANCH="$BRANCH" TEST_RUN_CMD="${test_run_cmd}" \
+      bash "$verify_script" --json --base-branch "$BRANCH" "$WORKDIR" \
+      > "$verify_results_file" 2>/dev/null || true
+
+    # Check overall result
+    local verify_overall
+    verify_overall=$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        print(json.load(f).get('overall', 'unknown'))
+except: print('unknown')
+" "$verify_results_file" 2>/dev/null || echo "unknown")
+
+    if [ "$verify_overall" = "fail" ]; then
+      echo "  verify-integration.sh FAILED -- running Claude VERIFY stage for fixes"
+    else
+      echo "  verify-integration.sh PASSED"
+    fi
+
+    # Report results to dispatcher
+    if [ -n "$DISPATCHER_URL" ] && [ -f "$verify_results_file" ]; then
+      python3 -c "
+import json, sys, urllib.request
+results_path, dispatcher_url, worker_id, task_num = sys.argv[1:5]
+with open(results_path) as f:
+    results = json.load(f)
+payload = json.dumps({
+    'worker_id': worker_id,
+    'task_id': task_num,
+    'task_num': int(task_num),
+    'results': results,
+}).encode()
+req = urllib.request.Request(
+    dispatcher_url.rstrip('/') + '/worker/verify',
+    data=payload,
+    headers={'Content-Type': 'application/json'},
+    method='POST',
+)
+try:
+    urllib.request.urlopen(req, timeout=10)
+except Exception as e:
+    print(f'  Warning: could not report verify results to dispatcher: {e}', file=sys.stderr)
+" "$verify_results_file" "$DISPATCHER_URL" "$INSTANCE_ID" "$task_num" 2>&1 || true
+    fi
+  else
+    echo "  WARNING: verify-integration.sh not found, falling back to inline checks"
+    verify_overall="unknown"
+  fi
+
+  # If verify-integration.sh failed or wasn't found, run Claude VERIFY stage as fallback
+  if [ "$verify_overall" != "pass" ]; then
+    local verify_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
 TASK: ${task_desc}
 BRANCH: ${branch_name}
@@ -990,7 +1052,16 @@ If anything fails, fix it and re-run. Commit any fixes with: 'fix: verification 
 When ALL checks pass, output: VERIFY_PASSED
 If you cannot fix all issues after attempting, output: VERIFY_FAILED with details."
 
-  run_stage_with_retry "VERIFY" "6" "$verify_prompt" "$stage_log" || return 1
+    run_stage_with_retry "VERIFY" "6" "$verify_prompt" "$stage_log" || return 1
+
+    # Re-run verify-integration.sh after Claude fixes
+    if [ -f "$verify_script" ]; then
+      echo "  Re-running verify-integration.sh after Claude fixes..."
+      VERIFY_BASE_BRANCH="$BRANCH" TEST_RUN_CMD="${test_run_cmd}" \
+        bash "$verify_script" --json --base-branch "$BRANCH" "$WORKDIR" \
+        > "$verify_results_file" 2>/dev/null || true
+    fi
+  fi
 
   # --- GATE 7: No secrets or personal paths in diff ---
   echo "  GATE 7: Checking diff for secrets and personal paths..."
@@ -1033,6 +1104,31 @@ If you cannot fix all issues after attempting, output: VERIFY_FAILED with detail
     git commit -m "docs: add pipeline audit trail for task ${task_num}" 2>/dev/null || true
   fi
 
+  # ===== Build verification summary for PR body =====
+  local verify_summary=""
+  if [ -f "$verify_results_file" ]; then
+    verify_summary=$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    lines = []
+    lines.append('## Verification Results')
+    lines.append('')
+    lines.append(f'Overall: **{data.get(\"overall\", \"unknown\").upper()}** | '
+                 f'Pass: {data.get(\"pass\", 0)} | '
+                 f'Fail: {data.get(\"fail\", 0)} | '
+                 f'Warn: {data.get(\"warn\", 0)}')
+    lines.append('')
+    for check in data.get('checks', []):
+        icon = {'pass': '[x]', 'fail': '[ ]', 'warn': '[~]'}.get(check.get('result', ''), '[ ]')
+        lines.append(f'- {icon} **{check[\"name\"]}**: {check.get(\"detail\", \"\")}')
+    print('\n'.join(lines))
+except Exception as e:
+    print(f'Verification results unavailable: {e}')
+" "$verify_results_file" 2>/dev/null || echo "Verification results unavailable")
+  fi
+
   # ===== STAGE 7: PR =====
   local pr_prompt="You are instance '${INSTANCE_ID}' working on task #${task_num}.
 
@@ -1053,7 +1149,9 @@ TDD pipeline stages completed:
 - Research: ${research_file}
 - Plan: ${plan_file}
 - Tests written first (failing), then implementation added
-- All tests passing, verification complete'
+- All tests passing, verification complete
+
+${verify_summary}'
 
    (If PR already exists from branch push, use: gh pr edit --body '...' instead)
 
