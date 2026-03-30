@@ -330,8 +330,28 @@ def process_issues(repos, dispatcher_url, token, state_file):
                 save_state(state_file)
                 continue
 
-            # Issue exists in state -- check for new comments
+            # Issue exists in state -- check if reopened (was terminal, now open again)
             tracked = _state["issues"][key]
+            if tracked.get("state") in ("COMPLETED", "FAILED", "CANCELLED", "SUBMIT_FAILED") \
+                    and tracked.get("result_posted"):
+                log.info("Reopened issue: %s -- %s", key, issue["title"])
+                task_text = build_task_text(repo, issue)
+                result = dispatcher_submit(dispatcher_url, task_text, sender=key, token=token)
+                if result:
+                    task_id = result.get("id", "")
+                    tracked.update({
+                        "task_id": task_id,
+                        "state": result.get("state", "PENDING"),
+                        "result_posted": False,
+                        "last_updated": updated_at,
+                        "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    })
+                    post_comment(repo, number,
+                                 f"Reopened -- new task submitted (id: `{task_id}`). Tracking...")
+                    log.info("Re-submitted task %s for reopened %s", task_id, key)
+                save_state(state_file)
+
+            # Check for new comments
             _process_issue_comments(repo, issue, dispatcher_url, token, state_file)
 
         _state["last_poll"][repo] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
