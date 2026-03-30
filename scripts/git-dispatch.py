@@ -1382,6 +1382,9 @@ DISPATCH_API_TOKEN = os.environ.get("DISPATCH_API_TOKEN", "")
 _task_store: dict = {}  # task_id -> task dict
 _task_store_lock = threading.Lock()
 
+_verify_store: dict = {}  # task_id -> verification results dict
+_verify_store_lock = threading.Lock()
+
 _TASK_TERMINAL_STATES = {"COMPLETED", "FAILED", "CANCELLED"}
 _TASK_VALID_STATES = {"PENDING", "DISPATCHED", "RUNNING", "COMPLETED", "FAILED", "STUCK", "CANCELLED"}
 
@@ -1719,6 +1722,19 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404)
                 self.end_headers()
+
+        # ── Verification results endpoint (public, no auth) ────────────
+        elif self.path.startswith("/api/verify/"):
+            # GET /api/verify/{task_id} -- return verification results for a task
+            task_id = self.path.split("/api/verify/", 1)[1].rstrip("/")
+            if "?" in task_id:
+                task_id = task_id.split("?", 1)[0]
+            with _verify_store_lock:
+                verify_data = _verify_store.get(task_id)
+            if not verify_data:
+                _send_json(self, 404, {"error": "No verification results found", "task_id": task_id}, cors=True)
+            else:
+                _send_json(self, 200, dict(verify_data), cors=True)
 
         else:
             self.send_response(404)
@@ -2176,6 +2192,57 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(resp)))
             self.end_headers()
             self.wfile.write(resp)
+
+        elif self.path == "/worker/verify":
+            # POST /worker/verify -- worker submits verification results before PR
+            worker_id = str(payload.get("worker_id", "unknown"))
+            task_id = str(payload.get("task_id", ""))
+            task_num = payload.get("task_num")
+            results = payload.get("results", {})
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+            if not task_id and task_num:
+                task_id = str(task_num)
+
+            if not task_id:
+                _send_json(self, 400, {"error": "task_id or task_num is required"})
+                return
+
+            verify_entry = {
+                "task_id": task_id,
+                "worker_id": worker_id,
+                "timestamp": now,
+                "overall": results.get("overall", "unknown"),
+                "pass": results.get("pass", 0),
+                "fail": results.get("fail", 0),
+                "warn": results.get("warn", 0),
+                "checks": results.get("checks", []),
+                "base_branch": results.get("base_branch", "main"),
+            }
+
+            with _verify_store_lock:
+                _verify_store[task_id] = verify_entry
+
+            # Also update fleet roster with verification status
+            with _fleet_roster_lock:
+                entry = _fleet_roster.get(worker_id)
+                if entry:
+                    entry["last_verify"] = now
+                    entry["verify_result"] = results.get("overall", "unknown")
+                    entry["last_report"] = now
+
+            log.info(
+                "Verification received: worker=%s task=%s overall=%s pass=%d fail=%d warn=%d",
+                worker_id, task_id, results.get("overall", "?"),
+                results.get("pass", 0), results.get("fail", 0), results.get("warn", 0),
+            )
+
+            _send_json(self, 200, {
+                "status": "ok",
+                "task_id": task_id,
+                "overall": results.get("overall", "unknown"),
+                "message": "verification results recorded",
+            })
 
         # ── Task management POST endpoints (auth required) ─────────────
         elif self.path == "/task":
