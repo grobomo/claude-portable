@@ -238,6 +238,14 @@ if [ -f "$HEALTH_SCRIPT" ]; then
   echo "  worker-health PID: $!"
 fi
 
+# --- Start worker agent daemon (heartbeats + progress detection) ---
+AGENT_SCRIPT="/opt/claude-portable/scripts/worker-agent.py"
+if [ -f "$AGENT_SCRIPT" ] && [ -n "${DISPATCHER_IP:-}" ] && [ -n "${DISPATCH_API_TOKEN:-}" ]; then
+  echo "[+] Starting worker agent (dispatcher=${DISPATCHER_IP})..."
+  nohup python3 "$AGENT_SCRIPT" >> /data/worker-agent.log 2>&1 &
+  echo "  worker-agent PID: $!"
+fi
+
 # --- Worker zero-touch boot: SSH key upload + dispatcher registration ---
 if [ "${CONTINUOUS_CLAUDE_ENABLED:-false}" = "true" ]; then
   INSTANCE_ID="${CLAUDE_PORTABLE_ID:-$(hostname)}"
