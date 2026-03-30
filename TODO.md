@@ -309,7 +309,7 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - **PR title**: the PR title to use
   Example:
   ```
-  - [ ] Add rolling chat cache to dispatcher
+  - [x] Add rolling chat cache to dispatcher
     - What: dispatcher writes last 50 Teams messages to /data/chat-cache/group-chat.txt every poll cycle
     - Why: workers answering @claude messages have no conversation context, so replies like "what do those do" fail because Claude doesn't know what "those" refers to (from session 2026-03-28)
     - How: in teams-dispatch.py poll_once(), after fetching messages, write them to txt. Include sender, timestamp, body. Overwrite each cycle.

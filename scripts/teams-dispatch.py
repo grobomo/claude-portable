@@ -260,6 +260,49 @@ def fetch_messages(chat_id, count=10):
         return []
 
 
+CHAT_CACHE_DIR = os.environ.get("CHAT_CACHE_DIR", "/data/chat-cache")
+
+
+def write_chat_cache(chat_id, count=50):
+    """Write last N Teams messages to group-chat.txt for worker context.
+
+    Format per line: [YYYY-MM-DDTHH:MM:SS] sender: message
+    Overwritten each poll cycle so workers always get fresh context.
+    """
+    try:
+        messages = fetch_messages(chat_id, count=count)
+    except Exception as e:
+        print(f"  WARNING: chat cache fetch failed: {e}")
+        return
+
+    if not messages:
+        return
+
+    # Messages arrive newest-first; reverse for chronological order
+    messages = list(reversed(messages))
+
+    lines = []
+    for m in messages:
+        ts = (m.get("createdDateTime") or "")[:19]
+        sender = "(unknown)"
+        fr = m.get("from", {})
+        if fr and fr.get("user"):
+            sender = fr["user"].get("displayName", "(unknown)")
+        body_html = m.get("body", {}).get("content", "")
+        body_text = re.sub(r"<[^>]+>", "", body_html).strip()
+        body_text = re.sub(r"\s*\n\s*", " ", body_text)
+        if body_text:
+            lines.append(f"[{ts}] {sender}: {body_text}")
+
+    try:
+        os.makedirs(CHAT_CACHE_DIR, exist_ok=True)
+        cache_path = os.path.join(CHAT_CACHE_DIR, "group-chat.txt")
+        with open(cache_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception as e:
+        print(f"  WARNING: chat cache write failed: {e}")
+
+
 def extract_trigger(body_html, trigger):
     """Extract prompt text after trigger keyword, return (prompt, True) or (None, False)."""
     body_text = re.sub(r"<[^>]+>", "", body_html).strip()
@@ -914,6 +957,9 @@ def poll_once(chat_id, trigger, state, instance_name=None, project="/workspace")
     """Single poll iteration: check for new messages, dispatch, check results."""
     processed = set(state.get("processed_msgs", []))
     requests = state.get("requests", {})
+
+    # --- Phase 0: Write chat cache for worker context ---
+    write_chat_cache(chat_id)
 
     # --- Phase 1: Check for new @claude messages ---
     messages = fetch_messages(chat_id)
