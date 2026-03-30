@@ -2749,7 +2749,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         log.warning("RELAY %s: no idle worker available", request_id)
         _move_relay_file(request_id, "dispatched", "pending",
                          {"error": "no idle worker", "retry_after": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-        return
+        return False
 
     # Track current task assignment
     with _worker_stats_lock:
@@ -2781,7 +2781,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         _move_relay_file(request_id, "dispatched", "failed",
                          {"error": f"no SSH key for {worker_name}"})
         _relay_git_push(f"relay: {request_id} failed (no SSH key)")
-        return
+        return False
 
     # Generate spec-kit artifacts locally, then SCP to worker
     spec_dir = None
@@ -2855,6 +2855,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
                 if ws:
                     ws["tasks_completed"] += 1
                     ws["current_task_id"] = None
+            return True
         else:
             error_msg = r.stderr[:500] if r.stderr else f"empty response (rc={r.returncode}, stdout={r.stdout[:200]})"
             _move_relay_file(request_id, "dispatched", "failed", {
@@ -2871,6 +2872,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
                 if ws:
                     ws["tasks_failed"] += 1
                     ws["current_task_id"] = None
+            return False
     except subprocess.TimeoutExpired:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": f"timeout ({RELAY_TASK_TIMEOUT}s)",
@@ -2885,6 +2887,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             if ws:
                 ws["tasks_failed"] += 1
                 ws["current_task_id"] = None
+        return False
     except Exception as e:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": str(e),
@@ -2899,6 +2902,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             if ws:
                 ws["tasks_failed"] += 1
                 ws["current_task_id"] = None
+        return False
     finally:
         with _fleet_roster_lock:
             entry = _fleet_roster.get(worker_name)
