@@ -2442,9 +2442,20 @@ def _dispatch_api_task(task_id: str, task_data: dict):
     """Dispatch an API-submitted task to a worker. Same as relay but no git."""
     try:
         success = _dispatch_relay_request(task_id, task_data)
-        with _api_history_lock:
-            if task_id in _api_task_history:
-                _api_task_history[task_id]["status"] = "completed" if success else "failed"
+        if success:
+            with _api_history_lock:
+                if task_id in _api_task_history:
+                    _api_task_history[task_id]["status"] = "completed"
+        else:
+            # No idle worker — re-queue instead of marking failed
+            log.info("API task %s: no idle worker, re-queuing", task_id)
+            with _api_queue_lock:
+                _api_task_queue[task_id] = task_data
+            with _api_history_lock:
+                if task_id in _api_task_history:
+                    _api_task_history[task_id]["status"] = "pending"
+                    _api_task_history[task_id]["requeued_at"] = time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     except Exception as e:
         log.error("API task %s failed: %s", task_id, e)
         with _api_history_lock:
