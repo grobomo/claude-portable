@@ -140,26 +140,36 @@ def get_state():
 # ── Git helpers ────────────────────────────────────────────────────────────────
 
 def git_pull(repo_dir: str) -> bool:
-    """Pull latest main branch. Returns True on success."""
+    """Fetch and force-sync local main to origin/main. Returns True on success."""
     try:
-        result = subprocess.run(
-            ["git", "pull", "--rebase", "origin", "main"],
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", "main"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
             timeout=60,
         )
-        if result.returncode == 0:
-            log.debug("git pull succeeded: %s", result.stdout.strip())
+        if fetch.returncode != 0:
+            log.warning("git fetch failed: %s", fetch.stderr.strip())
+            return False
+        reset = subprocess.run(
+            ["git", "reset", "--hard", "origin/main"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if reset.returncode == 0:
+            log.debug("git sync succeeded: %s", reset.stdout.strip())
             return True
         else:
-            log.warning("git pull failed: %s", result.stderr.strip())
+            log.warning("git reset failed: %s", reset.stderr.strip())
             return False
     except subprocess.TimeoutExpired:
-        log.warning("git pull timed out")
+        log.warning("git sync timed out")
         return False
     except Exception as e:
-        log.warning("git pull error: %s", e)
+        log.warning("git sync error: %s", e)
         return False
 
 
@@ -1096,7 +1106,7 @@ def _ssh_check_claude_process(worker_ip: str, worker_name: str) -> bool | None:
 
     Returns True if active, False if idle, None if SSH failed (unreachable).
     """
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", os.path.expanduser("~/.ssh/ccc-keys"))
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
@@ -2176,7 +2186,7 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
 
         # Clean up old specs/planning from previous tasks on this worker
         subprocess.run(
-            ssh_base + ["docker exec -w /workspace/boothapp claude-portable "
+            ssh_base + ["docker exec -w /workspace claude-portable "
                         "bash -c 'rm -rf .specs/ .planning/ TODO.md 2>/dev/null; true'"],
             capture_output=True, text=True, timeout=10)
 
@@ -2237,7 +2247,7 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
     script_lines = [
         "#!/bin/bash",
         "set -euo pipefail",
-        "cd /workspace/boothapp",
+        "cd /workspace",
         "",
         f"RESULT_FILE={result_file}",
         "",
@@ -2278,7 +2288,7 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
     cmd = (
         f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
         f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
-        f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+        f"docker exec -w /workspace claude-portable bash /tmp/dispatch-{request_id}.sh"
     )
     return cmd
 
@@ -2310,7 +2320,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     result_file = f"/tmp/relay-result-{request_id}.txt"
 
     # Find SSH key
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", os.path.expanduser("~/.ssh/ccc-keys"))
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
@@ -2353,7 +2363,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         # Use base64 to avoid quoting issues through SSH -> docker exec -> bash -c
         import base64
         script = (
-            f"#!/bin/bash\ncd /workspace/boothapp\n"
+            f"#!/bin/bash\ncd /workspace\n"
             f'claude -p "{escaped}" --dangerously-skip-permissions '
             f"> {result_file} 2>&1\ncat {result_file}"
         )
@@ -2361,7 +2371,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         cmd = (
             f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
             f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
-            f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+            f"docker exec -w /workspace claude-portable bash /tmp/dispatch-{request_id}.sh"
         )
 
     try:
@@ -2561,7 +2571,7 @@ def _get_s3_bucket() -> str:
             capture_output=True, text=True, timeout=10,
         )
         if r.returncode == 0 and r.stdout.strip():
-            return f"claude-portable-state-{r.stdout.strip()}"
+            return f"hackathon26-state-{r.stdout.strip()}"
     except Exception:
         pass
     return ""
