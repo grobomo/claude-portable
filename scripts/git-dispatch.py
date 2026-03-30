@@ -1770,6 +1770,12 @@ RELAY_REPO = os.environ.get(
 RELAY_DIR = os.environ.get("RELAY_REPO_DIR", "/data/relay-repo")
 RELAY_POLL_INTERVAL = int(os.environ.get("RELAY_POLL_INTERVAL", "30"))
 
+# Target repo config — where workers do their work.
+# Per-task override via bridge JSON: {"target_repo": "...", "target_workdir": "..."}
+TARGET_REPO_URL = os.environ.get("TARGET_REPO_URL", "https://github.com/altarr/boothapp.git")
+TARGET_WORKDIR = os.environ.get("TARGET_WORKDIR", "/workspace/boothapp")
+TARGET_BRANCH = os.environ.get("TARGET_BRANCH", "main")
+
 _relay_stats = {
     "last_poll": None,
     "pending": 0,
@@ -1940,7 +1946,7 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
 
         # Clean up old specs/planning from previous tasks on this worker
         subprocess.run(
-            ssh_base + ["docker exec -w /workspace/boothapp claude-portable "
+            ssh_base + [f"docker exec -w {TARGET_WORKDIR} claude-portable "
                         "bash -c 'rm -rf specs/ .planning/ TODO.md 2>/dev/null; true'"],
             capture_output=True, text=True, timeout=10)
 
@@ -1960,15 +1966,15 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
             log.warning("RELAY %s: SCP failed: %s", request_id, r.stderr[:100])
             return False
 
-        # Ensure boothapp workspace exists in container, then copy spec artifacts
+        # Ensure target workspace exists in container, then copy spec artifacts
         subprocess.run(
-            ssh_base + ["docker exec claude-portable mkdir -p /workspace/boothapp"],
+            ssh_base + [f"docker exec claude-portable mkdir -p {TARGET_WORKDIR}"],
             capture_output=True, text=True, timeout=10)
 
         for subdir in ["specs", ".planning"]:
             subprocess.run(
                 ssh_base + [f"docker cp /tmp/spec-{request_id}/{subdir} "
-                            f"claude-portable:/workspace/boothapp/{subdir}"],
+                            f"claude-portable:{TARGET_WORKDIR}/{subdir}"],
                 capture_output=True, text=True, timeout=30)
 
         # Clean up remote /tmp
@@ -1984,7 +1990,9 @@ def _scp_spec_to_worker(spec_dir: str, worker_ip: str, key_path: str,
 
 
 def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
-                          escaped_prompt: str, result_file: str) -> str:
+                          escaped_prompt: str, result_file: str,
+                          target_repo: str = None, target_workdir: str = None,
+                          target_branch: str = None) -> str:
     """Build a command that uses continuous-claude.sh for multi-task specs.
 
     Instead of a single claude -p, this:
@@ -1997,11 +2005,15 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
     To avoid quoting issues through SSH -> docker exec -> bash -c layers,
     we write a dispatch script to the container first, then execute it.
     """
+    repo = target_repo or TARGET_REPO_URL
+    workdir = target_workdir or TARGET_WORKDIR
+    branch = target_branch or TARGET_BRANCH
+
     # Build the dispatch script content (runs inside the worker container)
     script_lines = [
         "#!/bin/bash",
         "set -euo pipefail",
-        "cd /workspace/boothapp",
+        f"cd {workdir}",
         "",
         f"RESULT_FILE={result_file}",
         "",
@@ -2009,7 +2021,7 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
         "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ] && ls specs/*/tasks.md >/dev/null 2>&1; then",
         "    CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
         "      bash /opt/claude-portable/scripts/continuous-claude.sh \\",
-        "        https://github.com/altarr/boothapp.git main /workspace/boothapp \\",
+        f"        {repo} {branch} {workdir} \\",
         '        > "$RESULT_FILE" 2>&1',
         '    cat "$RESULT_FILE"',
         "  else",
@@ -2031,9 +2043,18 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
     cmd = (
         f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
         f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
-        f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+        f"docker exec -w {workdir} claude-portable bash /tmp/dispatch-{request_id}.sh"
     )
     return cmd
+
+
+def _resolve_target(request_data: dict) -> tuple:
+    """Resolve target repo/workdir/branch for a task.
+    Priority: task JSON > env var > default."""
+    repo = request_data.get("target_repo", TARGET_REPO_URL)
+    workdir = request_data.get("target_workdir", TARGET_WORKDIR)
+    branch = request_data.get("target_branch", TARGET_BRANCH)
+    return repo, workdir, branch
 
 
 def _dispatch_relay_request(request_id: str, request_data: dict):
@@ -2041,6 +2062,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     sender = request_data.get("sender", "unknown")
     text = request_data.get("text", "")
     context = request_data.get("context", [])
+    target_repo, target_workdir, target_branch = _resolve_target(request_data)
 
     # Find an idle worker, preferring area affinity
     area = route_task_to_area(text) if text else None
@@ -2101,12 +2123,13 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     # Choose dispatch mode: continuous-claude for multi-task specs, claude -p for single tasks
     use_continuous = os.environ.get("CONTINUOUS_CLAUDE_ENABLED", "1") == "1"
     if use_continuous and spec_dir:
-        cmd = _build_continuous_cmd(request_id, worker_ip, key_path, escaped, result_file)
+        cmd = _build_continuous_cmd(request_id, worker_ip, key_path, escaped, result_file,
+                                     target_repo, target_workdir, target_branch)
     else:
         # Use base64 to avoid quoting issues through SSH -> docker exec -> bash -c
         import base64
         script = (
-            f"#!/bin/bash\ncd /workspace/boothapp\n"
+            f"#!/bin/bash\ncd {target_workdir}\n"
             f'claude -p "{escaped}" --dangerously-skip-permissions '
             f"> {result_file} 2>&1\ncat {result_file}"
         )
@@ -2114,7 +2137,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         cmd = (
             f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
             f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
-            f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+            f"docker exec -w {target_workdir} claude-portable bash /tmp/dispatch-{request_id}.sh"
         )
 
     try:
