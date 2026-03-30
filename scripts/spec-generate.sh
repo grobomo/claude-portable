@@ -13,7 +13,7 @@ set -euo pipefail
 TASK_TEXT="${1:?Usage: spec-generate.sh <task-text> <output-dir> [repo-dir]}"
 OUTPUT_DIR="${2:?Usage: spec-generate.sh <task-text> <output-dir> [repo-dir]}"
 REPO_DIR="${3:-/workspace/boothapp}"
-TIMEOUT="${SPEC_TIMEOUT:-300}"  # 5 minutes default
+TIMEOUT="${SPEC_TIMEOUT:-200}"  # per-step timeout (3 steps fit in 600s outer limit)
 
 # Generate a slug from the task text (first 4 words, lowercase, hyphenated)
 SLUG=$(echo "$TASK_TEXT" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{for(i=1;i<=4&&i<=NF;i++) printf "%s-",$i}' | sed 's/-$//')
