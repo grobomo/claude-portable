@@ -1126,7 +1126,7 @@ def _ssh_check_claude_process(worker_ip: str, worker_name: str) -> bool | None:
 
     Returns True if active, False if idle, None if SSH failed (unreachable).
     """
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", "/tmp/ccc-keys")
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
@@ -1791,6 +1791,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "last_report": None,
                     "completions": 0,
                 })
+                entry["status"] = "idle"
                 entry["registered"] = True
                 entry["registered_at"] = now
                 entry["ip"] = ip
@@ -2569,7 +2570,7 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     result_file = f"/tmp/relay-result-{request_id}.txt"
 
     # Find SSH key
-    key_dir = os.path.expanduser("~/.ssh/ccc-keys")
+    key_dir = os.environ.get("SSH_KEY_DIR", "/tmp/ccc-keys")
     key_path = os.path.join(key_dir, f"{worker_name}.pem")
     if not os.path.isfile(key_path):
         short_name = worker_name.replace("ccc-", "")
