@@ -36,7 +36,7 @@
 
 ## Phase 3: PR and Cleanup
 
-- [ ] T005: Create PR from feature branch
+- [x] T005: Create PR from feature branch
   - Branch from main
   - Stage `web/booth-welcome.html` and test script
   - Push and open PR with clear description
