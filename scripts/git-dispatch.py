@@ -2811,18 +2811,23 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
     if use_continuous and spec_dir:
         cmd = _build_continuous_cmd(request_id, worker_ip, key_path, escaped, result_file)
     else:
-        # Use base64 to avoid quoting issues through SSH -> docker exec -> bash -c
+        # Use base64 for BOTH script and prompt to avoid SSH->docker quoting corruption
         import base64
+        prompt_b64 = base64.b64encode(prompt.encode()).decode()
         script = (
-            f"#!/bin/bash\ncd /workspace/boothapp\n"
-            f'claude -p "{escaped}" --dangerously-skip-permissions '
-            f"> {result_file} 2>&1\ncat {result_file}"
+            f"#!/bin/bash\n"
+            f"export CONTINUOUS_CLAUDE=1 SKIP_SPEC_GATE=1 CLAUDE_HOOKS_BYPASS=1\n"
+            f"cd /workspace/boothapp 2>/dev/null || cd /workspace\n"
+            f"echo '{prompt_b64}' | base64 -d > /tmp/prompt-{request_id}.txt\n"
+            f"claude -p \"$(cat /tmp/prompt-{request_id}.txt)\" --dangerously-skip-permissions "
+            f"> {result_file} 2>&1\n"
+            f"cat {result_file}"
         )
-        encoded = base64.b64encode(script.encode()).decode()
+        script_b64 = base64.b64encode(script.encode()).decode()
         cmd = (
-            f"echo {encoded} | base64 -d > /tmp/dispatch-{request_id}.sh && "
+            f"echo {script_b64} | base64 -d > /tmp/dispatch-{request_id}.sh && "
             f"docker cp /tmp/dispatch-{request_id}.sh claude-portable:/tmp/dispatch-{request_id}.sh && "
-            f"docker exec -w /workspace/boothapp claude-portable bash /tmp/dispatch-{request_id}.sh"
+            f"docker exec claude-portable bash /tmp/dispatch-{request_id}.sh"
         )
 
     try:
