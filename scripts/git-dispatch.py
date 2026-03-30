@@ -1448,7 +1448,7 @@ def _send_json(handler, status: int, data: dict, *, cors: bool = False):
     handler.send_header("Content-Length", str(len(body)))
     if cors:
         handler.send_header("Access-Control-Allow-Origin", "*")
-        handler.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.end_headers()
     handler.wfile.write(body)
@@ -1630,7 +1630,24 @@ def _api_get_worker_live(worker_id: str) -> dict:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ("/health", "/"):
+        if self.path == "/":
+            # Serve dashboard HTML
+            dashboard_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "dashboard.html"
+            )
+            try:
+                with open(dashboard_path, "r") as f:
+                    body = f.read().encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except FileNotFoundError:
+                self.send_response(404)
+                self.end_headers()
+            return
+        if self.path == "/health":
             state = get_state()
             uptime_start = state.pop("uptime_start", time.time())
             state["uptime_seconds"] = int(time.time() - uptime_start)
@@ -1757,7 +1774,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/"):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -2255,6 +2272,22 @@ class HealthHandler(BaseHTTPRequestHandler):
                     task["error"] = payload["error"]
                 task["updated_at"] = now
             _send_json(self, 200, dict(task))
+
+        # ── Dashboard task submission (public, no auth, CORS) ──────────
+        elif self.path == "/api/submit":
+            text = payload.get("text", "").strip()
+            if not text:
+                _send_json(self, 400, {"error": "Field 'text' is required"}, cors=True)
+                return
+            sender = str(payload.get("sender", "dashboard"))
+            priority = str(payload.get("priority", "normal"))
+            if priority not in ("low", "normal", "high", "critical"):
+                priority = "normal"
+            task = _new_task(text=text, sender=sender, priority=priority)
+            with _task_store_lock:
+                _task_store[task["id"]] = task
+            log.info("Dashboard task submitted: id=%s text=%.80s", task["id"], text)
+            _send_json(self, 201, dict(task), cors=True)
 
         else:
             self.send_response(404)
