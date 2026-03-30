@@ -2915,8 +2915,58 @@ def relay_poll_loop():
         time.sleep(RELAY_POLL_INTERVAL)
 
 
+def _drain_task_store():
+    """Pick up PENDING tasks from _task_store and dispatch to idle workers."""
+    with _task_store_lock:
+        pending = [(tid, t) for tid, t in _task_store.items() if t.get("state") == "PENDING"]
+    if not pending:
+        return
+    for task_id, task in pending:
+        request_data = {
+            "sender": task.get("sender", "api"),
+            "text": task.get("text", ""),
+            "context": [],
+        }
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with _task_store_lock:
+            if task_id in _task_store:
+                _task_store[task_id]["state"] = "DISPATCHED"
+                _task_store[task_id]["dispatched_at"] = now
+                _task_store[task_id]["updated_at"] = now
+        log.info("Task drain: dispatching %s to worker", task_id)
+
+        def _dispatch_and_update(tid, rdata):
+            try:
+                success = _dispatch_relay_request(tid, rdata)
+                now2 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                with _task_store_lock:
+                    if tid in _task_store:
+                        if success:
+                            _task_store[tid]["state"] = "COMPLETED"
+                            _task_store[tid]["completed_at"] = now2
+                        else:
+                            _task_store[tid]["state"] = "PENDING"
+                            _task_store[tid]["updated_at"] = now2
+                            log.info("Task drain: %s re-queued (no idle worker)", tid)
+            except Exception as e:
+                log.error("Task drain: %s failed: %s", tid, e)
+                now2 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                with _task_store_lock:
+                    if tid in _task_store:
+                        _task_store[tid]["state"] = "FAILED"
+                        _task_store[tid]["error"] = str(e)
+                        _task_store[tid]["completed_at"] = now2
+
+        threading.Thread(
+            target=_dispatch_and_update,
+            args=(task_id, request_data),
+            daemon=True,
+        ).start()
+
+
 def _relay_poll_tick():
     """Single relay poll iteration."""
+    _drain_task_store()
     if not is_primary():
         return
     if not _relay_git_pull():
