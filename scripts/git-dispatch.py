@@ -1825,6 +1825,62 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif self.path == "/api/cancel":
+            # Cancel a pending or dispatched task
+            task_id = payload.get("task_id", "")
+            if not task_id:
+                resp = json.dumps({"error": "missing 'task_id' field"}).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+
+            cancelled = False
+            # Try removing from pending queue first
+            with _api_queue_lock:
+                if task_id in _api_task_queue:
+                    del _api_task_queue[task_id]
+                    cancelled = True
+            # Mark as cancelled in history
+            with _api_history_lock:
+                if task_id in _api_task_history:
+                    _api_task_history[task_id]["status"] = "cancelled"
+                    cancelled = True
+                elif cancelled:
+                    _api_task_history[task_id] = {"status": "cancelled",
+                                                    "cancelled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+            if cancelled:
+                log.info("API cancel: task_id=%s", task_id)
+                resp = json.dumps({"task_id": task_id, "status": "cancelled"}).encode()
+            else:
+                resp = json.dumps({"error": f"task {task_id} not found"}).encode()
+            self.send_response(200 if cancelled else 404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif self.path == "/api/cancel-all":
+            # Cancel all pending tasks
+            with _api_queue_lock:
+                count = len(_api_task_queue)
+                cancelled_ids = list(_api_task_queue.keys())
+                _api_task_queue.clear()
+            with _api_history_lock:
+                for tid in cancelled_ids:
+                    _api_task_history[tid] = {"status": "cancelled",
+                                               "cancelled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            log.info("API cancel-all: %d tasks cancelled", count)
+            resp = json.dumps({"cancelled": count, "task_ids": cancelled_ids}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         elif self.path == "/api/tasks":
             # List recent tasks from the API queue + completed history
             with _api_queue_lock:
