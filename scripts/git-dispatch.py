@@ -121,6 +121,12 @@ _fleet_roster_lock = threading.Lock()
 
 BOARD_FILE = os.environ.get("BOARD_FILE", "/data/board.json")
 
+# Per-worker stats tracked on dispatch/completion for the dashboard API.
+# worker_id -> {current_task_id, tasks_completed, tasks_failed, registered_at,
+#               last_dispatch_time, durations: [float]}
+_worker_stats: dict = {}
+_worker_stats_lock = threading.Lock()
+
 # Workers launched by the dispatcher but not yet registered.
 # worker_name -> {launched_at: float}
 _launched_workers: dict = {}
@@ -609,6 +615,15 @@ def pick_worker_for_area(area: str | None) -> tuple[str, str]:
         if chosen:
             wid, winfo = chosen
             winfo["status"] = "busy"
+            # Track dispatch in _worker_stats
+            now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _worker_stats_lock:
+                ws = _worker_stats.setdefault(wid, {
+                    "current_task_id": None, "tasks_completed": 0,
+                    "tasks_failed": 0, "registered_at": None,
+                    "last_dispatch_time": None, "durations": [],
+                })
+                ws["last_dispatch_time"] = now_ts
             return (wid, winfo["ip"])
         return ("", "")
 
@@ -1430,6 +1445,167 @@ def _read_json_body(handler) -> dict | None:
         _send_json(handler, 400, {"error": "Invalid JSON body"})
         return None
 
+# ── Dashboard API helpers ──────────────────────────────────────────────────────
+
+def _api_get_tasks() -> list:
+    """Read bridge repo requests/ dirs and return task list for dashboard."""
+    tasks = []
+    requests_base = os.path.join(RELAY_DIR, "requests")
+    for state_dir in ("pending", "dispatched", "completed", "failed"):
+        dir_path = os.path.join(requests_base, state_dir)
+        if not os.path.isdir(dir_path):
+            continue
+        for fname in os.listdir(dir_path):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(dir_path, fname)
+            try:
+                with open(fpath, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+            task_id = fname.replace(".json", "")
+            text = str(data.get("text", ""))[:100]
+            dispatched_at = data.get("dispatched_at")
+            completed_at = data.get("completed_at")
+            duration_seconds = None
+            if dispatched_at and completed_at:
+                try:
+                    import datetime
+                    dt_d = datetime.datetime.strptime(dispatched_at, "%Y-%m-%dT%H:%M:%SZ")
+                    dt_c = datetime.datetime.strptime(completed_at, "%Y-%m-%dT%H:%M:%SZ")
+                    duration_seconds = int((dt_c - dt_d).total_seconds())
+                except Exception:
+                    pass
+            tasks.append({
+                "id": task_id,
+                "text": text,
+                "state": state_dir,
+                "worker": data.get("worker") or None,
+                "dispatched_at": dispatched_at,
+                "completed_at": completed_at,
+                "duration_seconds": duration_seconds,
+            })
+    return tasks
+
+
+def _api_get_workers() -> dict:
+    """Return fleet roster enhanced with worker stats."""
+    with _fleet_roster_lock:
+        roster = {k: dict(v) for k, v in _fleet_roster.items()}
+    with _worker_stats_lock:
+        stats = {k: dict(v) for k, v in _worker_stats.items()}
+
+    result = {}
+    all_ids = set(roster.keys()) | set(stats.keys())
+    for wid in all_ids:
+        entry = roster.get(wid, {})
+        ws = stats.get(wid, {})
+        entry["current_task_id"] = ws.get("current_task_id")
+        entry["tasks_completed"] = ws.get("tasks_completed", 0)
+        entry["tasks_failed"] = ws.get("tasks_failed", 0)
+        entry["registered_at"] = ws.get("registered_at") or entry.get("registered_at")
+        entry["last_dispatch_time"] = ws.get("last_dispatch_time")
+        result[wid] = entry
+    return result
+
+
+def _api_get_stats() -> dict:
+    """Return aggregate stats for the dashboard."""
+    with _fleet_roster_lock:
+        roster = {k: dict(v) for k, v in _fleet_roster.items()}
+    with _worker_stats_lock:
+        all_stats = {k: dict(v) for k, v in _worker_stats.items()}
+    with _state_lock:
+        uptime_start = _state.get("uptime_start", time.time())
+
+    total_workers = len(roster)
+    idle_count = sum(1 for v in roster.values() if v.get("status") == "idle")
+    busy_count = sum(1 for v in roster.values() if v.get("status") == "busy")
+
+    # Today's stats from relay repo files
+    today_str = time.strftime("%Y-%m-%d", time.gmtime())
+    tasks_completed_today = 0
+    tasks_failed_today = 0
+    all_durations = []
+
+    requests_base = os.path.join(RELAY_DIR, "requests")
+    for state_dir, counter in [("completed", "completed_at"), ("failed", "failed_at")]:
+        dir_path = os.path.join(requests_base, state_dir)
+        if not os.path.isdir(dir_path):
+            continue
+        for fname in os.listdir(dir_path):
+            if not fname.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(dir_path, fname), "r") as f:
+                    data = json.load(f)
+                ts = data.get(counter, "")
+                if ts.startswith(today_str):
+                    if state_dir == "completed":
+                        tasks_completed_today += 1
+                        dispatched_at = data.get("dispatched_at", "")
+                        completed_at = data.get("completed_at", "")
+                        if dispatched_at and completed_at:
+                            try:
+                                import datetime
+                                dt_d = datetime.datetime.strptime(dispatched_at, "%Y-%m-%dT%H:%M:%SZ")
+                                dt_c = datetime.datetime.strptime(completed_at, "%Y-%m-%dT%H:%M:%SZ")
+                                all_durations.append((dt_c - dt_d).total_seconds())
+                            except Exception:
+                                pass
+                    else:
+                        tasks_failed_today += 1
+            except Exception:
+                continue
+
+    # Also include durations from _worker_stats
+    for ws in all_stats.values():
+        all_durations.extend(ws.get("durations", []))
+
+    avg_duration = round(sum(all_durations) / len(all_durations), 1) if all_durations else 0
+    total_done = tasks_completed_today + tasks_failed_today
+    success_rate = round(tasks_completed_today / total_done * 100, 1) if total_done > 0 else 0
+
+    return {
+        "total_workers": total_workers,
+        "idle_count": idle_count,
+        "busy_count": busy_count,
+        "tasks_completed_today": tasks_completed_today,
+        "tasks_failed_today": tasks_failed_today,
+        "avg_duration_seconds": avg_duration,
+        "success_rate_percent": success_rate,
+        "uptime_seconds": int(time.time() - uptime_start),
+    }
+
+
+def _api_get_worker_live(worker_id: str) -> dict:
+    """Proxy /status, /output, /activity from worker's port 8090."""
+    with _fleet_roster_lock:
+        entry = _fleet_roster.get(worker_id)
+    if not entry:
+        return {"_status": 404, "error": f"worker {worker_id} not found"}
+
+    worker_ip = entry.get("ip", "")
+    if not worker_ip:
+        return {"_status": 400, "error": f"worker {worker_id} has no IP"}
+
+    import urllib.request
+    import urllib.error
+    result = {"worker_id": worker_id, "ip": worker_ip}
+    for endpoint in ("status", "output", "activity"):
+        url = f"http://{worker_ip}:8090/{endpoint}"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            result[endpoint] = data
+        except urllib.error.URLError as e:
+            result[endpoint] = {"error": f"unreachable: {e.reason}"}
+        except Exception as e:
+            result[endpoint] = {"error": str(e)}
+    return result
+
 
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
@@ -1531,6 +1707,48 @@ class HealthHandler(BaseHTTPRequestHandler):
                 task["updated_at"] = now
             log.info("Task cancelled: id=%s", task_id)
             _send_json(self, 200, dict(task))
+
+        elif self.path == "/api/tasks":
+            tasks = _api_get_tasks()
+            body = json.dumps(tasks, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/workers":
+            workers = _api_get_workers()
+            body = json.dumps(workers, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/stats":
+            stats = _api_get_stats()
+            body = json.dumps(stats, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path.startswith("/api/workers/") and self.path.endswith("/live"):
+            # /api/workers/{worker_id}/live
+            parts = self.path.split("/")
+            # ['', 'api', 'workers', '{worker_id}', 'live']
+            if len(parts) == 5:
+                worker_id = parts[3]
+                result = _api_get_worker_live(worker_id)
+                status_code = result.pop("_status", 200)
+                body = json.dumps(result, indent=2).encode()
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
@@ -1567,6 +1785,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                 entry["role"] = role
                 entry["capabilities"] = capabilities
                 entry["last_report"] = now
+
+            # Track registration in worker stats
+            with _worker_stats_lock:
+                ws = _worker_stats.setdefault(worker_id, {
+                    "current_task_id": None, "tasks_completed": 0,
+                    "tasks_failed": 0, "registered_at": None,
+                    "last_dispatch_time": None, "durations": [],
+                })
+                ws["registered_at"] = now
 
             # Remove from pending-registration tracker if present
             with _launched_workers_lock:
@@ -1609,6 +1836,17 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             with _state_lock:
                 _state["total_completions"] = _state.get("total_completions", 0) + 1
+
+            with _worker_stats_lock:
+                ws = _worker_stats.setdefault(worker_id, {
+                    "current_task_id": None, "tasks_completed": 0,
+                    "tasks_failed": 0, "registered_at": None,
+                    "last_dispatch_time": None, "durations": [],
+                })
+                ws["tasks_completed"] += 1
+                ws["current_task_id"] = None
+                if duration:
+                    ws["durations"].append(float(duration))
 
             log.info(
                 "Worker done: worker_id=%s task=%s duration=%ss (total completions: %d)",
@@ -2299,6 +2537,15 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
                          {"error": "no idle worker", "retry_after": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
         return
 
+    # Track current task assignment
+    with _worker_stats_lock:
+        ws = _worker_stats.setdefault(worker_name, {
+            "current_task_id": None, "tasks_completed": 0,
+            "tasks_failed": 0, "registered_at": None,
+            "last_dispatch_time": None, "durations": [],
+        })
+        ws["current_task_id"] = request_id
+
     # Build prompt from request data
     context_str = "\n".join(str(c) for c in context[-25:])
     prompt = f"Request from {sender}.\n"
@@ -2384,6 +2631,11 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             with _relay_stats_lock:
                 _relay_stats["completed"] += 1
             log.info("RELAY %s completed by %s", request_id, worker_name)
+            with _worker_stats_lock:
+                ws = _worker_stats.get(worker_name)
+                if ws:
+                    ws["tasks_completed"] += 1
+                    ws["current_task_id"] = None
         else:
             error_msg = r.stderr[:500] if r.stderr else f"empty response (rc={r.returncode}, stdout={r.stdout[:200]})"
             _move_relay_file(request_id, "dispatched", "failed", {
@@ -2395,6 +2647,11 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
             with _relay_stats_lock:
                 _relay_stats["failed"] += 1
             log.warning("RELAY %s failed on %s: %s", request_id, worker_name, error_msg[:100])
+            with _worker_stats_lock:
+                ws = _worker_stats.get(worker_name)
+                if ws:
+                    ws["tasks_failed"] += 1
+                    ws["current_task_id"] = None
     except subprocess.TimeoutExpired:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": f"timeout ({RELAY_TASK_TIMEOUT}s)",
@@ -2404,6 +2661,11 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         with _relay_stats_lock:
             _relay_stats["failed"] += 1
         log.warning("RELAY %s timed out on %s", request_id, worker_name)
+        with _worker_stats_lock:
+            ws = _worker_stats.get(worker_name)
+            if ws:
+                ws["tasks_failed"] += 1
+                ws["current_task_id"] = None
     except Exception as e:
         _move_relay_file(request_id, "dispatched", "failed", {
             "error": str(e),
@@ -2413,6 +2675,11 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         with _relay_stats_lock:
             _relay_stats["failed"] += 1
         log.error("RELAY %s error: %s", request_id, e)
+        with _worker_stats_lock:
+            ws = _worker_stats.get(worker_name)
+            if ws:
+                ws["tasks_failed"] += 1
+                ws["current_task_id"] = None
     finally:
         with _fleet_roster_lock:
             entry = _fleet_roster.get(worker_name)
