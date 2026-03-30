@@ -12,6 +12,7 @@ Environment variables:
   DISPATCHER_MAX_WORKERS    Max concurrent worker instances (default: 5)
   DISPATCHER_HEALTH_PORT    Health endpoint port (default: 8080)
   AWS_DEFAULT_REGION        AWS region (default: auto-detected from EC2 metadata)
+  DISPATCH_API_TOKEN        Bearer token for task management API (required for /task endpoints)
 """
 
 import argparse
@@ -24,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
@@ -1337,6 +1339,97 @@ def _update_board():
         log.warning("Failed to write board.json: %s", e)
 
 
+# ── Task management API ────────────────────────────────────────────────────────
+#
+# In-memory task store with Bearer token auth.
+# States: PENDING -> DISPATCHED -> RUNNING -> COMPLETED | FAILED | STUCK
+#         Any non-terminal state -> CANCELLED (via DELETE)
+#         FAILED -> PENDING (via POST /task/{id}/retry)
+
+DISPATCH_API_TOKEN = os.environ.get("DISPATCH_API_TOKEN", "")
+
+_task_store: dict = {}  # task_id -> task dict
+_task_store_lock = threading.Lock()
+
+_TASK_TERMINAL_STATES = {"COMPLETED", "FAILED", "CANCELLED"}
+_TASK_VALID_STATES = {"PENDING", "DISPATCHED", "RUNNING", "COMPLETED", "FAILED", "STUCK", "CANCELLED"}
+
+
+def _new_task(text: str, sender: str = "", priority: str = "normal") -> dict:
+    """Create a new task dict with PENDING state."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return {
+        "id": str(uuid.uuid4()),
+        "text": text,
+        "sender": sender,
+        "priority": priority,
+        "state": "PENDING",
+        "progress": None,
+        "result": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+        "dispatched_at": None,
+        "completed_at": None,
+        "retries": 0,
+    }
+
+
+def _check_bearer_auth(handler) -> bool:
+    """Validate Authorization: Bearer header. Returns True if valid, sends 401/403 if not."""
+    if not DISPATCH_API_TOKEN:
+        body = json.dumps({"error": "DISPATCH_API_TOKEN not configured"}).encode()
+        handler.send_response(503)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+        return False
+
+    auth_header = handler.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        body = json.dumps({"error": "Missing Authorization: Bearer header"}).encode()
+        handler.send_response(401)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+        return False
+
+    token = auth_header[7:]  # strip "Bearer "
+    if token != DISPATCH_API_TOKEN:
+        body = json.dumps({"error": "Invalid token"}).encode()
+        handler.send_response(403)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+        return False
+
+    return True
+
+
+def _send_json(handler, status: int, data: dict):
+    """Helper to send a JSON response."""
+    body = json.dumps(data, indent=2).encode()
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _read_json_body(handler) -> dict | None:
+    """Read and parse JSON request body. Returns None and sends 400 on parse error."""
+    length = int(handler.headers.get("Content-Length", 0))
+    raw = handler.rfile.read(length) if length else b"{}"
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        _send_json(handler, 400, {"error": "Invalid JSON body"})
+        return None
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1374,6 +1467,70 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        # ── Task management GET endpoints (auth required) ──────────────
+        elif self.path.startswith("/tasks"):
+            if not _check_bearer_auth(self):
+                return
+            # GET /tasks?status=<state> -- list tasks, optionally filtered
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
+            filter_status = qs.get("status", [None])[0]
+            if filter_status:
+                filter_status = filter_status.upper()
+
+            with _task_store_lock:
+                if filter_status:
+                    tasks = [t for t in _task_store.values() if t["state"] == filter_status]
+                else:
+                    tasks = list(_task_store.values())
+            # Sort by created_at descending
+            tasks.sort(key=lambda t: t["created_at"], reverse=True)
+            _send_json(self, 200, {"tasks": tasks, "count": len(tasks)})
+
+        elif self.path.startswith("/task/"):
+            if not _check_bearer_auth(self):
+                return
+            # GET /task/{id} -- single task status + progress
+            task_id = self.path.split("/task/", 1)[1].rstrip("/")
+            # Strip query string if present
+            if "?" in task_id:
+                task_id = task_id.split("?", 1)[0]
+            with _task_store_lock:
+                task = _task_store.get(task_id)
+            if not task:
+                _send_json(self, 404, {"error": "Task not found", "id": task_id})
+            else:
+                _send_json(self, 200, dict(task))
+
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        # DELETE /task/{id} -- cancel a task
+        if self.path.startswith("/task/"):
+            if not _check_bearer_auth(self):
+                return
+            task_id = self.path.split("/task/", 1)[1].rstrip("/")
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _task_store_lock:
+                task = _task_store.get(task_id)
+                if not task:
+                    _send_json(self, 404, {"error": "Task not found", "id": task_id})
+                    return
+                if task["state"] in _TASK_TERMINAL_STATES:
+                    _send_json(self, 409, {
+                        "error": f"Cannot cancel task in {task['state']} state",
+                        "id": task_id,
+                        "state": task["state"],
+                    })
+                    return
+                task["state"] = "CANCELLED"
+                task["updated_at"] = now
+            log.info("Task cancelled: id=%s", task_id)
+            _send_json(self, 200, dict(task))
         else:
             self.send_response(404)
             self.end_headers()
@@ -1743,6 +1900,85 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(resp)))
             self.end_headers()
             self.wfile.write(resp)
+
+        # ── Task management POST endpoints (auth required) ─────────────
+        elif self.path == "/task":
+            # POST /task -- submit a new task
+            if not _check_bearer_auth(self):
+                return
+            text = payload.get("text", "").strip()
+            if not text:
+                _send_json(self, 400, {"error": "Field 'text' is required and cannot be empty"})
+                return
+            sender = str(payload.get("sender", ""))
+            priority = str(payload.get("priority", "normal"))
+            if priority not in ("low", "normal", "high", "critical"):
+                _send_json(self, 400, {
+                    "error": "Invalid priority. Must be one of: low, normal, high, critical",
+                })
+                return
+            task = _new_task(text=text, sender=sender, priority=priority)
+            with _task_store_lock:
+                _task_store[task["id"]] = task
+            log.info("Task submitted: id=%s sender=%s priority=%s text=%.80s",
+                     task["id"], sender, priority, text)
+            _send_json(self, 201, dict(task))
+
+        elif self.path.startswith("/task/") and self.path.endswith("/retry"):
+            # POST /task/{id}/retry -- retry a failed task
+            if not _check_bearer_auth(self):
+                return
+            parts = self.path.split("/")
+            # /task/{id}/retry -> parts = ['', 'task', '{id}', 'retry']
+            task_id = parts[2] if len(parts) >= 4 else ""
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _task_store_lock:
+                task = _task_store.get(task_id)
+                if not task:
+                    _send_json(self, 404, {"error": "Task not found", "id": task_id})
+                    return
+                if task["state"] != "FAILED":
+                    _send_json(self, 409, {
+                        "error": f"Can only retry FAILED tasks, current state is {task['state']}",
+                        "id": task_id,
+                        "state": task["state"],
+                    })
+                    return
+                task["state"] = "PENDING"
+                task["updated_at"] = now
+                task["error"] = None
+                task["dispatched_at"] = None
+                task["completed_at"] = None
+                task["retries"] = task.get("retries", 0) + 1
+            log.info("Task retried: id=%s retries=%d", task_id, task["retries"])
+            _send_json(self, 200, dict(task))
+
+        elif self.path.startswith("/task/") and "/retry" not in self.path:
+            # POST /task/{id} -- update task state (for workers/internal use)
+            if not _check_bearer_auth(self):
+                return
+            task_id = self.path.split("/task/", 1)[1].rstrip("/")
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _task_store_lock:
+                task = _task_store.get(task_id)
+                if not task:
+                    _send_json(self, 404, {"error": "Task not found", "id": task_id})
+                    return
+                new_state = payload.get("state", "").upper()
+                if new_state and new_state in _TASK_VALID_STATES:
+                    task["state"] = new_state
+                    if new_state == "DISPATCHED":
+                        task["dispatched_at"] = now
+                    elif new_state in ("COMPLETED", "FAILED"):
+                        task["completed_at"] = now
+                if "progress" in payload:
+                    task["progress"] = payload["progress"]
+                if "result" in payload:
+                    task["result"] = payload["result"]
+                if "error" in payload:
+                    task["error"] = payload["error"]
+                task["updated_at"] = now
+            _send_json(self, 200, dict(task))
 
         else:
             self.send_response(404)
