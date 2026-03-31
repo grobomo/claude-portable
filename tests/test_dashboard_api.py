@@ -11,6 +11,8 @@ import time
 import unittest
 from http.server import HTTPServer
 
+import dashboard_auth
+
 loader = importlib.machinery.SourceFileLoader(
     "git_dispatch",
     os.path.join(os.path.dirname(__file__), "..", "scripts", "git-dispatch.py"),
@@ -300,11 +302,18 @@ class TestDashboardHtml(unittest.TestCase):
         cls.server.shutdown()
 
     def test_root_returns_html(self):
-        import urllib.request
-        url = f"http://127.0.0.1:{self.server.server_address[1]}/"
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            ct = resp.headers.get("Content-Type", "")
-            body = resp.read().decode()
+        import http.client
+        # Authenticate first -- create session directly
+        dashboard_auth.change_password("admin", "testpass1")
+        sid = dashboard_auth.create_session("admin")
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
+        conn.request("GET", "/", headers={"Cookie": f"ccc_session={sid}"})
+        resp = conn.getresponse()
+        ct = resp.headers.get("Content-Type", "")
+        body = resp.read().decode()
+        conn.close()
+        dashboard_auth.destroy_session(sid)
+        self.assertEqual(resp.status, 200)
         self.assertIn("text/html", ct)
         self.assertIn("<title>CCC Fleet Dashboard</title>", body)
 
@@ -535,11 +544,18 @@ class TestDashboardHttpEndpoints(unittest.TestCase):
         gd._worker_stats.update(self._orig_stats)
 
     def test_dashboard_serves_html(self):
-        import urllib.request
-        url = f"http://127.0.0.1:{self.server.server_address[1]}/dashboard"
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            ct = resp.headers.get("Content-Type", "")
-            body = resp.read().decode()
+        import http.client
+        # Authenticate first -- create session directly
+        dashboard_auth.change_password("admin", "testpass1")
+        sid = dashboard_auth.create_session("admin")
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
+        conn.request("GET", "/dashboard", headers={"Cookie": f"ccc_session={sid}"})
+        resp = conn.getresponse()
+        ct = resp.headers.get("Content-Type", "")
+        body = resp.read().decode()
+        conn.close()
+        dashboard_auth.destroy_session(sid)
+        self.assertEqual(resp.status, 200)
         self.assertIn("text/html", ct)
         self.assertIn("CCC Fleet Dashboard", body)
         self.assertIn("tab-tasks", body)
