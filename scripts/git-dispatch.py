@@ -2767,6 +2767,17 @@ def _dispatch_relay_request(request_id: str, request_data: dict):
         prompt += f"\nRecent conversation:\n{context_str}\n"
     prompt += f"\n{text}"
 
+    # CRITICAL: Explicitly instruct PR creation — workers complete code but don't
+    # push/PR unless told. This was the root cause of batch 2 failures (2026-03-31).
+    prompt += (
+        "\n\nIMPORTANT: After completing the work, you MUST:\n"
+        "1. Create a new git branch (feat/<short-slug> or fix/<short-slug>)\n"
+        "2. Stage and commit all changes with a descriptive message\n"
+        "3. Push the branch to origin\n"
+        "4. Create a pull request to main using 'gh pr create'\n"
+        "Do NOT just commit locally — the PR is the deliverable."
+    )
+
     escaped = prompt.replace("'", "'\\''").replace('"', '\\"')
     result_file = f"/tmp/relay-result-{request_id}.txt"
 
