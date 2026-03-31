@@ -5,11 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CCC Fleet Dashboard</title>
 <style>
+:root {
+  --bg: #0d1117;
+  --card-bg: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+  --blue: #58a6ff;
+  --orange: #db6d28;
+  --purple: #a371f7;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  background: #0d1117;
-  color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
   font-size: 16px;
   line-height: 1.5;
 }
@@ -20,114 +33,204 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
 }
-.header h1 { font-size: 22px; font-weight: 600; }
-.refresh-info { font-size: 13px; color: #8b949e; }
-.refresh-dot {
+.header h1 { font-size: 22px; font-weight: 700; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.refresh-info { font-size: 13px; color: var(--text-muted); }
+.status-dot {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: #3fb950;
   margin-right: 6px;
   animation: pulse 2s infinite;
 }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.dot-green { background: var(--green); }
+.dot-red { background: var(--red); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* Fleet Stats Bar */
-.stats-bar {
+/* Disconnected banner */
+.disconnected {
+  display: none;
+  background: #490202;
+  color: var(--red);
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid var(--red);
+}
+.disconnected.show { display: block; }
+
+/* Tab bar */
+.tab-bar {
   display: flex;
-  gap: 24px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.tab-btn {
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.2s, border-color 0.2s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* Tab content */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Summary bar */
+.summary-bar {
+  display: flex;
+  gap: 16px;
   padding: 16px 24px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.stat {
+.summary-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 110px;
+  min-width: 100px;
 }
-.stat .val { font-size: 32px; font-weight: 700; color: #3fb950; }
-.stat .lbl { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.8px; }
+.summary-val { font-size: 28px; font-weight: 700; }
+.summary-lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
 
-/* Sections */
+/* Section */
 .section { padding: 20px 24px; }
 .section-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   margin-bottom: 14px;
-  color: #8b949e;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-/* Worker Grid */
-.workers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.worker-card {
-  background: #161b22;
-  border: 1px solid #30363d;
+/* Feature branch groups */
+.feature-group {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
-  text-align: center;
-  transition: border-color 0.2s, transform 0.2s;
+  margin-bottom: 12px;
+  overflow: hidden;
 }
-.worker-card:hover { border-color: #58a6ff; transform: translateY(-2px); }
-.worker-card .name { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-.worker-card .state {
+.feature-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+.feature-header:hover { background: #1c2128; }
+.feature-branch { font-size: 14px; font-weight: 600; }
+.feature-meta { display: flex; align-items: center; gap: 12px; }
+.feature-tasks { display: none; }
+.feature-tasks.expanded { display: block; }
+
+/* Progress bar */
+.progress-bar {
+  width: 100px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--green);
+  transition: width 0.3s;
+}
+
+/* Badges */
+.badge {
   display: inline-block;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.badge-pending { background: #21262d; color: var(--text-muted); }
+.badge-dispatched, .badge-running, .badge-in_progress { background: #4a3000; color: var(--amber); }
+.badge-completed { background: #0d4429; color: var(--green); }
+.badge-failed { background: #490202; color: var(--red); }
+.badge-blocked { background: #3d1d00; color: var(--orange); }
+
+/* Phase badges */
+.phase-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.phase-WHY, .phase-RESEARCH { background: #1c1233; color: var(--purple); }
+.phase-PLAN, .phase-REVIEW { background: #0c2d6b; color: var(--blue); }
+.phase-TESTS, .phase-IMPLEMENT, .phase-BUILD { background: #4a3000; color: var(--amber); }
+.phase-VERIFY, .phase-PR { background: #0d4429; color: var(--green); }
+.phase-idle { background: #21262d; color: var(--text-muted); }
+
+/* Task table */
+.task-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.task-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
   letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
-.worker-card .meta {
-  font-size: 12px;
-  color: #8b949e;
-  margin-top: 8px;
+.task-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #21262d;
 }
+.task-table tr:hover { background: #1c2128; }
+.desc-cell { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Worker state colors */
-.state-idle { background: #0d4429; color: #3fb950; border: 1px solid #238636; }
-.state-busy { background: #4a3000; color: #d29922; border: 1px solid #9e6a03; }
-.state-stopping { background: #490202; color: #f85149; border: 1px solid #da3633; }
-.state-unreachable { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
-.state-maintenance { background: #1c1233; color: #a371f7; border: 1px solid #6e40c9; }
-
-/* Card border glow by state */
-.card-idle { border-left: 3px solid #3fb950; }
-.card-busy { border-left: 3px solid #d29922; }
-.card-stopping { border-left: 3px solid #f85149; }
-.card-unreachable { border-left: 3px solid #484f58; }
-.card-maintenance { border-left: 3px solid #a371f7; }
-
-/* Submit Form */
+/* Submit form */
 .submit-form {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .submit-form input[type="text"] {
   flex: 1;
   padding: 10px 14px;
   font-size: 15px;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e6edf3;
+  color: var(--text);
+  font-family: inherit;
   outline: none;
 }
-.submit-form input[type="text"]:focus { border-color: #58a6ff; }
-.submit-form input[type="text"]::placeholder { color: #484f58; }
+.submit-form input:focus { border-color: var(--blue); }
+.submit-form input::placeholder { color: #484f58; }
 .submit-form button {
   padding: 10px 24px;
   font-size: 15px;
@@ -137,136 +240,275 @@ body {
   border: 1px solid #2ea043;
   border-radius: 6px;
   cursor: pointer;
+  font-family: inherit;
   white-space: nowrap;
 }
 .submit-form button:hover { background: #2ea043; }
 .submit-form button:disabled { opacity: 0.5; cursor: not-allowed; }
-.submit-msg {
-  font-size: 13px;
-  margin-bottom: 12px;
-  min-height: 20px;
-}
-.submit-msg.ok { color: #3fb950; }
-.submit-msg.err { color: #f85149; }
+.submit-msg { font-size: 13px; margin-bottom: 12px; min-height: 18px; }
+.submit-msg.ok { color: var(--green); }
+.submit-msg.err { color: var(--red); }
 
-/* Tasks Table */
-.tasks-table {
+/* Completed tasks table */
+.completed-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 15px;
+  font-size: 14px;
 }
-.tasks-table th {
+.completed-table th {
   text-align: left;
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8b949e;
-  border-bottom: 1px solid #30363d;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
   position: sticky;
-  top: 0;
-  background: #0d1117;
+  top: 46px;
 }
-.tasks-table td {
-  padding: 10px 12px;
+.completed-table td {
+  padding: 8px 12px;
   border-bottom: 1px solid #21262d;
-  vertical-align: middle;
 }
-.tasks-table tr:hover { background: #161b22; }
+.completed-table tr:hover { background: var(--card-bg); }
 
-/* Status Badges */
-.badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 12px;
+/* Worker cards grid */
+.worker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.worker-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  transition: border-color 0.3s;
+}
+.worker-card.unhealthy { border-color: var(--red); }
+.worker-card.flash { animation: card-flash 0.5s; }
+@keyframes card-flash { 0%,100% { border-color: var(--border); } 50% { border-color: var(--blue); } }
+.worker-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.worker-name { font-size: 16px; font-weight: 700; }
+.health-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.health-green { background: var(--green); }
+.health-yellow { background: var(--amber); }
+.health-red { background: var(--red); }
+
+/* Gauge bars */
+.gauge-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.gauge-label {
+  width: 50px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.gauge-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 10px;
+}
+.gauge-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s, background 0.3s;
+}
+.gauge-val { width: 50px; text-align: right; font-size: 13px; font-weight: 600; }
+
+.worker-meta {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+.worker-meta-full { grid-column: 1 / -1; }
+
+.worker-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.worker-stat { text-align: center; flex: 1; }
+.worker-stat-val { font-size: 22px; font-weight: 700; }
+.worker-stat-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+
+/* Recent calls */
+.recent-calls {
+  margin-top: 10px;
+  max-height: 120px;
+  overflow-y: auto;
   font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
 }
-.badge-completed { background: #0d4429; color: #3fb950; }
-.badge-dispatched { background: #4a3000; color: #d29922; }
-.badge-failed { background: #490202; color: #f85149; }
-.badge-pending { background: #21262d; color: #8b949e; }
+.recent-calls div {
+  padding: 2px 0;
+  border-bottom: 1px solid #21262d;
+  display: flex;
+  gap: 8px;
+}
+.call-method { font-weight: 600; width: 40px; }
+.call-path { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-status { width: 30px; text-align: right; font-weight: 600; }
+.call-time { width: 50px; text-align: right; color: var(--text-muted); }
+.status-2xx { color: var(--green); }
+.status-4xx { color: var(--amber); }
+.status-5xx { color: var(--red); }
 
-.desc-cell { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mono { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; }
+/* Empty / loading */
+.status-msg { text-align: center; padding: 30px; color: var(--text-muted); }
+.error-msg { color: var(--red); }
 
-/* Loading / Error */
-.status-msg { text-align: center; padding: 30px; color: #8b949e; font-size: 15px; }
-.error-msg { color: #f85149; }
+/* Stale overlay */
+.stale { opacity: 0.4; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #0d1117; }
-::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #58a6ff; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--blue); }
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>CCC Fleet Dashboard</h1>
-  <div class="refresh-info"><span class="refresh-dot"></span>Auto-refresh <span id="countdown">10</span>s</div>
-</div>
-
-<!-- Fleet Stats -->
-<div class="stats-bar" id="stats-bar">
-  <div class="stat"><span class="val" id="s-workers">--</span><span class="lbl">Workers</span></div>
-  <div class="stat"><span class="val" id="s-idle">--</span><span class="lbl">Idle</span></div>
-  <div class="stat"><span class="val" id="s-busy">--</span><span class="lbl">Busy</span></div>
-  <div class="stat"><span class="val" id="s-completed">--</span><span class="lbl">Completed Today</span></div>
-  <div class="stat"><span class="val" id="s-failed">--</span><span class="lbl">Failed Today</span></div>
-  <div class="stat"><span class="val" id="s-rate">--</span><span class="lbl">Success Rate</span></div>
-  <div class="stat"><span class="val" id="s-avg">--</span><span class="lbl">Avg Duration</span></div>
-  <div class="stat"><span class="val" id="s-uptime">--</span><span class="lbl">Uptime</span></div>
-</div>
-
-<!-- Workers -->
-<div class="section">
-  <div class="section-title">Workers</div>
-  <div class="workers-grid" id="workers-grid">
-    <div class="status-msg">Loading...</div>
+  <div class="header-right">
+    <span class="refresh-info">
+      <span class="status-dot dot-green" id="conn-dot"></span>
+      Auto-refresh <span id="countdown">15</span>s
+    </span>
   </div>
 </div>
 
-<!-- Task Submission + Task List -->
-<div class="section">
-  <div class="section-title">Submit Task</div>
-  <form class="submit-form" id="submit-form">
-    <input type="text" id="task-input" placeholder="Describe the task..." autocomplete="off" />
-    <button type="submit" id="submit-btn">Submit</button>
-  </form>
-  <div class="submit-msg" id="submit-msg"></div>
+<div class="disconnected" id="disconnected-banner">
+  DISCONNECTED -- last update: <span id="last-update-time">--</span>
+</div>
 
-  <div class="section-title">Recent Tasks</div>
-  <table class="tasks-table">
-    <thead>
-      <tr>
-        <th>Status</th>
-        <th>ID</th>
-        <th>Description</th>
-        <th>Worker</th>
-        <th>Duration</th>
-        <th>Time</th>
-      </tr>
-    </thead>
-    <tbody id="tasks-body">
-      <tr><td colspan="6" class="status-msg">Loading...</td></tr>
-    </tbody>
-  </table>
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="tasks">Tasks</button>
+  <button class="tab-btn" data-tab="infra">Infra Health</button>
+</div>
+
+<!-- ===== TASKS TAB ===== -->
+<div class="tab-content active" id="tab-tasks">
+
+  <!-- Summary bar -->
+  <div class="summary-bar" id="task-summary">
+    <div class="summary-item"><span class="summary-val" id="sum-features" style="color:var(--blue)">--</span><span class="summary-lbl">Features</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-tasks" style="color:var(--text)">--</span><span class="summary-lbl">Total Tasks</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-completed" style="color:var(--green)">--</span><span class="summary-lbl">Completed</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-inprogress" style="color:var(--amber)">--</span><span class="summary-lbl">In Progress</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-blocked" style="color:var(--red)">--</span><span class="summary-lbl">Blocked</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-idle" style="color:var(--green)">--</span><span class="summary-lbl">Idle Workers</span></div>
+    <div class="summary-item"><span class="summary-val" id="sum-busy" style="color:var(--amber)">--</span><span class="summary-lbl">Busy Workers</span></div>
+  </div>
+
+  <!-- Task submission -->
+  <div class="section">
+    <div class="section-title">Submit Task</div>
+    <form class="submit-form" id="submit-form">
+      <input type="text" id="task-input" placeholder="Describe the task..." autocomplete="off" />
+      <button type="submit" id="submit-btn">Submit</button>
+    </form>
+    <div class="submit-msg" id="submit-msg"></div>
+  </div>
+
+  <!-- Feature branches -->
+  <div class="section">
+    <div class="section-title">Feature Branches</div>
+    <div id="features-container">
+      <div class="status-msg">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Recent completed tasks -->
+  <div class="section">
+    <div class="section-title">Recent Completed Tasks</div>
+    <table class="completed-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>ID</th>
+          <th>Description</th>
+          <th>Worker</th>
+          <th>Duration</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="completed-body">
+        <tr><td colspan="6" class="status-msg">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== INFRA HEALTH TAB ===== -->
+<div class="tab-content" id="tab-infra">
+  <div class="summary-bar" id="infra-summary">
+    <div class="summary-item"><span class="summary-val" id="inf-total" style="color:var(--text)">--</span><span class="summary-lbl">Workers</span></div>
+    <div class="summary-item"><span class="summary-val" id="inf-healthy" style="color:var(--green)">--</span><span class="summary-lbl">Healthy</span></div>
+    <div class="summary-item"><span class="summary-val" id="inf-unhealthy" style="color:var(--red)">--</span><span class="summary-lbl">Unhealthy</span></div>
+  </div>
+  <div class="section">
+    <div id="worker-grid" class="worker-grid">
+      <div class="status-msg">Loading...</div>
+    </div>
+  </div>
 </div>
 
 <script>
 (function() {
-  var REFRESH = 10;
+  // -- Config --
+  var params = new URLSearchParams(window.location.search);
+  var REFRESH = parseInt(params.get('refresh')) || 15;
   var countdown = REFRESH;
+  var lastData = { tasks: null, infra: null };
+  var previousInfra = {};
+  var connected = true;
+  var lastSuccessTime = null;
+  var retryDelay = REFRESH;
+
+  // -- DOM refs --
   var countdownEl = document.getElementById('countdown');
+  var connDot = document.getElementById('conn-dot');
+  var banner = document.getElementById('disconnected-banner');
+  var lastUpdateEl = document.getElementById('last-update-time');
+
+  // -- Tab switching --
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
 
   // -- Countdown --
   setInterval(function() {
     countdown--;
-    if (countdown <= 0) countdown = REFRESH;
+    if (countdown < 0) countdown = 0;
     countdownEl.textContent = countdown;
   }, 1000);
 
@@ -276,16 +518,15 @@ body {
     d.textContent = s || '';
     return d.innerHTML;
   }
-
+  function trunc(s, n) { return !s ? '--' : s.length > n ? s.substring(0, n) + '...' : s; }
   function fmtDur(sec) {
-    if (sec == null) return '--';
+    if (sec == null || sec < 0) return '--';
     var s = Math.floor(sec);
     if (s < 60) return s + 's';
     if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
     var h = Math.floor(s / 3600);
     return h + 'h ' + Math.floor((s % 3600) / 60) + 'm';
   }
-
   function timeAgo(ts) {
     if (!ts) return '--';
     var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
@@ -295,41 +536,16 @@ body {
     if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
     return Math.floor(diff / 86400) + 'd ago';
   }
-
-  function trunc(s, n) {
-    if (!s) return '--';
-    return s.length > n ? s.substring(0, n) + '...' : s;
+  function gaugeColor(pct) {
+    if (pct >= 80) return 'var(--red)';
+    if (pct >= 60) return 'var(--amber)';
+    return 'var(--green)';
   }
-
-  function badgeCls(state) {
-    var s = (state || '').toLowerCase();
-    if (s === 'completed') return 'badge-completed';
-    if (s === 'dispatched') return 'badge-dispatched';
-    if (s === 'failed') return 'badge-failed';
-    return 'badge-pending';
+  function statusCodeClass(code) {
+    if (code >= 500) return 'status-5xx';
+    if (code >= 400) return 'status-4xx';
+    return 'status-2xx';
   }
-
-  function workerStateCls(status) {
-    var s = (status || '').toLowerCase();
-    if (s === 'idle') return 'state-idle';
-    if (s === 'busy') return 'state-busy';
-    if (s === 'stopping') return 'state-stopping';
-    if (s === 'maintenance') return 'state-maintenance';
-    return 'state-unreachable';
-  }
-
-  function workerCardCls(status) {
-    var s = (status || '').toLowerCase();
-    if (s === 'idle') return 'card-idle';
-    if (s === 'busy') return 'card-busy';
-    if (s === 'stopping') return 'card-stopping';
-    if (s === 'maintenance') return 'card-maintenance';
-    return 'card-unreachable';
-  }
-
-  var STATE_ORDER = { pending: 0, dispatched: 1, completed: 2, failed: 3 };
-
-  // -- Fetch --
   function fetchJSON(url) {
     return fetch(url).then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -337,76 +553,219 @@ body {
     });
   }
 
-  // -- Render Stats --
-  function renderStats(s) {
-    document.getElementById('s-workers').textContent = s.total_workers != null ? s.total_workers : '--';
-    document.getElementById('s-idle').textContent = s.idle_count != null ? s.idle_count : '--';
-    document.getElementById('s-busy').textContent = s.busy_count != null ? s.busy_count : '--';
-    document.getElementById('s-completed').textContent = s.tasks_completed_today != null ? s.tasks_completed_today : '--';
-    document.getElementById('s-failed').textContent = s.tasks_failed_today != null ? s.tasks_failed_today : '--';
-    document.getElementById('s-rate').textContent = s.success_rate_percent != null ? s.success_rate_percent + '%' : '--';
-    document.getElementById('s-avg').textContent = s.avg_duration_seconds != null ? fmtDur(s.avg_duration_seconds) : '--';
-    document.getElementById('s-uptime').textContent = s.uptime_seconds != null ? fmtDur(s.uptime_seconds) : '--';
+  // -- Connection status --
+  function setConnected(ok) {
+    connected = ok;
+    if (ok) {
+      connDot.className = 'status-dot dot-green';
+      banner.classList.remove('show');
+      retryDelay = REFRESH;
+      lastSuccessTime = new Date();
+    } else {
+      connDot.className = 'status-dot dot-red';
+      banner.classList.add('show');
+      lastUpdateEl.textContent = lastSuccessTime ? lastSuccessTime.toLocaleTimeString() : 'never';
+    }
   }
 
-  // -- Render Workers --
-  function renderWorkers(data) {
-    var grid = document.getElementById('workers-grid');
-    // data is {worker-id: {status, ...}, ...}
-    var ids = Object.keys(data).sort();
-    if (ids.length === 0) {
-      grid.innerHTML = '<div class="status-msg">No workers registered</div>';
+  // -- Render Tasks Tab: Summary --
+  function renderTaskSummary(data) {
+    var s = data.summary || {};
+    document.getElementById('sum-features').textContent = data.features ? data.features.length : 0;
+    document.getElementById('sum-tasks').textContent = s.total_tasks || 0;
+    document.getElementById('sum-completed').textContent = s.completed || 0;
+    document.getElementById('sum-inprogress').textContent = s.in_progress || 0;
+    document.getElementById('sum-blocked').textContent = s.blocked || 0;
+    document.getElementById('sum-idle').textContent = s.idle_workers || 0;
+    document.getElementById('sum-busy').textContent = s.busy_workers || 0;
+  }
+
+  // -- Render Tasks Tab: Feature branches --
+  function renderFeatures(data) {
+    var container = document.getElementById('features-container');
+    var features = data.features || [];
+    if (!features.length) {
+      container.innerHTML = '<div class="status-msg">No active feature branches</div>';
       return;
     }
     var html = '';
-    ids.forEach(function(id) {
-      var w = data[id];
-      var status = w.status || 'unreachable';
-      var completions = w.tasks_completed != null ? w.tasks_completed : (w.completions || 0);
-      var task = w.current_task_id || w.last_task || null;
-      html += '<div class="worker-card ' + workerCardCls(status) + '">'
-        + '<div class="name">' + esc(id) + '</div>'
-        + '<span class="state ' + workerStateCls(status) + '">' + esc(status) + '</span>'
-        + '<div class="meta">'
-        + (task ? 'Task: ' + esc(trunc(task, 20)) + '<br>' : '')
-        + 'Done: ' + completions
-        + (w.last_report ? ' | Last: ' + timeAgo(w.last_report) : '')
-        + '</div></div>';
+    features.forEach(function(f, idx) {
+      var tasks = f.tasks || [];
+      var prog = f.progress || {};
+      var done = prog.completed || 0;
+      var total = prog.total || tasks.length || 1;
+      var pct = Math.round(done / total * 100);
+      var allDone = done === total && total > 0;
+      var expanded = !allDone;
+
+      html += '<div class="feature-group">';
+      html += '<div class="feature-header" onclick="this.nextElementSibling.classList.toggle(\'expanded\')">';
+      html += '<span class="feature-branch">' + esc(f.branch || 'unknown') + '</span>';
+      html += '<div class="feature-meta">';
+      html += '<span class="phase-badge phase-' + esc(f.phase || 'idle') + '">' + esc(f.phase || 'idle') + '</span>';
+      html += '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
+      html += '<span style="font-size:13px;color:var(--text-muted)">' + done + '/' + total + '</span>';
+      html += '</div></div>';
+
+      html += '<div class="feature-tasks' + (expanded ? ' expanded' : '') + '">';
+      html += '<table class="task-table"><thead><tr>';
+      html += '<th>#</th><th>Description</th><th>Worker</th><th>Status</th><th>Phase</th>';
+      html += '</tr></thead><tbody>';
+      tasks.forEach(function(t, i) {
+        var status = t.status || 'pending';
+        html += '<tr>';
+        html += '<td>' + (t.num || (i + 1)) + '</td>';
+        html += '<td class="desc-cell" title="' + esc(t.description) + '">' + esc(trunc(t.description, 60)) + '</td>';
+        html += '<td>' + esc(t.worker || '--') + '</td>';
+        html += '<td><span class="badge badge-' + esc(status) + '">' + esc(status) + '</span></td>';
+        html += '<td>' + (t.phase ? '<span class="phase-badge phase-' + esc(t.phase) + '">' + esc(t.phase) + '</span>' : '--') + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
     });
-    grid.innerHTML = html;
+    container.innerHTML = html;
   }
 
-  // -- Render Tasks --
-  function renderTasks(tasks) {
-    var tbody = document.getElementById('tasks-body');
+  // -- Render completed tasks table --
+  function renderCompleted(tasks) {
+    var tbody = document.getElementById('completed-body');
     if (!tasks || !tasks.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="status-msg">No tasks</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="status-msg">No recent tasks</td></tr>';
       return;
     }
-    tasks.sort(function(a, b) {
-      var sa = STATE_ORDER[(a.state || '').toLowerCase()];
-      var sb = STATE_ORDER[(b.state || '').toLowerCase()];
-      if (sa == null) sa = 9;
-      if (sb == null) sb = 9;
-      return sa - sb;
-    });
     var html = '';
     tasks.forEach(function(t) {
       var state = (t.state || 'pending').toLowerCase();
       var ts = t.completed_at || t.dispatched_at || null;
-      html += '<tr>'
-        + '<td><span class="badge ' + badgeCls(state) + '">' + esc(state) + '</span></td>'
-        + '<td class="mono">' + esc(trunc(t.id, 12)) + '</td>'
-        + '<td class="desc-cell" title="' + esc(t.text) + '">' + esc(trunc(t.text, 70)) + '</td>'
-        + '<td>' + esc(t.worker || '--') + '</td>'
-        + '<td class="mono">' + fmtDur(t.duration_seconds) + '</td>'
-        + '<td>' + timeAgo(ts) + '</td>'
-        + '</tr>';
+      html += '<tr>';
+      html += '<td><span class="badge badge-' + esc(state) + '">' + esc(state) + '</span></td>';
+      html += '<td style="font-size:13px">' + esc(trunc(t.id, 12)) + '</td>';
+      html += '<td class="desc-cell" title="' + esc(t.text) + '">' + esc(trunc(t.text, 60)) + '</td>';
+      html += '<td>' + esc(t.worker || '--') + '</td>';
+      html += '<td>' + fmtDur(t.duration_seconds) + '</td>';
+      html += '<td>' + timeAgo(ts) + '</td>';
+      html += '</tr>';
     });
     tbody.innerHTML = html;
   }
 
-  // -- Submit Form --
+  // -- Render Infra Health: Summary --
+  function renderInfraSummary(workers) {
+    var total = workers.length;
+    var healthy = workers.filter(function(w) { return w.healthy; }).length;
+    document.getElementById('inf-total').textContent = total;
+    document.getElementById('inf-healthy').textContent = healthy;
+    document.getElementById('inf-unhealthy').textContent = total - healthy;
+  }
+
+  // -- Render Infra Health: Worker cards --
+  function renderWorkerCards(workers) {
+    var grid = document.getElementById('worker-grid');
+    if (!workers.length) {
+      grid.innerHTML = '<div class="status-msg">No workers registered</div>';
+      return;
+    }
+    // Sort: unhealthy first, then by ID
+    workers.sort(function(a, b) {
+      if (a.healthy !== b.healthy) return a.healthy ? 1 : -1;
+      return (a.worker_id || '').localeCompare(b.worker_id || '');
+    });
+
+    var html = '';
+    workers.forEach(function(w) {
+      var id = w.worker_id || 'unknown';
+      var healthy = w.healthy;
+      var prevW = previousInfra[id];
+      var changed = prevW && JSON.stringify(prevW) !== JSON.stringify(w);
+      var cardClass = 'worker-card' + (!healthy ? ' unhealthy' : '') + (changed ? ' flash' : '');
+
+      var cpu = w.cpu_percent != null ? w.cpu_percent : null;
+      var mem = w.memory_percent != null ? w.memory_percent : null;
+      var disk = w.disk_percent != null ? w.disk_percent : null;
+
+      var tasksPerHour = 0;
+      if (w.uptime_seconds > 0) {
+        tasksPerHour = ((w.tasks_completed || 0) / (w.uptime_seconds / 3600)).toFixed(1);
+      }
+      // Trend arrow
+      var trendArrow = '';
+      if (prevW && prevW.uptime_seconds > 0) {
+        var prevRate = (prevW.tasks_completed || 0) / (prevW.uptime_seconds / 3600);
+        var curRate = parseFloat(tasksPerHour);
+        if (curRate > prevRate + 0.1) trendArrow = ' <span style="color:var(--green)">^</span>';
+        else if (curRate < prevRate - 0.1) trendArrow = ' <span style="color:var(--red)">v</span>';
+      }
+
+      html += '<div class="' + cardClass + '">';
+
+      // Header
+      html += '<div class="worker-card-header">';
+      html += '<span class="worker-name">' + esc(id) + '</span>';
+      var dotClass = healthy ? 'health-green' : 'health-red';
+      if (w.claude_running === false && healthy) dotClass = 'health-yellow';
+      html += '<span class="health-dot ' + dotClass + '"></span>';
+      html += '</div>';
+
+      // Gauges
+      if (cpu != null) {
+        html += '<div class="gauge-row"><span class="gauge-label">CPU</span>';
+        html += '<div class="gauge-bar"><div class="gauge-fill" style="width:' + Math.min(cpu, 100) + '%;background:' + gaugeColor(cpu) + '"></div></div>';
+        html += '<span class="gauge-val">' + cpu.toFixed(1) + '%</span></div>';
+      }
+      if (mem != null) {
+        var memLabel = '';
+        if (w.memory_mb) memLabel = ' (' + w.memory_mb.used + '/' + w.memory_mb.total + ' MB)';
+        html += '<div class="gauge-row"><span class="gauge-label">MEM</span>';
+        html += '<div class="gauge-bar"><div class="gauge-fill" style="width:' + Math.min(mem, 100) + '%;background:' + gaugeColor(mem) + '"></div></div>';
+        html += '<span class="gauge-val">' + mem.toFixed(1) + '%</span></div>';
+      }
+      if (disk != null) {
+        html += '<div class="gauge-row"><span class="gauge-label">DISK</span>';
+        html += '<div class="gauge-bar"><div class="gauge-fill" style="width:' + Math.min(disk, 100) + '%;background:' + gaugeColor(disk) + '"></div></div>';
+        html += '<span class="gauge-val">' + disk.toFixed(1) + '%</span></div>';
+      }
+
+      // Stats row
+      html += '<div class="worker-stats">';
+      html += '<div class="worker-stat"><div class="worker-stat-val">' + (w.tasks_completed || 0) + '</div><div class="worker-stat-lbl">Done</div></div>';
+      html += '<div class="worker-stat"><div class="worker-stat-val">' + tasksPerHour + trendArrow + '</div><div class="worker-stat-lbl">Tasks/hr</div></div>';
+      html += '<div class="worker-stat"><div class="worker-stat-val" style="color:' + ((w.error_count || 0) > 0 ? 'var(--red)' : 'var(--text-muted)') + '">' + (w.error_count || 0) + '</div><div class="worker-stat-lbl">Errors</div></div>';
+      html += '</div>';
+
+      // Meta
+      html += '<div class="worker-meta">';
+      html += '<div>Uptime: ' + fmtDur(w.uptime_seconds) + '</div>';
+      html += '<div>Claude: ' + (w.claude_running ? '<span style="color:var(--green)">running</span>' : '<span style="color:var(--text-muted)">stopped</span>') + '</div>';
+      if (w.current_task) html += '<div class="worker-meta-full">Task: ' + esc(trunc(w.current_task, 50)) + '</div>';
+      if (w.phase) html += '<div>Phase: <span class="phase-badge phase-' + esc(w.phase) + '">' + esc(w.phase) + '</span></div>';
+      html += '<div>Heartbeat: ' + timeAgo(w.last_heartbeat) + '</div>';
+      html += '</div>';
+
+      // Recent calls
+      if (w.recent_calls && w.recent_calls.length) {
+        html += '<div class="recent-calls">';
+        w.recent_calls.forEach(function(c) {
+          var sc = statusCodeClass(c.status || 200);
+          html += '<div>';
+          html += '<span class="call-method">' + esc(c.method) + '</span>';
+          html += '<span class="call-path">' + esc(c.path) + '</span>';
+          html += '<span class="call-status ' + sc + '">' + (c.status || '') + '</span>';
+          html += '<span class="call-time">' + timeAgo(c.timestamp) + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+    grid.innerHTML = html;
+
+    // Store for next comparison
+    previousInfra = {};
+    workers.forEach(function(w) { previousInfra[w.worker_id] = w; });
+  }
+
+  // -- Submit form --
   var form = document.getElementById('submit-form');
   var input = document.getElementById('task-input');
   var btn = document.getElementById('submit-btn');
@@ -419,7 +778,6 @@ body {
     btn.disabled = true;
     msgEl.textContent = 'Submitting...';
     msgEl.className = 'submit-msg';
-
     fetch('/api/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -428,7 +786,7 @@ body {
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {
       if (res.ok) {
-        msgEl.textContent = 'Task submitted: ' + res.data.id;
+        msgEl.textContent = 'Task submitted: ' + (res.data.id || '').substring(0, 12);
         msgEl.className = 'submit-msg ok';
         input.value = '';
         refresh();
@@ -438,37 +796,73 @@ body {
       }
     })
     .catch(function(err) {
-      msgEl.textContent = 'Error: ' + err;
+      msgEl.textContent = 'Network error: ' + err;
       msgEl.className = 'submit-msg err';
     })
     .finally(function() { btn.disabled = false; });
   });
 
-  // -- Main Refresh --
+  // -- Visibility API: pause when hidden --
+  var refreshTimer = null;
+  function scheduleRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(refresh, retryDelay * 1000);
+  }
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      if (refreshTimer) clearInterval(refreshTimer);
+    } else {
+      refresh();
+      scheduleRefresh();
+    }
+  });
+
+  // -- Main refresh --
   function refresh() {
     countdown = REFRESH;
+    var anyOk = false;
 
-    fetchJSON('/api/stats')
-      .then(renderStats)
-      .catch(function() { renderStats({}); });
+    var p1 = fetchJSON('/dashboard/api/tasks')
+      .then(function(data) {
+        anyOk = true;
+        lastData.tasks = data;
+        renderTaskSummary(data);
+        renderFeatures(data);
+      })
+      .catch(function() {});
 
-    fetchJSON('/api/workers')
-      .then(renderWorkers)
-      .catch(function(err) {
-        document.getElementById('workers-grid').innerHTML =
-          '<div class="status-msg error-msg">Failed: ' + esc(String(err)) + '</div>';
-      });
+    var p2 = fetchJSON('/dashboard/api/infra')
+      .then(function(data) {
+        anyOk = true;
+        lastData.infra = data;
+        var workers = data.workers || [];
+        renderInfraSummary(workers);
+        renderWorkerCards(workers);
+      })
+      .catch(function() {});
 
-    fetchJSON('/api/tasks')
-      .then(function(data) { renderTasks(Array.isArray(data) ? data : []); })
-      .catch(function(err) {
-        document.getElementById('tasks-body').innerHTML =
-          '<tr><td colspan="6" class="status-msg error-msg">Failed: ' + esc(String(err)) + '</td></tr>';
-      });
+    var p3 = fetchJSON('/api/tasks')
+      .then(function(data) {
+        anyOk = true;
+        renderCompleted(Array.isArray(data) ? data : []);
+      })
+      .catch(function() {});
+
+    Promise.all([p1, p2, p3]).then(function() {
+      setConnected(anyOk);
+      if (!anyOk) {
+        retryDelay = Math.min(retryDelay * 2, 60);
+        scheduleRefresh();
+      } else if (retryDelay !== REFRESH) {
+        retryDelay = REFRESH;
+        scheduleRefresh();
+      }
+    });
   }
 
+  // -- Boot --
   refresh();
-  setInterval(refresh, REFRESH * 1000);
+  scheduleRefresh();
 })();
 </script>
 </body>
