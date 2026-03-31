@@ -84,6 +84,10 @@ var mockDispatcher = http.createServer(function(req, res) {
       res.writeHead(201);
       res.end(JSON.stringify({ id: "req-011", state: "PENDING" }));
     });
+  } else if (req.url === "/dashboard" && req.method === "GET") {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.writeHead(200);
+    res.end("<html><head><title>CCC Fleet Dashboard</title></head><body>tab-tasks tab-infra</body></html>");
   } else if (req.url === "/dashboard/api/tasks" && req.method === "GET") {
     res.writeHead(200);
     res.end(JSON.stringify({ features: [], summary: { total_tasks: 0 }, updated_at: "2026-03-29T10:00:00Z" }));
@@ -234,6 +238,15 @@ test("GET /dashboard/api/infra proxies to dispatcher", function() {
     assert(Array.isArray(data.workers), "expected workers array");
     assert(data.workers.length === 1, "expected 1 worker");
     assert(data.workers[0].worker_id === "w1", "expected w1");
+  });
+});
+
+test("GET /dashboard proxies full dashboard HTML from dispatcher", function() {
+  return httpGet(CENTRAL_PORT, "/dashboard").then(function(res) {
+    assert(res.status === 200, "expected 200 got " + res.status);
+    assert(res.headers["content-type"].indexOf("text/html") >= 0, "expected text/html");
+    assert(res.body.indexOf("tab-tasks") >= 0, "missing tab-tasks");
+    assert(res.body.indexOf("tab-infra") >= 0, "missing tab-infra");
   });
 });
 
