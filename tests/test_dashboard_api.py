@@ -375,6 +375,33 @@ class TestHttpEndpoints(unittest.TestCase):
         self.assertEqual(data["summary"]["busy_workers"], 1)
 
 
+    def test_task_submit_endpoint(self):
+        """POST /task/submit creates a task without auth."""
+        import urllib.request
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/task/submit"
+        data = json.dumps({"text": "Test task from dashboard", "sender": "dashboard"}).encode()
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            self.assertEqual(resp.status, 201)
+            body = json.loads(resp.read())
+            self.assertIn("id", body)
+            self.assertEqual(body["text"], "Test task from dashboard")
+            self.assertEqual(body["sender"], "dashboard")
+
+    def test_task_submit_empty_text(self):
+        """POST /task/submit with empty text returns 400."""
+        import urllib.request
+        import urllib.error
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/task/submit"
+        data = json.dumps({"text": "", "sender": "dashboard"}).encode()
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            self.fail("Expected 400")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 400)
+
+
 class TestDashboardApiInfra(unittest.TestCase):
     """Unit tests for _dashboard_api_infra."""
 

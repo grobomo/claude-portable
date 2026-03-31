@@ -1856,7 +1856,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 _send_json(self, 200, dict(verify_data), cors=True)
 
         # ── Dashboard HTML endpoint ────────────────────────────────────
-        elif self.path in ("/dashboard", "/dash"):
+        elif self.path in ("/dashboard", "/dash", "/dashboard/"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(_dashboard_html)))
@@ -1904,11 +1904,11 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_OPTIONS(self):
-        """CORS preflight for /api/* endpoints."""
-        if self.path.startswith("/api/"):
+        """CORS preflight for /api/* and /task/submit endpoints."""
+        if self.path.startswith("/api/") or self.path == "/task/submit":
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -2391,6 +2391,20 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "overall": results.get("overall", "unknown"),
                 "message": "verification results recorded",
             })
+
+        # ── Dashboard task submission (public, no auth) ────────────────
+        elif self.path == "/task/submit":
+            text = payload.get("text", "").strip()
+            if not text:
+                _send_json(self, 400, {"error": "Field 'text' is required"}, cors=True)
+                return
+            sender = str(payload.get("sender", "dashboard"))
+            task = _new_task(text=text, sender=sender, priority="normal")
+            with _task_store_lock:
+                _task_store[task["id"]] = task
+            log.info("Dashboard task submitted: id=%s sender=%s text=%.80s",
+                     task["id"], sender, text)
+            _send_json(self, 201, dict(task), cors=True)
 
         # ── Task management POST endpoints (auth required) ─────────────
         elif self.path == "/task":
