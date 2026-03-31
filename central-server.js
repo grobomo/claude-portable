@@ -86,8 +86,8 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // Proxy API endpoints to dispatcher
-  if (pathname.startsWith("/api/") || pathname === "/health" || pathname === "/board") {
+  // Proxy API endpoints to dispatcher (includes /api/*, /dashboard/api/*, /health, /board)
+  if (pathname.startsWith("/api/") || pathname.startsWith("/dashboard/api/") || pathname === "/health" || pathname === "/board") {
     proxyToDispatcher(req, res, pathname);
     return;
   }

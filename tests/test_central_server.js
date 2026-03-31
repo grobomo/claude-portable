@@ -84,6 +84,20 @@ var mockDispatcher = http.createServer(function(req, res) {
       res.writeHead(201);
       res.end(JSON.stringify({ id: "req-011", state: "PENDING" }));
     });
+  } else if (req.url === "/dashboard/api/tasks" && req.method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify({ features: [], summary: { total_tasks: 0 }, updated_at: "2026-03-29T10:00:00Z" }));
+  } else if (req.url === "/dashboard/api/infra" && req.method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify({ workers: [{ worker_id: "w1", healthy: true, cpu_percent: 25.0 }], updated_at: "2026-03-29T10:00:00Z" }));
+  } else if (req.url === "/api/submit" && req.method === "POST") {
+    var body2 = "";
+    req.on("data", function(c) { body2 += c; });
+    req.on("end", function() {
+      var parsed2 = JSON.parse(body2);
+      res.writeHead(201);
+      res.end(JSON.stringify({ id: "req-012", state: "PENDING", text: parsed2.text }));
+    });
   } else {
     res.writeHead(404);
     res.end(JSON.stringify({ error: "not found" }));
@@ -201,6 +215,34 @@ test("GET /nonexistent returns 404", function() {
 test("CORS headers present on proxied responses", function() {
   return httpGet(CENTRAL_PORT, "/api/stats").then(function(res) {
     assert(res.headers["access-control-allow-origin"] === "*", "missing CORS header");
+  });
+});
+
+test("GET /dashboard/api/tasks proxies to dispatcher", function() {
+  return httpGet(CENTRAL_PORT, "/dashboard/api/tasks").then(function(res) {
+    assert(res.status === 200, "expected 200 got " + res.status);
+    var data = JSON.parse(res.body);
+    assert(Array.isArray(data.features), "expected features array");
+    assert(data.summary != null, "expected summary");
+  });
+});
+
+test("GET /dashboard/api/infra proxies to dispatcher", function() {
+  return httpGet(CENTRAL_PORT, "/dashboard/api/infra").then(function(res) {
+    assert(res.status === 200, "expected 200 got " + res.status);
+    var data = JSON.parse(res.body);
+    assert(Array.isArray(data.workers), "expected workers array");
+    assert(data.workers.length === 1, "expected 1 worker");
+    assert(data.workers[0].worker_id === "w1", "expected w1");
+  });
+});
+
+test("POST /api/submit proxies to dispatcher", function() {
+  return httpPost(CENTRAL_PORT, "/api/submit", { text: "Test from dashboard" }).then(function(res) {
+    assert(res.status === 201, "expected 201 got " + res.status);
+    var data = JSON.parse(res.body);
+    assert(data.id === "req-012", "expected req-012");
+    assert(data.text === "Test from dashboard", "text mismatch");
   });
 });
 
