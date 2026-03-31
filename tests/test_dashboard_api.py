@@ -1,4 +1,5 @@
-"""Tests for the dashboard API endpoints (/api/tasks, /api/workers, /api/stats, /api/workers/{id}/live)."""
+"""Tests for the dashboard API endpoints (/api/tasks, /api/workers, /api/stats, /api/workers/{id}/live,
+   /dashboard, /dash, /dashboard/api/infra, /dashboard/api/tasks)."""
 
 import importlib.machinery
 import importlib.util
@@ -232,6 +233,7 @@ class TestHttpEndpoints(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        gd._load_dashboard_html()
         cls.server = HTTPServer(("127.0.0.1", 0), gd.HealthHandler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -284,6 +286,162 @@ class TestHttpEndpoints(unittest.TestCase):
             self.fail("Expected 404")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 404)
+
+    def test_dashboard_html_endpoint(self):
+        import urllib.request
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/dashboard"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            ct = resp.headers.get("Content-Type", "")
+            self.assertIn("text/html", ct)
+            body = resp.read()
+            self.assertIn(b"CCC Fleet Dashboard", body)
+
+    def test_dash_alias_endpoint(self):
+        import urllib.request
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/dash"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertIn(b"CCC Fleet Dashboard", resp.read())
+
+    def test_dashboard_api_infra_empty(self):
+        data, status = _json_get(self.server, "/dashboard/api/infra")
+        self.assertEqual(status, 200)
+        self.assertIn("workers", data)
+        self.assertEqual(data["workers"], [])
+        self.assertIn("updated_at", data)
+
+    def test_dashboard_api_infra_with_workers(self):
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gd._fleet_roster["w1"] = {
+            "status": "busy",
+            "last_heartbeat": now,
+            "uptime_seconds": 7200,
+            "completions": 5,
+            "cpu_percent": 45.2,
+            "memory_percent": 62.0,
+            "memory_mb": {"used": 1240, "total": 2048},
+            "disk_percent": 38.5,
+            "disk_gb": {"used": 12.3, "total": 32.0},
+            "claude_running": True,
+            "error_count": 0,
+            "task": {"description": "Build feature X"},
+            "pipeline": {"stage": "BUILD", "stages_complete": 5},
+        }
+        data, status = _json_get(self.server, "/dashboard/api/infra")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["workers"]), 1)
+        w = data["workers"][0]
+        self.assertEqual(w["worker_id"], "w1")
+        self.assertTrue(w["healthy"])
+        self.assertEqual(w["cpu_percent"], 45.2)
+        self.assertEqual(w["memory_percent"], 62.0)
+        self.assertEqual(w["disk_percent"], 38.5)
+        self.assertEqual(w["current_task"], "Build feature X")
+        self.assertGreater(w["tasks_per_hour"], 0)
+
+    def test_dashboard_api_infra_unhealthy_worker(self):
+        # Worker with no heartbeat should be unhealthy
+        gd._fleet_roster["w1"] = {"status": "idle", "completions": 0}
+        data, status = _json_get(self.server, "/dashboard/api/infra")
+        self.assertEqual(status, 200)
+        self.assertFalse(data["workers"][0]["healthy"])
+
+    def test_dashboard_api_tasks_empty(self):
+        data, status = _json_get(self.server, "/dashboard/api/tasks")
+        self.assertEqual(status, 200)
+        self.assertIn("features", data)
+        self.assertEqual(data["features"], [])
+        self.assertIn("summary", data)
+
+    def test_dashboard_api_tasks_with_feature(self):
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gd._fleet_roster["w1"] = {
+            "status": "busy",
+            "last_heartbeat": now,
+            "task": {
+                "branch": "continuous-claude/task-42-add-logging",
+                "description": "Add structured logging",
+            },
+            "pipeline": {"stage": "BUILD", "stages_complete": 3},
+        }
+        data, status = _json_get(self.server, "/dashboard/api/tasks")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["features"]), 1)
+        f = data["features"][0]
+        self.assertEqual(f["branch"], "continuous-claude/task-42-add-logging")
+        self.assertEqual(f["phase"], "BUILD")
+        self.assertEqual(len(f["tasks"]), 1)
+        self.assertEqual(data["summary"]["busy_workers"], 1)
+
+
+class TestDashboardApiInfra(unittest.TestCase):
+    """Unit tests for _dashboard_api_infra."""
+
+    def setUp(self):
+        self._orig_roster = gd._fleet_roster.copy()
+        self._orig_stats = gd._worker_stats.copy()
+        gd._fleet_roster.clear()
+        gd._worker_stats.clear()
+
+    def tearDown(self):
+        gd._fleet_roster.clear()
+        gd._fleet_roster.update(self._orig_roster)
+        gd._worker_stats.clear()
+        gd._worker_stats.update(self._orig_stats)
+
+    def test_sort_unhealthy_first(self):
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gd._fleet_roster["healthy-w"] = {
+            "status": "idle", "last_heartbeat": now, "completions": 0,
+        }
+        gd._fleet_roster["dead-w"] = {
+            "status": "idle", "completions": 0,
+        }
+        result = gd._dashboard_api_infra()
+        workers = result["workers"]
+        self.assertEqual(len(workers), 2)
+        # Unhealthy (dead-w, no heartbeat) should come first
+        self.assertEqual(workers[0]["worker_id"], "dead-w")
+        self.assertFalse(workers[0]["healthy"])
+        self.assertEqual(workers[1]["worker_id"], "healthy-w")
+        self.assertTrue(workers[1]["healthy"])
+
+
+class TestHeartbeatResourceMetrics(unittest.TestCase):
+    """Test that heartbeat stores resource metrics in fleet roster."""
+
+    def setUp(self):
+        self._orig_roster = gd._fleet_roster.copy()
+        gd._fleet_roster.clear()
+
+    def tearDown(self):
+        gd._fleet_roster.clear()
+        gd._fleet_roster.update(self._orig_roster)
+
+    def test_resource_fields_stored(self):
+        """Simulate a heartbeat with resource metrics and verify storage."""
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        # Directly set what the heartbeat handler would set
+        gd._fleet_roster["w1"] = {
+            "status": "idle",
+            "last_heartbeat": now,
+            "cpu_percent": 55.3,
+            "memory_percent": 70.1,
+            "memory_mb": {"used": 1400, "total": 2048},
+            "disk_percent": 42.0,
+            "disk_gb": {"used": 15.0, "total": 32.0},
+            "error_count": 2,
+            "completions": 10,
+        }
+        infra = gd._dashboard_api_infra()
+        w = infra["workers"][0]
+        self.assertEqual(w["cpu_percent"], 55.3)
+        self.assertEqual(w["memory_percent"], 70.1)
+        self.assertEqual(w["memory_mb"]["used"], 1400)
+        self.assertEqual(w["disk_percent"], 42.0)
+        self.assertEqual(w["disk_gb"]["total"], 32.0)
+        self.assertEqual(w["error_count"], 2)
 
 
 if __name__ == "__main__":

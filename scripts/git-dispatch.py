@@ -38,8 +38,26 @@ log = logging.getLogger(__name__)
 POLL_INTERVAL = int(os.environ.get("TODO_POLL_INTERVAL", "60"))
 REPO_DIR = os.environ.get("DISPATCHER_REPO_DIR", "/workspace/claude-portable")
 HEALTH_PORT = int(os.environ.get("DISPATCHER_HEALTH_PORT", "8080"))
+DASHBOARD_PORT = int(os.environ.get("DISPATCHER_DASHBOARD_PORT", "8082"))
 
 _DEFAULT_MAX_WORKERS = 5
+
+# ── Dashboard HTML cache ───────────────────────────────────────────────────────
+
+_dashboard_html: bytes = b""
+
+
+def _load_dashboard_html():
+    """Load dashboard.html from scripts/ dir and cache it."""
+    global _dashboard_html
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+    try:
+        with open(html_path, "rb") as f:
+            _dashboard_html = f.read()
+        log.info("Dashboard HTML loaded from %s (%d bytes)", html_path, len(_dashboard_html))
+    except FileNotFoundError:
+        log.warning("dashboard.html not found at %s", html_path)
+        _dashboard_html = b"<html><body><h1>Dashboard not found</h1></body></html>"
 
 
 def load_ccc_config(repo_dir: str) -> dict:
@@ -1629,6 +1647,107 @@ def _api_get_worker_live(worker_id: str) -> dict:
     return result
 
 
+# ── Dashboard aggregated API helpers ───────────────────────────────────────────
+
+def _dashboard_api_infra() -> dict:
+    """Return per-worker infrastructure health data for the dashboard."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _fleet_roster_lock:
+        roster = {k: dict(v) for k, v in _fleet_roster.items()}
+    with _worker_stats_lock:
+        stats = {k: dict(v) for k, v in _worker_stats.items()}
+
+    workers = []
+    for wid, info in roster.items():
+        ws = stats.get(wid, {})
+        hb_ts = info.get("last_heartbeat", "")
+        hb_age = 0
+        healthy = True
+        if hb_ts:
+            parsed = _parse_iso_timestamp(hb_ts)
+            if parsed:
+                hb_age = time.time() - parsed
+                if hb_age > 90:
+                    healthy = False
+        else:
+            healthy = False
+
+        uptime_s = info.get("uptime_seconds", 0)
+        completions = info.get("completions", 0) or ws.get("tasks_completed", 0)
+        tasks_per_hour = round(completions / (uptime_s / 3600), 2) if uptime_s > 0 else 0
+
+        task = info.get("task", {})
+        current_task = task.get("description", "") or info.get("last_task", "") or ""
+        pipeline = info.get("pipeline", {})
+
+        w = {
+            "worker_id": wid,
+            "healthy": healthy,
+            "status": info.get("status", "idle"),
+            "cpu_percent": info.get("cpu_percent"),
+            "memory_percent": info.get("memory_percent"),
+            "memory_mb": info.get("memory_mb"),
+            "disk_percent": info.get("disk_percent"),
+            "disk_gb": info.get("disk_gb"),
+            "uptime_seconds": uptime_s,
+            "claude_running": info.get("claude_running", False),
+            "tasks_completed": completions,
+            "tasks_per_hour": tasks_per_hour,
+            "error_count": info.get("error_count", 0) or ws.get("tasks_failed", 0),
+            "current_task": current_task[:100] if current_task else "",
+            "phase": pipeline.get("stage", ""),
+            "last_heartbeat": hb_ts,
+        }
+        workers.append(w)
+
+    # Sort: unhealthy first, then alphabetical
+    workers.sort(key=lambda x: (x["healthy"], x["worker_id"]))
+    return {"workers": workers, "updated_at": now}
+
+
+def _dashboard_api_tasks() -> dict:
+    """Return aggregated task data grouped by feature branch for the dashboard."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _fleet_roster_lock:
+        roster = {k: dict(v) for k, v in _fleet_roster.items()}
+
+    # Collect feature branches from active workers
+    features = {}
+    for wid, info in roster.items():
+        task = info.get("task", {})
+        branch = task.get("branch", "")
+        if not branch or not branch.startswith("continuous-claude/"):
+            continue
+        pipeline = info.get("pipeline", {})
+        if branch not in features:
+            features[branch] = {
+                "branch": branch,
+                "phase": pipeline.get("stage", "idle"),
+                "tasks": [],
+                "progress": {"completed": pipeline.get("stages_complete", 0), "total": 8},
+            }
+        features[branch]["tasks"].append({
+            "worker": wid,
+            "description": task.get("description", "")[:100],
+            "status": info.get("status", "idle"),
+            "last_activity": info.get("last_heartbeat", ""),
+        })
+
+    # Summary
+    idle_workers = sum(1 for v in roster.values() if v.get("status") == "idle")
+    busy_workers = sum(1 for v in roster.values() if v.get("status") == "busy")
+
+    return {
+        "features": list(features.values()),
+        "summary": {
+            "total_features": len(features),
+            "idle_workers": idle_workers,
+            "busy_workers": busy_workers,
+        },
+        "updated_at": now,
+    }
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1735,6 +1854,22 @@ class HealthHandler(BaseHTTPRequestHandler):
                 _send_json(self, 404, {"error": "No verification results found", "task_id": task_id}, cors=True)
             else:
                 _send_json(self, 200, dict(verify_data), cors=True)
+
+        # ── Dashboard HTML endpoint ────────────────────────────────────
+        elif self.path in ("/dashboard", "/dash"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(_dashboard_html)))
+            self.end_headers()
+            self.wfile.write(_dashboard_html)
+
+        # ── Dashboard aggregated API endpoints ─────────────────────────
+        elif self.path == "/dashboard/api/infra":
+            infra = _dashboard_api_infra()
+            _send_json(self, 200, infra, cors=True)
+        elif self.path == "/dashboard/api/tasks":
+            tasks = _dashboard_api_tasks()
+            _send_json(self, 200, tasks, cors=True)
 
         else:
             self.send_response(404)
@@ -2006,6 +2141,19 @@ class HealthHandler(BaseHTTPRequestHandler):
                 entry["claude_running"] = payload.get("claude_running", False)
                 entry["maintenance"] = payload.get("maintenance", False)
                 entry["uptime_seconds"] = payload.get("uptime_seconds", 0)
+                # Resource metrics from extended heartbeat
+                if "cpu_percent" in payload:
+                    entry["cpu_percent"] = payload["cpu_percent"]
+                if "memory_percent" in payload:
+                    entry["memory_percent"] = payload["memory_percent"]
+                if "memory_mb" in payload:
+                    entry["memory_mb"] = payload["memory_mb"]
+                if "disk_percent" in payload:
+                    entry["disk_percent"] = payload["disk_percent"]
+                if "disk_gb" in payload:
+                    entry["disk_gb"] = payload["disk_gb"]
+                if "error_count" in payload:
+                    entry["error_count"] = payload["error_count"]
                 pipeline = payload.get("pipeline", {})
                 stage = pipeline.get("stage", "idle")
                 if payload.get("maintenance"):
@@ -2975,10 +3123,21 @@ def _relay_poll_tick():
 
 
 def start_health_server():
+    _load_dashboard_html()
     server = HTTPServer(("0.0.0.0", HEALTH_PORT), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     log.info("Health endpoint listening on port %d", HEALTH_PORT)
+
+    # Start dashboard on separate port (serves same handler)
+    if DASHBOARD_PORT != HEALTH_PORT:
+        try:
+            dash_server = HTTPServer(("0.0.0.0", DASHBOARD_PORT), HealthHandler)
+            dash_thread = threading.Thread(target=dash_server.serve_forever, daemon=True)
+            dash_thread.start()
+            log.info("Dashboard listening on port %d", DASHBOARD_PORT)
+        except OSError as e:
+            log.warning("Could not start dashboard on port %d: %s", DASHBOARD_PORT, e)
 
 
 # ── Leader election (S3-based) ────────────────────────────────────────────────
@@ -3231,6 +3390,7 @@ def main():
     log.info("  Poll interval: %ds", POLL_INTERVAL)
     log.info("  Max workers:   %d", MAX_WORKERS)
     log.info("  Health port:   %d", HEALTH_PORT)
+    log.info("  Dashboard port: %d", DASHBOARD_PORT)
 
     region = get_aws_region()
     log.info("  AWS region:    %s", region)

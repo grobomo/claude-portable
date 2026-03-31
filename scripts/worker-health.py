@@ -402,11 +402,75 @@ HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
 DISPATCHER_URL = os.environ.get("DISPATCHER_URL", "")
 
 
+_error_count = 0
+
+
+def _get_cpu_percent():
+    """Read CPU usage from /proc/stat (two samples 100ms apart)."""
+    try:
+        with open("/proc/stat", "r") as f:
+            line1 = f.readline()
+        vals1 = [int(x) for x in line1.split()[1:]]
+        time.sleep(0.1)
+        with open("/proc/stat", "r") as f:
+            line2 = f.readline()
+        vals2 = [int(x) for x in line2.split()[1:]]
+        d_idle = vals2[3] - vals1[3]
+        d_total = sum(vals2) - sum(vals1)
+        if d_total == 0:
+            return 0.0
+        return round((1 - d_idle / d_total) * 100, 1)
+    except Exception:
+        return None
+
+
+def _get_memory_info():
+    """Read memory info from /proc/meminfo."""
+    try:
+        info = {}
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    info[parts[0].rstrip(":")] = int(parts[1])
+        total_kb = info.get("MemTotal", 0)
+        avail_kb = info.get("MemAvailable", info.get("MemFree", 0))
+        used_kb = total_kb - avail_kb
+        total_mb = round(total_kb / 1024)
+        used_mb = round(used_kb / 1024)
+        pct = round(used_kb / total_kb * 100, 1) if total_kb > 0 else 0.0
+        return pct, {"used": used_mb, "total": total_mb}
+    except Exception:
+        return None, None
+
+
+def _get_disk_info():
+    """Read disk usage from df for /workspace."""
+    try:
+        r = subprocess.run(
+            ["df", "-BG", "/workspace"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return None, None
+        lines = r.stdout.strip().split("\n")
+        if len(lines) < 2:
+            return None, None
+        parts = lines[1].split()
+        # parts: device, size, used, avail, use%, mount
+        total_g = float(parts[1].rstrip("G"))
+        used_g = float(parts[2].rstrip("G"))
+        pct = round(used_g / total_g * 100, 1) if total_g > 0 else 0.0
+        return pct, {"used": round(used_g, 1), "total": round(total_g, 1)}
+    except Exception:
+        return None, None
+
+
 def _build_heartbeat_payload():
     """Build the heartbeat payload with current worker state."""
     pipeline = _get_pipeline_stage()
     task = _get_current_task()
-    return {
+    payload = {
         "worker_id": WORKER_ID,
         "task": task,
         "pipeline": pipeline,
@@ -415,7 +479,21 @@ def _build_heartbeat_payload():
         "maintenance": _is_maintenance(),
         "uptime_seconds": int(time.time() - START_TIME),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "error_count": _error_count,
     }
+    # Resource metrics
+    cpu = _get_cpu_percent()
+    if cpu is not None:
+        payload["cpu_percent"] = cpu
+    mem_pct, mem_mb = _get_memory_info()
+    if mem_pct is not None:
+        payload["memory_percent"] = mem_pct
+        payload["memory_mb"] = mem_mb
+    disk_pct, disk_gb = _get_disk_info()
+    if disk_pct is not None:
+        payload["disk_percent"] = disk_pct
+        payload["disk_gb"] = disk_gb
+    return payload
 
 
 def send_heartbeat(dispatcher_url):
