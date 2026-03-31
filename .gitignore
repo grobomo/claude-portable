@@ -16,3 +16,4 @@ __pycache__/
 reports/
 config/bundles/
 archive/
+scripts/dashboard_users.json

@@ -27,7 +27,9 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote_plus
+
+import dashboard_auth
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt="%H:%M:%S")
@@ -1777,9 +1779,103 @@ def _dashboard_api_infra() -> dict:
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
+
+    # ── Auth helpers ───────────────────────────────────────────────────
+
+    def _require_auth(self):
+        """Check session auth. Returns username if OK, sends redirect and returns None if not."""
+        username = dashboard_auth.get_current_user(self)
+        if not username:
+            self._redirect("/auth/login")
+            return None
+        if dashboard_auth.user_must_change_password(username) and self.path != "/auth/change-password":
+            self._redirect("/auth/change-password")
+            return None
+        return username
+
+    def _send_html(self, status, html):
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _set_session_cookie(self, session_id):
+        self.send_header(
+            "Set-Cookie",
+            "ccc_session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d"
+            % (session_id, dashboard_auth.SESSION_TTL),
+        )
+
+    def _clear_session_cookie(self):
+        self.send_header(
+            "Set-Cookie",
+            "ccc_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
+        )
+
+    def _read_form_body(self):
+        """Read and parse URL-encoded form body. Returns dict of {key: value}."""
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8") if length else ""
+        params = {}
+        for part in body.split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                params[unquote_plus(k)] = unquote_plus(v)
+        return params
+
+    # ── GET routes ─────────────────────────────────────────────────────
+
     def do_GET(self):
+        # ── Auth pages (no auth required) ──────────────────────────────
+        if self.path == "/auth/login":
+            username = dashboard_auth.get_current_user(self)
+            if username:
+                self._redirect("/")
+                return
+            self._send_html(200, dashboard_auth.render_login_page())
+            return
+        if self.path == "/auth/logout":
+            session_id = dashboard_auth.get_session_cookie(self)
+            if session_id:
+                dashboard_auth.destroy_session(session_id)
+            self.send_response(302)
+            self._clear_session_cookie()
+            self.send_header("Location", "/auth/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path == "/auth/change-password":
+            username = dashboard_auth.get_current_user(self)
+            if not username:
+                self._redirect("/auth/login")
+                return
+            self._send_html(200, dashboard_auth.render_change_password_page())
+            return
+
+        # ── Admin panel (auth + admin role required) ───────────────────
+        if self.path in ("/admin", "/admin/"):
+            username = self._require_auth()
+            if not username:
+                return
+            if not dashboard_auth.is_admin(username):
+                self._send_html(403, "<h1>403 Forbidden</h1><p>Admin access required.</p>")
+                return
+            self._send_html(200, dashboard_auth.render_admin_page())
+            return
+
+        # ── Dashboard (auth required) ─────────────────────────────────
         if self.path == "/":
-            # Serve dashboard HTML
+            username = self._require_auth()
+            if not username:
+                return
             dashboard_path = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "dashboard.html"
             )
@@ -1898,8 +1994,11 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 _send_json(self, 200, dict(verify_data), cors=True)
 
-        # ── Dashboard endpoints (served on both ports) ────────────────
+        # ── Dashboard endpoints (served on both ports, auth required) ──
         elif self.path in ("/dashboard", "/dashboard/"):
+            username = self._require_auth()
+            if not username:
+                return
             dashboard_path = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "dashboard.html"
             )
@@ -1967,6 +2066,106 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        # ── Auth form POST routes (URL-encoded, not JSON) ─────────────
+        if self.path == "/auth/login":
+            params = self._read_form_body()
+            username = params.get("username", "").strip()
+            password = params.get("password", "")
+            if not username or not password:
+                self._send_html(200, dashboard_auth.render_login_page("Username and password required."))
+                return
+            if not dashboard_auth.verify_password(username, password):
+                log.warning("Failed login attempt for user: %s", username)
+                self._send_html(200, dashboard_auth.render_login_page("Invalid username or password."))
+                return
+            session_id = dashboard_auth.create_session(username)
+            log.info("User logged in: %s", username)
+            if dashboard_auth.user_must_change_password(username):
+                self.send_response(302)
+                self._set_session_cookie(session_id)
+                self.send_header("Location", "/auth/change-password")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(302)
+                self._set_session_cookie(session_id)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            return
+
+        if self.path == "/auth/change-password":
+            username = dashboard_auth.get_current_user(self)
+            if not username:
+                self._redirect("/auth/login")
+                return
+            params = self._read_form_body()
+            new_pw = params.get("new_password", "")
+            confirm_pw = params.get("confirm_password", "")
+            if not new_pw or len(new_pw) < 4:
+                self._send_html(200, dashboard_auth.render_change_password_page("Password must be at least 4 characters."))
+                return
+            if new_pw != confirm_pw:
+                self._send_html(200, dashboard_auth.render_change_password_page("Passwords do not match."))
+                return
+            dashboard_auth.change_password(username, new_pw)
+            log.info("User changed password: %s", username)
+            self._redirect("/")
+            return
+
+        if self.path == "/admin/add-user":
+            username = self._require_auth()
+            if not username:
+                return
+            if not dashboard_auth.is_admin(username):
+                self._send_html(403, "<h1>403 Forbidden</h1>")
+                return
+            params = self._read_form_body()
+            new_user = params.get("username", "").strip()
+            new_pw = params.get("password", "")
+            role = params.get("role", "user")
+            if role not in ("user", "admin"):
+                role = "user"
+            ok, err = dashboard_auth.add_user(new_user, new_pw, role)
+            if ok:
+                self._send_html(200, dashboard_auth.render_admin_page("User '%s' created." % new_user))
+            else:
+                self._send_html(200, dashboard_auth.render_admin_page(err, is_error=True))
+            return
+
+        if self.path == "/admin/delete-user":
+            username = self._require_auth()
+            if not username:
+                return
+            if not dashboard_auth.is_admin(username):
+                self._send_html(403, "<h1>403 Forbidden</h1>")
+                return
+            params = self._read_form_body()
+            target = params.get("username", "")
+            ok, err = dashboard_auth.delete_user(target)
+            if ok:
+                self._send_html(200, dashboard_auth.render_admin_page("User '%s' deleted." % target))
+            else:
+                self._send_html(200, dashboard_auth.render_admin_page(err, is_error=True))
+            return
+
+        if self.path == "/admin/force-reset":
+            username = self._require_auth()
+            if not username:
+                return
+            if not dashboard_auth.is_admin(username):
+                self._send_html(403, "<h1>403 Forbidden</h1>")
+                return
+            params = self._read_form_body()
+            target = params.get("username", "")
+            ok, err = dashboard_auth.force_password_reset(target)
+            if ok:
+                self._send_html(200, dashboard_auth.render_admin_page("Password reset forced for '%s'." % target))
+            else:
+                self._send_html(200, dashboard_auth.render_admin_page(err, is_error=True))
+            return
+
+        # ── JSON API POST routes ──────────────────────────────────────
         length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(length) if length else b"{}"
         try:
@@ -3240,6 +3439,7 @@ def _relay_poll_tick():
 
 
 def start_health_server():
+    dashboard_auth.init()
     server = HTTPServer(("0.0.0.0", HEALTH_PORT), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
