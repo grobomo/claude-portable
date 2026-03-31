@@ -128,6 +128,12 @@ BOARD_FILE = os.environ.get("BOARD_FILE", "/data/board.json")
 _worker_stats: dict = {}
 _worker_stats_lock = threading.Lock()
 
+# Cached open PRs from `gh pr list` -- refreshed every 30s by background thread.
+# List of dicts: [{number, title, headRefName, url}, ...]
+_open_prs_cache: list = []
+_open_prs_cache_lock = threading.Lock()
+_open_prs_last_refresh: float = 0.0
+
 # Workers launched by the dispatcher but not yet registered.
 # worker_name -> {launched_at: float}
 _launched_workers: dict = {}
@@ -970,6 +976,48 @@ def get_open_prs_for_worker(worker_id: str, repo_dir: str) -> list:
         return []
 
 
+def _refresh_open_prs_cache():
+    """Fetch open PRs via gh CLI and update the cache. Called periodically."""
+    global _open_prs_last_refresh
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--state", "open",
+             "--json", "number,title,headRefName,url", "--limit", "50"],
+            capture_output=True, text=True, timeout=30, cwd=REPO_DIR,
+        )
+        if result.returncode != 0:
+            log.debug("PR cache refresh failed: %s", result.stderr.strip())
+            return
+        prs = json.loads(result.stdout or "[]")
+        with _open_prs_cache_lock:
+            _open_prs_cache.clear()
+            _open_prs_cache.extend(prs)
+        _open_prs_last_refresh = time.time()
+        log.debug("PR cache refreshed: %d open PRs", len(prs))
+    except Exception as e:
+        log.debug("PR cache refresh error: %s", e)
+
+
+def _get_worker_pr(worker_id: str) -> dict:
+    """Match a worker to its active PR using branch name from heartbeat data."""
+    with _fleet_roster_lock:
+        entry = _fleet_roster.get(worker_id, {})
+    task_branch = (entry.get("task", {}) or {}).get("branch", "")
+    if not task_branch:
+        return None
+
+    with _open_prs_cache_lock:
+        for pr in _open_prs_cache:
+            if pr.get("headRefName", "") == task_branch:
+                return {
+                    "number": pr.get("number"),
+                    "title": pr.get("title", ""),
+                    "url": pr.get("url", ""),
+                    "branch": task_branch,
+                }
+    return None
+
+
 def count_unclaimed_tasks(pending_tasks: list, active_branches: list) -> int:
     """Estimate tasks not yet claimed by a worker branch.
 
@@ -1529,6 +1577,8 @@ def _api_get_workers() -> dict:
         entry["tasks_failed"] = ws.get("tasks_failed", 0)
         entry["registered_at"] = ws.get("registered_at") or entry.get("registered_at")
         entry["last_dispatch_time"] = ws.get("last_dispatch_time")
+        # Include active PR info from cached gh pr list
+        entry["active_pr"] = _get_worker_pr(wid)
         result[wid] = entry
     return result
 
@@ -1766,6 +1816,7 @@ def _dashboard_api_infra() -> dict:
             "current_task": task_info.get("description", ""),
             "phase": pipeline.get("stage", "idle"),
             "last_heartbeat": last_hb,
+            "active_pr": _get_worker_pr(wid),
         })
 
     return {
@@ -3571,6 +3622,19 @@ def main():
         name="registration-monitor",
     )
     reg_monitor.start()
+
+    # Start PR cache refresh loop (feeds dashboard worker->PR mapping)
+    def _pr_cache_loop():
+        while True:
+            _refresh_open_prs_cache()
+            time.sleep(30)
+
+    pr_cache_thread = threading.Thread(
+        target=_pr_cache_loop,
+        daemon=True,
+        name="pr-cache-refresh",
+    )
+    pr_cache_thread.start()
 
     # Start fleet monitor (safety net for stale workers)
     fleet_monitor = threading.Thread(
