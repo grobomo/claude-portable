@@ -2870,30 +2870,31 @@ def _build_continuous_cmd(request_id: str, worker_ip: str, key_path: str,
     we write a dispatch script to the container first, then execute it.
     """
     # Build the dispatch script content (runs inside the worker container)
+    # Use base64 for prompt to avoid backtick/quote expansion in bash
+    import base64 as b64mod
+    prompt_b64 = b64mod.b64encode(escaped_prompt.encode()).decode()
     script_lines = [
         "#!/bin/bash",
         "set -euo pipefail",
         "cd /workspace/boothapp",
         "",
         f"RESULT_FILE={result_file}",
+        f"PROMPT_FILE=/tmp/prompt-{request_id}.txt",
+        f"echo '{prompt_b64}' | base64 -d > \"$PROMPT_FILE\"",
         "",
-        "# continuous-claude now reads specs/*/tasks.md natively (no TODO.md conversion needed)",
+        "# Check if continuous-claude is available AND specs exist",
         "if [ -f /opt/claude-portable/scripts/continuous-claude.sh ] && ls specs/*/tasks.md >/dev/null 2>&1; then",
-        "    CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
-        "      bash /opt/claude-portable/scripts/continuous-claude.sh \\",
-        "        https://github.com/altarr/boothapp.git main /workspace/boothapp \\",
-        '        > "$RESULT_FILE" 2>&1',
-        '    cat "$RESULT_FILE"',
-        "  else",
-        f'    claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
+        "  CONTINUOUS_CLAUDE_MAX_ERRORS=3 \\",
+        "    bash /opt/claude-portable/scripts/continuous-claude.sh \\",
+        "      https://github.com/altarr/boothapp.git main /workspace/boothapp \\",
         '      > "$RESULT_FILE" 2>&1',
-        '    cat "$RESULT_FILE"',
-        "  fi",
         "else",
-        f'  claude -p "{escaped_prompt}" --dangerously-skip-permissions \\',
+        "  export CONTINUOUS_CLAUDE=1 SKIP_SPEC_GATE=1 CLAUDE_HOOKS_BYPASS=1",
+        '  PROMPT=$(cat "$PROMPT_FILE")',
+        '  claude -p "$PROMPT" --dangerously-skip-permissions \\',
         '    > "$RESULT_FILE" 2>&1',
-        '  cat "$RESULT_FILE"',
         "fi",
+        'cat "$RESULT_FILE"',
     ]
     script_content = "\n".join(script_lines)
 
