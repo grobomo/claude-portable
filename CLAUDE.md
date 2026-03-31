@@ -254,7 +254,8 @@ S3 state-sync provides durability beyond Docker volumes.
 | 2222 | Container SSH | Public (key-based auth) |
 | 5900 | VNC (Chrome desktop) | localhost only (SSH tunnel) |
 | 9222 | Chrome DevTools | localhost only |
-| 8080 | File browser | localhost only |
+| 8080 | Dispatcher health API | localhost only |
+| 8082 | Fleet dashboard (Tasks + Infra Health) | localhost only |
 | 8888 | Web chat (phone access) | Public (token-authed) |
 
 ## Testing
