@@ -12,9 +12,8 @@ Build a real-time two-tab HTML dashboard (Tasks + Infra Health) served by the di
 6. Workers with no heartbeat >60s show as unhealthy (red)
 7. All data matches /health and /board APIs
 
-## Approach
-- Rewrite `scripts/dashboard.html` with two-tab layout (Tasks + Infra Health)
-- Add `/dashboard`, `/dashboard/api/tasks`, `/dashboard/api/infra` endpoints to dispatcher
-- Add dashboard port 8082 support
-- Extend worker heartbeat with CPU/memory/disk metrics
-- Single HTML file, zero external deps
+## Remaining Fixes
+1. Bug: /api/submit matched by auth-required handler before public handler in do_POST
+2. Gap: central-server.js doesn't proxy /dashboard/api/* or /api/submit
+3. Gap: central-server.js embeds old simple dashboard, should proxy to full two-tab version
+4. Run all tests, verify pass

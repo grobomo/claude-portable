@@ -2435,8 +2435,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             })
 
         # ── Task management POST endpoints (auth required) ─────────────
-        elif self.path in ("/task", "/api/submit"):
-            # POST /task (or /api/submit alias) -- submit a new task
+        elif self.path == "/task":
+            # POST /task -- submit a new task (auth required)
             if not _check_bearer_auth(self):
                 return
             text = payload.get("text", "").strip()
