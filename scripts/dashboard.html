@@ -374,6 +374,40 @@ body {
 .status-4xx { color: var(--amber); }
 .status-5xx { color: var(--red); }
 
+/* Worker-PR Cards */
+.worker-pr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+.worker-pr-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color 0.2s;
+}
+.worker-pr-card:hover { border-color: var(--blue); }
+.wpc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wpc-name { font-size: 16px; font-weight: 700; }
+.wpc-pr {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.wpc-pr a { color: var(--blue); text-decoration: none; }
+.wpc-pr a:hover { text-decoration: underline; }
+.wpc-pr-num { color: var(--green); font-weight: 700; }
+.wpc-task { font-size: 13px; color: var(--text-muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wpc-no-pr { font-size: 13px; color: #484f58; font-style: italic; }
+
 /* Empty / loading */
 .status-msg { text-align: center; padding: 30px; color: var(--text-muted); }
 .error-msg { color: var(--red); }
@@ -434,6 +468,14 @@ body {
       <button type="submit" id="submit-btn">Submit</button>
     </form>
     <div class="submit-msg" id="submit-msg"></div>
+  </div>
+
+  <!-- Workers & Active PRs -->
+  <div class="section">
+    <div class="section-title">Workers &amp; Active PRs</div>
+    <div id="worker-pr-grid" class="worker-pr-grid">
+      <div class="status-msg">Loading...</div>
+    </div>
   </div>
 
   <!-- Feature branches -->
@@ -568,6 +610,55 @@ body {
       banner.classList.add('show');
       lastUpdateEl.textContent = lastSuccessTime ? lastSuccessTime.toLocaleTimeString() : 'never';
     }
+  }
+
+  // -- Render Worker PR Cards --
+  function renderWorkerPRs(workers) {
+    var grid = document.getElementById('worker-pr-grid');
+    if (!workers || !workers.length) {
+      grid.innerHTML = '<div class="status-msg">No workers registered</div>';
+      return;
+    }
+    // Sort: busy first (have PRs/tasks), then idle, then unhealthy
+    workers.sort(function(a, b) {
+      var pa = a.active_pr ? 0 : (a.current_task ? 1 : 2);
+      var pb = b.active_pr ? 0 : (b.current_task ? 1 : 2);
+      if (pa !== pb) return pa - pb;
+      return (a.worker_id || '').localeCompare(b.worker_id || '');
+    });
+    var html = '';
+    workers.forEach(function(w) {
+      var id = w.worker_id || 'unknown';
+      var phase = w.phase || 'idle';
+      var pr = w.active_pr;
+      var dotClass = w.healthy === false ? 'health-red' : (w.claude_running === false ? 'health-yellow' : 'health-green');
+
+      html += '<div class="worker-pr-card">';
+      html += '<div class="wpc-header">';
+      html += '<span class="health-dot ' + dotClass + '"></span>';
+      html += '<span class="wpc-name">' + esc(id) + '</span>';
+      html += '<span class="phase-badge phase-' + esc(phase) + '">' + esc(phase) + '</span>';
+      html += '</div>';
+
+      if (pr && pr.number) {
+        html += '<div class="wpc-pr">';
+        html += '<span class="wpc-pr-num">#' + pr.number + '</span>';
+        if (pr.url) {
+          html += '<a href="' + esc(pr.url) + '" target="_blank" rel="noopener">' + esc(trunc(pr.title, 55)) + '</a>';
+        } else {
+          html += '<span>' + esc(trunc(pr.title, 55)) + '</span>';
+        }
+        html += '</div>';
+      } else if (w.current_task) {
+        html += '<div class="wpc-task">Working: ' + esc(trunc(w.current_task, 50)) + '</div>';
+        html += '<div class="wpc-no-pr">No PR yet</div>';
+      } else {
+        html += '<div class="wpc-no-pr">Idle -- no active PR</div>';
+      }
+
+      html += '</div>';
+    });
+    grid.innerHTML = html;
   }
 
   // -- Render Tasks Tab: Summary --
@@ -840,6 +931,7 @@ body {
         var workers = data.workers || [];
         renderInfraSummary(workers);
         renderWorkerCards(workers);
+        renderWorkerPRs(workers);
       })
       .catch(function() {});
 
