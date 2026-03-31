@@ -62,6 +62,26 @@ ccc kill dev           # Destroy permanently
 
 Auto-stops when idle. Stopped = $0.
 
+## Dashboard
+
+The dispatcher serves a real-time fleet monitoring dashboard.
+
+```
+http://<dispatcher-ip>:8082/dashboard
+```
+
+Two tabs:
+- **Tasks** -- feature branches, task tables, submission form, completed tasks
+- **Infra Health** -- per-worker CPU/memory/disk gauges, tasks/hour, error counts
+
+Auto-refreshes every 15 seconds. Configurable via `?refresh=N` URL parameter.
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `DISPATCHER_DASHBOARD_PORT` | `8082` | Dashboard HTTP port |
+
+Also available at `http://<dispatcher-ip>:8080/dashboard` (health port).
+
 ## Uninstall
 
 ```bash
