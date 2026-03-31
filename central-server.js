@@ -86,6 +86,12 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // Proxy /dashboard to dispatcher (full two-tab monitoring dashboard)
+  if ((pathname === "/dashboard" || pathname === "/dashboard/") && req.method === "GET") {
+    proxyToDispatcher(req, res, "/dashboard");
+    return;
+  }
+
   // Proxy API endpoints to dispatcher (includes /api/*, /dashboard/api/*, /health, /board)
   if (pathname.startsWith("/api/") || pathname.startsWith("/dashboard/api/") || pathname === "/health" || pathname === "/board") {
     proxyToDispatcher(req, res, pathname);
