@@ -401,11 +401,104 @@ class WorkerHandler(BaseHTTPRequestHandler):
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
 DISPATCHER_URL = os.environ.get("DISPATCHER_URL", "")
 
+# Ring buffer for recent HTTP calls made by worker
+_recent_calls = []
+_recent_calls_max = 10
+_error_count = 0
+
+
+def record_call(method, path, status):
+    """Record an HTTP call in the ring buffer."""
+    global _error_count
+    _recent_calls.append({
+        "method": method,
+        "path": path,
+        "status": status,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
+    if len(_recent_calls) > _recent_calls_max:
+        _recent_calls.pop(0)
+    if status >= 400:
+        _error_count += 1
+
+
+def _get_cpu_percent():
+    """Read CPU usage from /proc/stat (two samples 100ms apart)."""
+    try:
+        def read_stat():
+            with open("/proc/stat", "r") as f:
+                parts = f.readline().split()
+            # user, nice, system, idle, iowait, irq, softirq, steal
+            vals = [int(x) for x in parts[1:9]]
+            idle_val = vals[3] + vals[4]  # idle + iowait
+            total = sum(vals)
+            return idle_val, total
+
+        idle1, total1 = read_stat()
+        time.sleep(0.1)
+        idle2, total2 = read_stat()
+
+        idle_d = idle2 - idle1
+        total_d = total2 - total1
+        if total_d == 0:
+            return 0.0
+        return round((1.0 - idle_d / total_d) * 100, 1)
+    except Exception:
+        return 0.0
+
+
+def _get_memory_info():
+    """Parse /proc/meminfo for memory stats."""
+    try:
+        mem = {}
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    key = parts[0].rstrip(":")
+                    mem[key] = int(parts[1])  # in kB
+        total_kb = mem.get("MemTotal", 0)
+        available_kb = mem.get("MemAvailable", mem.get("MemFree", 0))
+        used_kb = total_kb - available_kb
+        total_mb = round(total_kb / 1024)
+        used_mb = round(used_kb / 1024)
+        pct = round(used_kb / total_kb * 100, 1) if total_kb > 0 else 0
+        return pct, {"used": used_mb, "total": total_mb}
+    except Exception:
+        return 0.0, {"used": 0, "total": 0}
+
+
+def _get_disk_info():
+    """Parse df output for /workspace disk stats."""
+    try:
+        r = subprocess.run(
+            ["df", "-B1", WORKDIR],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return 0.0, {"used": 0, "total": 0}
+        lines = r.stdout.strip().split("\n")
+        if len(lines) < 2:
+            return 0.0, {"used": 0, "total": 0}
+        parts = lines[1].split()
+        # df -B1: Filesystem 1B-blocks Used Available Use% Mounted
+        total_b = int(parts[1])
+        used_b = int(parts[2])
+        total_gb = round(total_b / (1024**3), 1)
+        used_gb = round(used_b / (1024**3), 1)
+        pct = round(used_b / total_b * 100, 1) if total_b > 0 else 0
+        return pct, {"used": used_gb, "total": total_gb}
+    except Exception:
+        return 0.0, {"used": 0, "total": 0}
+
 
 def _build_heartbeat_payload():
-    """Build the heartbeat payload with current worker state."""
+    """Build the heartbeat payload with current worker state and resource metrics."""
     pipeline = _get_pipeline_stage()
     task = _get_current_task()
+    cpu = _get_cpu_percent()
+    mem_pct, mem_mb = _get_memory_info()
+    disk_pct, disk_gb = _get_disk_info()
     return {
         "worker_id": WORKER_ID,
         "task": task,
@@ -414,6 +507,13 @@ def _build_heartbeat_payload():
         "claude_running": _is_claude_running(),
         "maintenance": _is_maintenance(),
         "uptime_seconds": int(time.time() - START_TIME),
+        "cpu_percent": cpu,
+        "memory_percent": mem_pct,
+        "memory_mb": mem_mb,
+        "disk_percent": disk_pct,
+        "disk_gb": disk_gb,
+        "error_count": _error_count,
+        "recent_calls": list(_recent_calls),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 

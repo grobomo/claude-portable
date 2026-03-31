@@ -38,6 +38,7 @@ log = logging.getLogger(__name__)
 POLL_INTERVAL = int(os.environ.get("TODO_POLL_INTERVAL", "60"))
 REPO_DIR = os.environ.get("DISPATCHER_REPO_DIR", "/workspace/claude-portable")
 HEALTH_PORT = int(os.environ.get("DISPATCHER_HEALTH_PORT", "8080"))
+DASHBOARD_PORT = int(os.environ.get("DISPATCHER_DASHBOARD_PORT", "8082"))
 
 _DEFAULT_MAX_WORKERS = 5
 
@@ -1626,6 +1627,232 @@ def _api_get_worker_live(worker_id: str) -> dict:
     return result
 
 
+# ── Dashboard v2 API (spec-compliant, served on port 8082) ─────────────────────
+
+# Cache the dashboard HTML in memory at startup
+_dashboard_html_cache = None
+_dashboard_html_lock = threading.Lock()
+
+
+def _load_dashboard_html() -> bytes:
+    """Load and cache scripts/dashboard.html."""
+    global _dashboard_html_cache
+    with _dashboard_html_lock:
+        if _dashboard_html_cache is None:
+            html_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+            try:
+                with open(html_path, "r") as f:
+                    _dashboard_html_cache = f.read().encode("utf-8")
+            except FileNotFoundError:
+                _dashboard_html_cache = b"<h1>dashboard.html not found</h1>"
+                log.warning("Dashboard HTML not found at %s", html_path)
+        return _dashboard_html_cache
+
+
+def _dashboard_api_tasks() -> dict:
+    """Aggregate /board data into the spec-compliant dashboard tasks schema.
+
+    Groups tasks by feature branch, includes phase badges and progress bars.
+    """
+    board = _build_board()
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    # Group workers by branch to create feature groups
+    features_by_branch = {}
+    for w in board.get("workers", []):
+        branch = w.get("task_branch", "")
+        if not branch or w.get("status") in ("idle", "stopping"):
+            continue
+        if branch not in features_by_branch:
+            features_by_branch[branch] = {
+                "branch": branch,
+                "phase": w.get("phase", "idle"),
+                "phase_start": w.get("phase_start"),
+                "time_in_phase_s": w.get("time_in_phase_s"),
+                "tasks": [],
+                "progress": {"completed": 0, "total": 0},
+            }
+        feat = features_by_branch[branch]
+        # Update phase from the most active worker on this branch
+        if w.get("phase") and w["phase"] not in ("idle", "unknown"):
+            feat["phase"] = w["phase"]
+            feat["phase_start"] = w.get("phase_start")
+            feat["time_in_phase_s"] = w.get("time_in_phase_s")
+
+    # Add tasks from board to their feature groups
+    for t in board.get("tasks", []):
+        worker = t.get("worker")
+        # Find which branch this task's worker is on
+        branch = None
+        if worker:
+            for w in board.get("workers", []):
+                if w.get("worker_id") == worker:
+                    branch = w.get("task_branch", "")
+                    break
+
+        if not branch:
+            branch = "(unassigned)"
+
+        if branch not in features_by_branch:
+            features_by_branch[branch] = {
+                "branch": branch,
+                "phase": t.get("phase") or "idle",
+                "phase_start": None,
+                "time_in_phase_s": None,
+                "tasks": [],
+                "progress": {"completed": 0, "total": 0},
+            }
+
+        feat = features_by_branch[branch]
+        status = t.get("status", "pending")
+        feat["tasks"].append({
+            "num": t.get("task_num") if "task_num" in t else None,
+            "description": t.get("description", ""),
+            "worker": worker,
+            "status": status,
+            "last_activity": None,
+        })
+        feat["progress"]["total"] += 1
+        if status == "completed":
+            feat["progress"]["completed"] += 1
+
+    # Also account for completed tasks from the board summary
+    summary = board.get("summary", {})
+    completed_count = summary.get("completed", 0)
+
+    # If there are completed tasks not in any feature, add a synthetic completed group
+    total_in_features = sum(f["progress"]["total"] for f in features_by_branch.values())
+    if completed_count > 0 and "(completed)" not in features_by_branch:
+        # Check if completed tasks aren't already counted
+        completed_in_features = sum(f["progress"]["completed"] for f in features_by_branch.values())
+        remaining = completed_count - completed_in_features
+        if remaining > 0:
+            features_by_branch["(completed)"] = {
+                "branch": "(completed)",
+                "phase": "PR",
+                "phase_start": None,
+                "time_in_phase_s": None,
+                "tasks": [],
+                "progress": {"completed": remaining, "total": remaining},
+            }
+
+    features_list = list(features_by_branch.values())
+
+    return {
+        "features": features_list,
+        "summary": {
+            "total_features": len([f for f in features_list if f["branch"] not in ("(unassigned)", "(completed)")]),
+            "total_tasks": summary.get("total_tasks", 0),
+            "completed": summary.get("completed", 0),
+            "in_progress": summary.get("in_progress", 0),
+            "pending": summary.get("pending", 0),
+            "blocked": summary.get("blocked", 0),
+            "failed": 0,
+            "idle_workers": summary.get("idle_workers", 0),
+            "busy_workers": summary.get("busy_workers", 0),
+        },
+        "updated_at": now_str,
+    }
+
+
+def _dashboard_api_infra() -> dict:
+    """Aggregate fleet roster + heartbeat data into the spec-compliant infra schema."""
+    now = time.time()
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+
+    with _fleet_roster_lock:
+        roster = {k: dict(v) for k, v in _fleet_roster.items()}
+    with _worker_stats_lock:
+        stats = {k: dict(v) for k, v in _worker_stats.items()}
+
+    workers = []
+    for wid, info in roster.items():
+        ws = stats.get(wid, {})
+        last_hb = info.get("last_heartbeat", "")
+        healthy = info.get("healthy", True)
+
+        # Mark unhealthy if no heartbeat for >60s
+        if last_hb:
+            try:
+                import calendar as cal
+                hb_epoch = cal.timegm(time.strptime(last_hb, "%Y-%m-%dT%H:%M:%SZ"))
+                if now - hb_epoch > 60:
+                    healthy = False
+            except (ValueError, OverflowError):
+                pass
+        else:
+            healthy = False
+
+        uptime_s = info.get("uptime_seconds", 0)
+        tasks_done = info.get("completions", 0) + ws.get("tasks_completed", 0)
+        uptime_h = uptime_s / 3600.0 if uptime_s > 0 else 0
+        tasks_per_hour = round(tasks_done / uptime_h, 2) if uptime_h > 0 else 0
+
+        task_info = info.get("task", {})
+        pipeline = info.get("pipeline", {})
+
+        workers.append({
+            "worker_id": wid,
+            "healthy": healthy,
+            "cpu_percent": info.get("cpu_percent", 0),
+            "memory_percent": info.get("memory_percent", 0),
+            "memory_mb": info.get("memory_mb", {"used": 0, "total": 0}),
+            "disk_percent": info.get("disk_percent", 0),
+            "disk_gb": info.get("disk_gb", {"used": 0, "total": 0}),
+            "uptime_seconds": uptime_s,
+            "claude_running": info.get("claude_running", False),
+            "tasks_completed": tasks_done,
+            "tasks_per_hour": tasks_per_hour,
+            "recent_calls": info.get("recent_calls", []),
+            "error_count": info.get("error_count", 0) + ws.get("tasks_failed", 0),
+            "current_task": task_info.get("description") or None,
+            "phase": pipeline.get("stage", "idle"),
+            "last_heartbeat": last_hb,
+        })
+
+    return {
+        "workers": workers,
+        "updated_at": now_str,
+    }
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    """HTTP handler for the dashboard on port 8082."""
+
+    def do_GET(self):
+        if self.path in ("/dashboard", "/dashboard/", "/"):
+            html = _load_dashboard_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+        elif self.path == "/dashboard/api/tasks":
+            data = _dashboard_api_tasks()
+            _send_json(self, 200, data, cors=True)
+        elif self.path == "/dashboard/api/infra":
+            data = _dashboard_api_infra()
+            _send_json(self, 200, data, cors=True)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_OPTIONS(self):
+        if self.path.startswith("/dashboard/api/"):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, fmt, *args):
+        pass  # suppress per-request logs
+
+
 # ── Health endpoint ────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1699,7 +1926,22 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 _send_json(self, 200, dict(task))
 
-        # ── Dashboard API endpoints (public, no auth) ─────────────────
+        # ── Dashboard v2 API endpoints (public, no auth) ──────────────
+        elif self.path in ("/dashboard", "/dashboard/"):
+            html = _load_dashboard_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+        elif self.path == "/dashboard/api/tasks":
+            data = _dashboard_api_tasks()
+            _send_json(self, 200, data, cors=True)
+        elif self.path == "/dashboard/api/infra":
+            data = _dashboard_api_infra()
+            _send_json(self, 200, data, cors=True)
+
+        # ── Dashboard v1 API endpoints (public, no auth) ─────────────
         elif self.path == "/api/tasks":
             tasks = _api_get_tasks()
             _send_json(self, 200, tasks, cors=True)
@@ -1990,6 +2232,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 entry["claude_running"] = payload.get("claude_running", False)
                 entry["maintenance"] = payload.get("maintenance", False)
                 entry["uptime_seconds"] = payload.get("uptime_seconds", 0)
+                # Resource metrics from extended heartbeat
+                entry["cpu_percent"] = payload.get("cpu_percent", 0)
+                entry["memory_percent"] = payload.get("memory_percent", 0)
+                entry["memory_mb"] = payload.get("memory_mb", {"used": 0, "total": 0})
+                entry["disk_percent"] = payload.get("disk_percent", 0)
+                entry["disk_gb"] = payload.get("disk_gb", {"used": 0, "total": 0})
+                entry["error_count"] = payload.get("error_count", 0)
+                entry["recent_calls"] = payload.get("recent_calls", [])
                 pipeline = payload.get("pipeline", {})
                 stage = pipeline.get("stage", "idle")
                 if payload.get("maintenance"):
@@ -2914,6 +3164,15 @@ def start_health_server():
     log.info("Health endpoint listening on port %d", HEALTH_PORT)
 
 
+def start_dashboard_server():
+    """Start the dashboard HTTP server on DASHBOARD_PORT (default 8082)."""
+    _load_dashboard_html()  # pre-cache the HTML
+    server = HTTPServer(("0.0.0.0", DASHBOARD_PORT), DashboardHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    log.info("Dashboard serving on port %d", DASHBOARD_PORT)
+
+
 # ── Leader election (S3-based) ────────────────────────────────────────────────
 #
 # Multiple dispatchers can run. Only the primary actively dispatches tasks and
@@ -3224,6 +3483,7 @@ def main():
         promote_to_primary(instance_name)
 
     start_health_server()
+    start_dashboard_server()
 
     reg_monitor = threading.Thread(
         target=registration_monitor_loop,

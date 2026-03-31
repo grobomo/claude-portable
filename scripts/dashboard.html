@@ -3,16 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Portable -- Fleet Dashboard</title>
+<title>CCC Fleet Dashboard</title>
 <style>
+:root {
+  --bg: #0d1117;
+  --card-bg: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+  --blue: #58a6ff;
+  --gray: #8b949e;
+  --orange: #db6d28;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  background: #1a1a2e;
-  color: #e0e0e0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
   font-size: 16px;
   line-height: 1.5;
+  min-width: 800px;
 }
+
+/* Disconnected banner */
+.disconnected-banner {
+  display: none;
+  background: var(--red);
+  color: #fff;
+  text-align: center;
+  padding: 10px 24px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.disconnected-banner.visible { display: block; }
 
 /* Header */
 .header {
@@ -20,569 +46,762 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  background: #16213e;
-  border-bottom: 1px solid #0f3460;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
 }
-.header h1 { font-size: 22px; font-weight: 600; }
-.header .refresh-info { font-size: 13px; color: #888; }
-.header .refresh-dot {
+.header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-muted); }
+.refresh-dot {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: #4ecca3;
-  margin-right: 6px;
+  background: var(--green);
+  margin-right: 4px;
   animation: pulse 2s infinite;
 }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* Fleet Summary Bar */
-.fleet-bar {
+/* Summary bar */
+.summary-bar {
   display: flex;
-  gap: 24px;
-  padding: 14px 24px;
-  background: #16213e;
-  border-bottom: 1px solid #0f3460;
+  gap: 0;
+  padding: 0;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.fleet-stat {
+.summary-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 100px;
+  padding: 14px 24px;
+  min-width: 120px;
+  border-right: 1px solid var(--border);
 }
-.fleet-stat .value { font-size: 28px; font-weight: 700; color: #4ecca3; }
-.fleet-stat .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.summary-stat:last-child { border-right: none; }
+.summary-stat .value { font-size: 28px; font-weight: 700; }
+.summary-stat .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+.val-green { color: var(--green); }
+.val-amber { color: var(--amber); }
+.val-red { color: var(--red); }
+.val-blue { color: var(--blue); }
+.val-gray { color: var(--gray); }
 
 /* Tabs */
-.tabs {
+.tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
-  gap: 0;
-  padding: 0 24px;
-  background: #16213e;
-  border-bottom: 2px solid #0f3460;
+  background: var(--card-bg);
+  border-bottom: 2px solid var(--border);
 }
 .tab {
-  padding: 12px 24px;
+  padding: 14px 28px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  color: var(--text-muted);
   border-bottom: 3px solid transparent;
-  color: #888;
-  transition: all 0.2s;
+  transition: color 0.2s, border-color 0.2s;
   user-select: none;
 }
-.tab:hover { color: #e0e0e0; }
-.tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
 
-.tab-content { display: none; padding: 20px 24px; }
+/* Tab content */
+.tab-content { display: none; padding: 20px 24px; overflow-y: auto; }
 .tab-content.active { display: block; }
 
-/* Tasks Table */
-.tasks-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 15px;
+/* Feature groups */
+.feature-group {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  transition: border-color 0.3s;
 }
-.tasks-table th {
+.feature-group.changed { border-color: var(--blue); }
+.feature-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.feature-header:hover { background: rgba(255,255,255,0.03); }
+.feature-toggle { font-size: 12px; color: var(--text-muted); transition: transform 0.2s; }
+.feature-toggle.collapsed { transform: rotate(-90deg); }
+.feature-branch { font-size: 16px; font-weight: 600; flex: 1; }
+.feature-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.progress-bar-bg {
+  width: 120px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 3px;
+  transition: width 0.5s;
+}
+.feature-body { display: block; border-top: 1px solid var(--border); }
+.feature-body.collapsed { display: none; }
+
+/* Task table */
+.task-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.task-table th {
   text-align: left;
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #888;
-  border-bottom: 1px solid #0f3460;
-  position: sticky;
-  top: 0;
-  background: #1a1a2e;
+  color: var(--text-muted);
+  background: var(--bg);
 }
-.tasks-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #0f3460;
-  vertical-align: middle;
+.task-table td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
 }
-.tasks-table tr:hover { background: #16213e; }
+.task-table tr { transition: background 0.3s; }
+.task-table tr.changed { background: rgba(88,166,255,0.08); }
 
-/* Status Badges */
+/* Badges */
 .badge {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 2px 10px;
   border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
 }
-.badge-completed { background: #1b4332; color: #4ecca3; }
-.badge-running, .badge-dispatched { background: #4a3f00; color: #f0c040; }
-.badge-failed { background: #3d0000; color: #e74c3c; }
-.badge-pending { background: #2a2a3e; color: #888; }
+.badge-pending { background: #21262d; color: var(--gray); }
+.badge-dispatched { background: #0c2d6b; color: var(--blue); }
+.badge-running, .badge-in_progress { background: #2d1b00; color: var(--amber); }
+.badge-completed { background: #0b2e13; color: var(--green); }
+.badge-failed { background: #3d0000; color: var(--red); }
+.badge-blocked { background: #3d1e00; color: var(--orange); }
 
-.desc-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mono { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; }
+/* Phase badges */
+.phase-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.phase-WHY { background: #1a1a4e; color: #a78bfa; }
+.phase-RESEARCH { background: #1a1a4e; color: #a78bfa; }
+.phase-REVIEW { background: #2d1b00; color: var(--amber); }
+.phase-PLAN { background: #0c2d6b; color: var(--blue); }
+.phase-TESTS { background: #2d1b00; color: var(--amber); }
+.phase-IMPLEMENT, .phase-BUILD { background: #0b2e13; color: var(--green); }
+.phase-VERIFY { background: #0b2e13; color: var(--green); }
+.phase-PR { background: #0b2e13; color: var(--green); }
+.phase-idle { background: #21262d; color: var(--gray); }
+.phase-unknown { background: #21262d; color: var(--gray); }
 
-/* Worker Cards Grid */
+/* Worker cards grid */
 .workers-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 16px;
 }
 .worker-card {
-  background: #16213e;
-  border: 1px solid #0f3460;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.3s;
 }
-.worker-card:hover { border-color: #4ecca3; transform: translateY(-1px); }
-.worker-card.expanded { grid-column: 1 / -1; }
+.worker-card.changed { border-color: var(--blue); }
+.worker-card.unhealthy { border-color: var(--red); }
+.worker-card.stale { opacity: 0.5; }
 
 .worker-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-.status-dot {
-  width: 10px; height: 10px;
+.health-dot {
+  width: 12px; height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dot-idle { background: #4ecca3; }
-.dot-busy { background: #f0c040; }
-.dot-unreachable { background: #e74c3c; }
+.health-dot.healthy { background: var(--green); }
+.health-dot.unhealthy { background: var(--red); animation: pulse 1s infinite; }
+.worker-name { font-size: 18px; font-weight: 700; }
+.worker-task { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
 
-.worker-name { font-size: 17px; font-weight: 600; }
-.worker-meta { display: flex; gap: 20px; font-size: 13px; color: #888; flex-wrap: wrap; }
-.worker-meta span { white-space: nowrap; }
-
-/* Expanded Worker Detail */
-.worker-detail { margin-top: 14px; display: none; }
-.worker-card.expanded .worker-detail { display: block; }
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 14px;
+/* Gauge bars */
+.gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
 }
-.detail-item { font-size: 13px; }
-.detail-item .label { color: #888; margin-bottom: 2px; }
-.detail-item .value { color: #e0e0e0; font-family: monospace; word-break: break-all; }
-
-/* Resource Bars */
-.bar-container {
-  background: #0f3460;
+.gauge-label { width: 50px; color: var(--text-muted); text-align: right; }
+.gauge-bar-bg {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
   border-radius: 4px;
-  height: 16px;
   overflow: hidden;
-  margin-top: 4px;
 }
-.bar-fill {
+.gauge-bar-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 0.5s;
+  transition: width 0.5s, background 0.3s;
 }
-.bar-cpu { background: #4ecca3; }
-.bar-mem { background: #e2b340; }
+.gauge-value { width: 45px; text-align: right; font-size: 12px; }
+.gauge-green { background: var(--green); }
+.gauge-amber { background: var(--amber); }
+.gauge-red { background: var(--red); }
 
-/* Live Log */
-.live-log {
-  background: #0d1117;
-  border: 1px solid #0f3460;
-  border-radius: 6px;
-  padding: 12px;
+/* Worker stats row */
+.worker-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   margin-top: 12px;
-  max-height: 400px;
-  overflow-y: auto;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #8b949e;
-  white-space: pre-wrap;
-  word-break: break-all;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
 }
+.worker-stat-item { display: flex; flex-direction: column; }
+.worker-stat-item .stat-val { font-size: 20px; font-weight: 700; }
+.worker-stat-item .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+.trend-up { color: var(--green); }
+.trend-down { color: var(--red); }
+.error-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.error-badge.has-errors { background: var(--red); color: #fff; }
+.error-badge.no-errors { background: #21262d; color: var(--gray); }
 
-/* Loading / Error */
+/* Recent calls */
+.recent-calls {
+  margin-top: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 12px;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.call-line { display: flex; gap: 8px; padding: 1px 0; }
+.call-method { width: 40px; font-weight: 600; }
+.call-path { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-status-2xx { color: var(--green); }
+.call-status-4xx { color: var(--amber); }
+.call-status-5xx { color: var(--red); }
+.call-time { width: 60px; text-align: right; color: var(--text-muted); }
+
+/* Loading / empty */
 .status-msg {
   text-align: center;
   padding: 40px;
-  color: #888;
-  font-size: 15px;
+  color: var(--text-muted);
+  font-size: 16px;
 }
-.error-msg { color: #e74c3c; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #1a1a2e; }
-::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4ecca3; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>
 </head>
 <body>
 
+<div class="disconnected-banner" id="disconnected-banner">
+  DISCONNECTED -- last update: <span id="last-update-time">--</span>
+</div>
+
 <div class="header">
-  <h1>Claude Portable -- Fleet Dashboard</h1>
-  <div class="refresh-info"><span class="refresh-dot"></span>Auto-refresh <span id="countdown">15</span>s</div>
+  <h1>CCC Fleet Dashboard</h1>
+  <div class="header-right">
+    <span id="demo-badge" style="display:none;background:#2d1b00;color:#d29922;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700">DEMO</span>
+    <span><span class="refresh-dot"></span>Auto-refresh <span id="countdown">15</span>s</span>
+  </div>
 </div>
 
-<div class="fleet-bar" id="fleet-bar">
-  <div class="fleet-stat"><span class="value" id="stat-workers">--</span><span class="label">Workers</span></div>
-  <div class="fleet-stat"><span class="value" id="stat-idle">--</span><span class="label">Idle</span></div>
-  <div class="fleet-stat"><span class="value" id="stat-busy">--</span><span class="label">Busy</span></div>
-  <div class="fleet-stat"><span class="value" id="stat-tasks-today">--</span><span class="label">Tasks Today</span></div>
-  <div class="fleet-stat"><span class="value" id="stat-success-rate">--</span><span class="label">Success Rate</span></div>
+<div class="summary-bar" id="summary-bar">
+  <div class="summary-stat"><span class="value val-gray" id="s-features">--</span><span class="label">Features</span></div>
+  <div class="summary-stat"><span class="value val-gray" id="s-tasks">--</span><span class="label">Tasks</span></div>
+  <div class="summary-stat"><span class="value val-green" id="s-completed">--</span><span class="label">Completed</span></div>
+  <div class="summary-stat"><span class="value val-amber" id="s-progress">--</span><span class="label">In Progress</span></div>
+  <div class="summary-stat"><span class="value val-red" id="s-blocked">--</span><span class="label">Blocked</span></div>
+  <div class="summary-stat"><span class="value val-blue" id="s-idle">--</span><span class="label">Idle Workers</span></div>
+  <div class="summary-stat"><span class="value val-amber" id="s-busy">--</span><span class="label">Busy Workers</span></div>
 </div>
 
-<div class="tabs">
+<div class="tab-bar">
   <div class="tab active" data-tab="tasks">Tasks</div>
   <div class="tab" data-tab="infra">Infra Health</div>
 </div>
 
 <div class="tab-content active" id="tab-tasks">
-  <table class="tasks-table">
-    <thead>
-      <tr>
-        <th>Status</th>
-        <th>Task ID</th>
-        <th>Description</th>
-        <th>Worker</th>
-        <th>Duration</th>
-        <th>Last Activity</th>
-      </tr>
-    </thead>
-    <tbody id="tasks-body">
-      <tr><td colspan="6" class="status-msg">Loading tasks...</td></tr>
-    </tbody>
-  </table>
+  <div id="features-container">
+    <div class="status-msg">Loading...</div>
+  </div>
 </div>
 
 <div class="tab-content" id="tab-infra">
   <div class="workers-grid" id="workers-grid">
-    <div class="status-msg">Loading workers...</div>
+    <div class="status-msg">Loading...</div>
   </div>
 </div>
 
 <script>
 (function() {
-  // -- Demo Mode --
-  // Activates with ?demo in URL or when API is unreachable (e.g., opened as local file)
-  var DEMO = window.location.search.indexOf('demo') !== -1;
+  "use strict";
+
+  // -- Config --
+  var params = new URLSearchParams(window.location.search);
+  var REFRESH_SEC = Math.max(5, parseInt(params.get("refresh") || "15", 10));
+  var REFRESH_MS = REFRESH_SEC * 1000;
+  var DEMO = params.has("demo");
+  var API_BASE = window.location.origin;
   var apiFailed = false;
+  var lastSuccessTime = null;
+  var prevTasksJSON = "";
+  var prevInfraJSON = "";
+  var prevRates = {};
+  var collapsedFeatures = {};
+  var countdown = REFRESH_SEC;
+  var refreshTimer = null;
 
-  var MOCK_TASKS = [
-    { id: 'tsk-0041', status: 'running', description: 'Refactor authentication middleware to support OAuth2 PKCE flow', worker: 'worker-az-01', duration: 847, last_activity: new Date(Date.now() - 12000).toISOString() },
-    { id: 'tsk-0042', status: 'running', description: 'Add retry logic to S3 upload pipeline with exponential backoff', worker: 'worker-az-03', duration: 423, last_activity: new Date(Date.now() - 5000).toISOString() },
-    { id: 'tsk-0043', status: 'pending', description: 'Write integration tests for Teams webhook dispatcher', worker: null, duration: null, last_activity: null },
-    { id: 'tsk-0044', status: 'pending', description: 'Update CloudFormation template for new IAM boundary policy', worker: null, duration: null, last_activity: null },
-    { id: 'tsk-0038', status: 'completed', description: 'Fix race condition in worker heartbeat monitor', worker: 'worker-az-02', duration: 1205, last_activity: new Date(Date.now() - 3600000).toISOString() },
-    { id: 'tsk-0039', status: 'completed', description: 'Add fleet dashboard HTML with dark theme', worker: 'worker-az-01', duration: 632, last_activity: new Date(Date.now() - 7200000).toISOString() },
-    { id: 'tsk-0040', status: 'completed', description: 'Implement task queue priority sorting', worker: 'worker-az-03', duration: 918, last_activity: new Date(Date.now() - 5400000).toISOString() },
-    { id: 'tsk-0037', status: 'failed', description: 'Deploy canary to staging (timeout waiting for health check)', worker: 'worker-az-02', duration: 300, last_activity: new Date(Date.now() - 9000000).toISOString() }
-  ];
+  // -- Mock data for demo/fallback --
+  var MOCK_TASKS = {
+    features: [
+      {
+        branch: "continuous-claude/task-42-oauth2-pkce", phase: "BUILD",
+        phase_start: new Date(Date.now() - 300000).toISOString(), time_in_phase_s: 300,
+        tasks: [
+          { num: 42, description: "Refactor auth middleware for OAuth2 PKCE", worker: "worker-az-01", status: "running", last_activity: new Date(Date.now() - 12000).toISOString() },
+          { num: 43, description: "Add PKCE challenge generation tests", worker: "worker-az-01", status: "pending", last_activity: null }
+        ],
+        progress: { completed: 1, total: 3 }
+      },
+      {
+        branch: "continuous-claude/task-44-s3-retry", phase: "TESTS",
+        phase_start: new Date(Date.now() - 600000).toISOString(), time_in_phase_s: 600,
+        tasks: [
+          { num: 44, description: "Add retry logic to S3 upload pipeline", worker: "worker-az-03", status: "running", last_activity: new Date(Date.now() - 5000).toISOString() }
+        ],
+        progress: { completed: 0, total: 1 }
+      },
+      {
+        branch: "feat/dashboard-v2", phase: "PR",
+        phase_start: new Date(Date.now() - 60000).toISOString(), time_in_phase_s: 60,
+        tasks: [
+          { num: 38, description: "Fleet dashboard with dark theme", worker: "worker-az-02", status: "completed", last_activity: new Date(Date.now() - 3600000).toISOString() },
+          { num: 39, description: "Dashboard API endpoints", worker: "worker-az-02", status: "completed", last_activity: new Date(Date.now() - 7200000).toISOString() }
+        ],
+        progress: { completed: 2, total: 2 }
+      }
+    ],
+    summary: {
+      total_features: 3, total_tasks: 6, completed: 3, in_progress: 2, pending: 1,
+      blocked: 0, failed: 0, idle_workers: 1, busy_workers: 2
+    },
+    updated_at: new Date().toISOString()
+  };
 
-  var MOCK_WORKERS = [
-    { id: 'worker-az-01', name: 'worker-az-01', status: 'busy', uptime: 86400, tasks_completed: 14, current_task: 'tsk-0041: Refactor auth middleware', last_file: 'src/auth/oauth2.js', last_file_time: new Date(Date.now() - 12000).toISOString(), last_commit: 'feat: add PKCE challenge generation', cpu_pct: 67, mem_pct: 54, zombie_count: 0 },
-    { id: 'worker-az-02', name: 'worker-az-02', status: 'idle', uptime: 72000, tasks_completed: 11, current_task: null, last_file: 'tests/heartbeat_test.py', last_file_time: new Date(Date.now() - 3600000).toISOString(), last_commit: 'fix: heartbeat race condition', cpu_pct: 12, mem_pct: 38, zombie_count: 0 },
-    { id: 'worker-az-03', name: 'worker-az-03', status: 'busy', uptime: 43200, tasks_completed: 8, current_task: 'tsk-0042: S3 retry logic', last_file: 'lib/s3_upload.py', last_file_time: new Date(Date.now() - 5000).toISOString(), last_commit: 'feat: exponential backoff for S3', cpu_pct: 45, mem_pct: 61, zombie_count: 1 },
-    { id: 'worker-az-04', name: 'worker-az-04', status: 'unreachable', uptime: 0, tasks_completed: 3, current_task: null, last_file: null, last_file_time: null, last_commit: 'chore: update deps', cpu_pct: 0, mem_pct: 0, zombie_count: 0 }
-  ];
-
-  var MOCK_STATS = { total_workers: 4, idle: 1, busy: 2, tasks_today: 12, success_rate: 87 };
-
-  var MOCK_LOG_LINES = [
-    '[2026-03-29 10:14:02] Reading spec file .specs/oauth2-pkce/spec.md',
-    '[2026-03-29 10:14:03] Goal: Refactor authentication middleware to support OAuth2 PKCE',
-    '[2026-03-29 10:14:03] Creating plan: .planning/quick/001-oauth2-pkce/001-PLAN.md',
-    '[2026-03-29 10:14:05] Plan written. Starting implementation.',
-    '[2026-03-29 10:14:06] Edit src/auth/oauth2.js -- add generateChallenge()',
-    '[2026-03-29 10:14:08] Edit src/auth/oauth2.js -- add verifyChallenge()',
-    '[2026-03-29 10:14:10] Write tests/auth/pkce_test.js -- 6 test cases',
-    '[2026-03-29 10:14:12] Bash: npm test -- --grep "PKCE"',
-    '[2026-03-29 10:14:15]   PASS tests/auth/pkce_test.js (6/6)',
-    '[2026-03-29 10:14:15] All success criteria met. Creating PR.',
-    '[2026-03-29 10:14:17] git checkout -b feat/oauth2-pkce',
-    '[2026-03-29 10:14:18] git push -u origin feat/oauth2-pkce',
-    '[2026-03-29 10:14:20] gh pr create --title "feat: OAuth2 PKCE support"',
-    '[2026-03-29 10:14:21] PR #56 created. Waiting for next task.',
-  ];
-
-  // -- State --
-  var expandedWorker = null;
-  var liveLogInterval = null;
+  var MOCK_INFRA = {
+    workers: [
+      {
+        worker_id: "worker-az-01", healthy: true, cpu_percent: 67, memory_percent: 54,
+        memory_mb: { used: 1100, total: 2048 }, disk_percent: 38.5,
+        disk_gb: { used: 12.3, total: 32 }, uptime_seconds: 86400, claude_running: true,
+        tasks_completed: 14, tasks_per_hour: 1.6, recent_calls: [
+          { method: "POST", path: "/heartbeat", status: 200, timestamp: new Date(Date.now() - 5000).toISOString() },
+          { method: "POST", path: "/heartbeat", status: 200, timestamp: new Date(Date.now() - 35000).toISOString() }
+        ],
+        error_count: 0, current_task: "Refactor auth middleware", phase: "BUILD",
+        last_heartbeat: new Date(Date.now() - 5000).toISOString()
+      },
+      {
+        worker_id: "worker-az-02", healthy: true, cpu_percent: 12, memory_percent: 38,
+        memory_mb: { used: 780, total: 2048 }, disk_percent: 22,
+        disk_gb: { used: 7.0, total: 32 }, uptime_seconds: 72000, claude_running: false,
+        tasks_completed: 11, tasks_per_hour: 0.55, recent_calls: [
+          { method: "POST", path: "/heartbeat", status: 200, timestamp: new Date(Date.now() - 15000).toISOString() }
+        ],
+        error_count: 0, current_task: null, phase: "idle",
+        last_heartbeat: new Date(Date.now() - 15000).toISOString()
+      },
+      {
+        worker_id: "worker-az-03", healthy: true, cpu_percent: 82, memory_percent: 71,
+        memory_mb: { used: 1450, total: 2048 }, disk_percent: 55,
+        disk_gb: { used: 17.6, total: 32 }, uptime_seconds: 43200, claude_running: true,
+        tasks_completed: 8, tasks_per_hour: 0.67, recent_calls: [
+          { method: "POST", path: "/heartbeat", status: 200, timestamp: new Date(Date.now() - 3000).toISOString() }
+        ],
+        error_count: 2, current_task: "S3 retry logic", phase: "TESTS",
+        last_heartbeat: new Date(Date.now() - 3000).toISOString()
+      },
+      {
+        worker_id: "worker-az-04", healthy: false, cpu_percent: 0, memory_percent: 0,
+        memory_mb: { used: 0, total: 0 }, disk_percent: 0,
+        disk_gb: { used: 0, total: 0 }, uptime_seconds: 0, claude_running: false,
+        tasks_completed: 3, tasks_per_hour: 0, recent_calls: [],
+        error_count: 5, current_task: null, phase: "unknown",
+        last_heartbeat: new Date(Date.now() - 120000).toISOString()
+      }
+    ],
+    updated_at: new Date().toISOString()
+  };
 
   // -- Tabs --
-  document.querySelectorAll('.tab').forEach(function(tab) {
-    tab.addEventListener('click', function() {
-      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-      tab.classList.add('active');
-      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  document.querySelectorAll(".tab").forEach(function(tab) {
+    tab.addEventListener("click", function() {
+      document.querySelectorAll(".tab").forEach(function(t) { t.classList.remove("active"); });
+      document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
+      tab.classList.add("active");
+      document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
     });
   });
 
   // -- Countdown --
-  var countdownEl = document.getElementById('countdown');
-  var countdown = 15;
   setInterval(function() {
     countdown--;
-    if (countdown <= 0) countdown = 15;
-    countdownEl.textContent = countdown;
+    if (countdown < 0) countdown = REFRESH_SEC;
+    document.getElementById("countdown").textContent = countdown;
   }, 1000);
 
   // -- Helpers --
-  function formatDuration(seconds) {
-    if (!seconds && seconds !== 0) return '--';
-    var s = Math.floor(seconds);
-    if (s < 60) return s + 's';
-    if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
-    var h = Math.floor(s / 3600);
-    var m = Math.floor((s % 3600) / 60);
-    return h + 'h ' + m + 'm';
+  function esc(s) {
+    if (!s) return "";
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
   }
 
   function timeAgo(ts) {
-    if (!ts) return '--';
-    var d = new Date(ts);
-    var now = Date.now();
-    var diff = Math.floor((now - d.getTime()) / 1000);
-    if (diff < 0) diff = 0;
-    if (diff < 60) return diff + 's ago';
-    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-    return Math.floor(diff / 86400) + 'd ago';
+    if (!ts) return "--";
+    var diff = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 1000));
+    if (diff < 60) return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+    if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+    return Math.floor(diff / 86400) + "d ago";
   }
 
-  function truncate(str, len) {
-    if (!str) return '--';
-    return str.length > len ? str.substring(0, len) + '...' : str;
+  function fmtUptime(s) {
+    if (!s && s !== 0) return "--";
+    s = Math.floor(s);
+    if (s < 60) return s + "s";
+    if (s < 3600) return Math.floor(s / 60) + "m " + (s % 60) + "s";
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    return h + "h " + m + "m";
   }
 
-  function badgeClass(status) {
-    var s = (status || '').toLowerCase();
-    if (s === 'completed') return 'badge-completed';
-    if (s === 'running' || s === 'dispatched') return 'badge-' + s;
-    if (s === 'failed') return 'badge-failed';
-    return 'badge-pending';
+  function gaugeColor(pct) {
+    if (pct >= 80) return "gauge-red";
+    if (pct >= 60) return "gauge-amber";
+    return "gauge-green";
   }
 
-  function statusDotClass(status) {
-    var s = (status || '').toLowerCase();
-    if (s === 'idle') return 'dot-idle';
-    if (s === 'busy') return 'dot-busy';
-    return 'dot-unreachable';
+  function callStatusClass(code) {
+    if (code >= 500) return "call-status-5xx";
+    if (code >= 400) return "call-status-4xx";
+    return "call-status-2xx";
   }
 
-  var STATUS_ORDER = { running: 0, dispatched: 0, pending: 1, completed: 2, failed: 3 };
-  function taskSortKey(t) {
-    var s = (t.status || '').toLowerCase();
-    return STATUS_ORDER[s] !== undefined ? STATUS_ORDER[s] : 4;
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
-
-  // -- Fetch helpers --
   function useMock() { return DEMO || apiFailed; }
 
-  function fetchJSON(url) {
+  // -- Fetch --
+  function fetchJSON(path) {
     if (useMock()) {
-      if (url === '/api/tasks') return Promise.resolve(MOCK_TASKS);
-      if (url === '/api/workers') return Promise.resolve(MOCK_WORKERS);
-      if (url === '/api/stats') return Promise.resolve(MOCK_STATS);
+      if (path.indexOf("tasks") !== -1) return Promise.resolve(JSON.parse(JSON.stringify(MOCK_TASKS)));
+      if (path.indexOf("infra") !== -1) return Promise.resolve(JSON.parse(JSON.stringify(MOCK_INFRA)));
       return Promise.resolve({});
     }
-    return fetch(url).then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+    return fetch(API_BASE + path).then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
-    }).catch(function(err) {
-      // If first fetch fails, switch to demo mode permanently
-      apiFailed = true;
-      return fetchJSON(url);
     });
   }
 
-  // -- Render Tasks --
-  function renderTasks(tasks) {
-    var tbody = document.getElementById('tasks-body');
-    if (!tasks || !tasks.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="status-msg">No tasks found</td></tr>';
-      return;
-    }
-    tasks.sort(function(a, b) { return taskSortKey(a) - taskSortKey(b); });
-    var html = '';
-    tasks.forEach(function(t) {
-      html += '<tr>'
-        + '<td><span class="badge ' + badgeClass(t.status) + '">' + escapeHtml(t.status) + '</span></td>'
-        + '<td class="mono">' + escapeHtml(t.id || t.task_id || '--') + '</td>'
-        + '<td class="desc-cell" title="' + escapeHtml(t.description) + '">' + escapeHtml(truncate(t.description, 60)) + '</td>'
-        + '<td>' + escapeHtml(t.worker || '--') + '</td>'
-        + '<td class="mono">' + formatDuration(t.duration) + '</td>'
-        + '<td>' + timeAgo(t.last_activity) + '</td>'
-        + '</tr>';
-    });
-    tbody.innerHTML = html;
+  // -- Render Summary --
+  function renderSummary(summary) {
+    if (!summary) return;
+    document.getElementById("s-features").textContent = summary.total_features != null ? summary.total_features : "--";
+    document.getElementById("s-tasks").textContent = summary.total_tasks != null ? summary.total_tasks : "--";
+    document.getElementById("s-completed").textContent = summary.completed != null ? summary.completed : "--";
+    document.getElementById("s-progress").textContent = summary.in_progress != null ? summary.in_progress : "--";
+    document.getElementById("s-blocked").textContent = summary.blocked != null ? summary.blocked : "--";
+    document.getElementById("s-idle").textContent = summary.idle_workers != null ? summary.idle_workers : "--";
+    document.getElementById("s-busy").textContent = summary.busy_workers != null ? summary.busy_workers : "--";
   }
 
-  // -- Render Workers --
-  function renderWorkers(workers) {
-    var grid = document.getElementById('workers-grid');
-    if (!workers || !workers.length) {
-      grid.innerHTML = '<div class="status-msg">No workers found</div>';
+  // -- Render Features (Tasks tab) --
+  function renderFeatures(data) {
+    var container = document.getElementById("features-container");
+    var features = data.features || [];
+    if (!features.length) {
+      container.innerHTML = '<div class="status-msg">No active features</div>';
       return;
     }
-    var html = '';
+
+    var newJSON = JSON.stringify(features);
+    var changed = newJSON !== prevTasksJSON;
+    prevTasksJSON = newJSON;
+
+    var html = "";
+    features.forEach(function(f) {
+      var branch = f.branch || "unknown";
+      var pct = f.progress && f.progress.total > 0 ? Math.round(f.progress.completed / f.progress.total * 100) : 0;
+      var allDone = f.progress && f.progress.completed === f.progress.total && f.progress.total > 0;
+
+      var isCollapsed;
+      if (branch in collapsedFeatures) {
+        isCollapsed = collapsedFeatures[branch];
+      } else {
+        isCollapsed = allDone;
+      }
+
+      var phaseClass = "phase-" + esc(f.phase || "idle");
+      html += '<div class="feature-group' + (changed ? " changed" : "") + '" data-branch="' + esc(branch) + '">';
+      html += '<div class="feature-header">';
+      html += '<span class="feature-toggle' + (isCollapsed ? " collapsed" : "") + '">&#9660;</span>';
+      html += '<span class="feature-branch">' + esc(branch) + '</span>';
+      html += '<span class="phase-badge ' + phaseClass + '">' + esc(f.phase || "idle") + '</span>';
+      html += '<div class="feature-progress">';
+      html += '<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:' + pct + '%"></div></div>';
+      html += '<span>' + (f.progress ? f.progress.completed + "/" + f.progress.total : "--") + '</span>';
+      html += '</div></div>';
+
+      html += '<div class="feature-body' + (isCollapsed ? " collapsed" : "") + '">';
+      html += '<table class="task-table"><thead><tr><th>#</th><th>Description</th><th>Worker</th><th>Status</th><th>Last Activity</th></tr></thead><tbody>';
+
+      (f.tasks || []).forEach(function(t) {
+        var statusClass = "badge-" + (t.status || "pending");
+        html += '<tr>';
+        html += '<td>' + (t.num != null ? t.num : "--") + '</td>';
+        html += '<td>' + esc(t.description || "--") + '</td>';
+        html += '<td>' + esc(t.worker || "--") + '</td>';
+        html += '<td><span class="badge ' + statusClass + '">' + esc(t.status || "pending") + '</span></td>';
+        html += '<td>' + timeAgo(t.last_activity) + '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div></div>';
+    });
+
+    container.innerHTML = html;
+
+    // Attach collapse/expand handlers
+    container.querySelectorAll(".feature-header").forEach(function(hdr) {
+      hdr.addEventListener("click", function() {
+        var group = hdr.closest(".feature-group");
+        var branch = group.dataset.branch;
+        var body = group.querySelector(".feature-body");
+        var toggle = group.querySelector(".feature-toggle");
+        var isNowCollapsed = !body.classList.contains("collapsed");
+        body.classList.toggle("collapsed");
+        toggle.classList.toggle("collapsed");
+        collapsedFeatures[branch] = isNowCollapsed;
+      });
+    });
+
+    if (changed) {
+      setTimeout(function() {
+        container.querySelectorAll(".changed").forEach(function(el) { el.classList.remove("changed"); });
+      }, 1000);
+    }
+  }
+
+  // -- Render Workers (Infra Health tab) --
+  function renderWorkers(data) {
+    var grid = document.getElementById("workers-grid");
+    var workers = data.workers || [];
+    if (!workers.length) {
+      grid.innerHTML = '<div class="status-msg">No workers</div>';
+      return;
+    }
+
+    var newJSON = JSON.stringify(workers);
+    var changed = newJSON !== prevInfraJSON;
+    prevInfraJSON = newJSON;
+
+    // Sort: unhealthy first, then by worker_id
+    workers.sort(function(a, b) {
+      if (a.healthy !== b.healthy) return a.healthy ? 1 : -1;
+      return (a.worker_id || "").localeCompare(b.worker_id || "");
+    });
+
+    var now = Date.now();
+    var html = "";
     workers.forEach(function(w) {
-      var id = w.id || w.worker_id || w.name;
-      var isExpanded = expandedWorker === id;
-      html += '<div class="worker-card' + (isExpanded ? ' expanded' : '') + '" data-worker-id="' + escapeHtml(id) + '">'
-        + '<div class="worker-header">'
-        + '<span class="status-dot ' + statusDotClass(w.status) + '"></span>'
-        + '<span class="worker-name">' + escapeHtml(w.name || id) + '</span>'
-        + '</div>'
-        + '<div class="worker-meta">'
-        + '<span>Uptime: ' + formatDuration(w.uptime) + '</span>'
-        + '<span>Completed: ' + (w.tasks_completed != null ? w.tasks_completed : '--') + '</span>'
-        + '<span>Current: ' + escapeHtml(truncate(w.current_task, 30) || 'none') + '</span>'
-        + '</div>'
-        + '<div class="worker-detail">'
-        + '<div class="detail-grid">'
-        + '<div class="detail-item"><div class="label">Last File Modified</div><div class="value">' + escapeHtml(w.last_file || '--') + '</div></div>'
-        + '<div class="detail-item"><div class="label">Last File Time</div><div class="value">' + (w.last_file_time ? new Date(w.last_file_time).toLocaleString() : '--') + '</div></div>'
-        + '<div class="detail-item"><div class="label">Last Git Commit</div><div class="value">' + escapeHtml(truncate(w.last_commit, 50) || '--') + '</div></div>'
-        + '<div class="detail-item"><div class="label">Zombies</div><div class="value">' + (w.zombie_count != null ? w.zombie_count : '--') + '</div></div>'
-        + '</div>'
-        + '<div class="detail-item" style="margin-bottom:8px"><div class="label">CPU</div>'
-        + '<div class="bar-container"><div class="bar-fill bar-cpu" style="width:' + (w.cpu_pct || 0) + '%"></div></div>'
-        + '<div style="font-size:12px;color:#888;margin-top:2px">' + (w.cpu_pct != null ? w.cpu_pct + '%' : '--') + '</div></div>'
-        + '<div class="detail-item"><div class="label">Memory</div>'
-        + '<div class="bar-container"><div class="bar-fill bar-mem" style="width:' + (w.mem_pct || 0) + '%"></div></div>'
-        + '<div style="font-size:12px;color:#888;margin-top:2px">' + (w.mem_pct != null ? w.mem_pct + '%' : '--') + '</div></div>'
-        + '<div class="live-log" id="live-log-' + escapeHtml(id) + '">Loading live output...</div>'
-        + '</div>'
-        + '</div>';
+      var wid = w.worker_id || "unknown";
+      var healthy = w.healthy !== false;
+      var staleMs = w.last_heartbeat ? now - new Date(w.last_heartbeat).getTime() : 999999;
+      var isStale = staleMs > 60000;
+      if (isStale) healthy = false;
+
+      var cardClass = "worker-card";
+      if (!healthy) cardClass += " unhealthy";
+      if (isStale) cardClass += " stale";
+      if (changed) cardClass += " changed";
+
+      html += '<div class="' + cardClass + '">';
+      html += '<div class="worker-header">';
+      html += '<span class="health-dot ' + (healthy ? "healthy" : "unhealthy") + '"></span>';
+      html += '<span class="worker-name">' + esc(wid) + '</span>';
+      if (w.phase && w.phase !== "idle" && w.phase !== "unknown") {
+        html += '<span class="phase-badge phase-' + esc(w.phase) + '">' + esc(w.phase) + '</span>';
+      }
+      html += '</div>';
+
+      html += '<div class="worker-task">' + (w.current_task ? esc(w.current_task) : "Idle") + '</div>';
+
+      // Gauges
+      var cpu = w.cpu_percent || 0;
+      var mem = w.memory_percent || 0;
+      var disk = w.disk_percent || 0;
+
+      html += '<div class="gauge-row"><span class="gauge-label">CPU</span>';
+      html += '<div class="gauge-bar-bg"><div class="gauge-bar-fill ' + gaugeColor(cpu) + '" style="width:' + Math.min(cpu, 100) + '%"></div></div>';
+      html += '<span class="gauge-value">' + cpu.toFixed(0) + '%</span></div>';
+
+      html += '<div class="gauge-row"><span class="gauge-label">Mem</span>';
+      html += '<div class="gauge-bar-bg"><div class="gauge-bar-fill ' + gaugeColor(mem) + '" style="width:' + Math.min(mem, 100) + '%"></div></div>';
+      html += '<span class="gauge-value">' + mem.toFixed(0) + '%</span></div>';
+
+      if (w.memory_mb) {
+        html += '<div style="text-align:right;font-size:11px;color:var(--text-muted);margin-bottom:4px">' + (w.memory_mb.used || 0) + '/' + (w.memory_mb.total || 0) + ' MB</div>';
+      }
+
+      html += '<div class="gauge-row"><span class="gauge-label">Disk</span>';
+      html += '<div class="gauge-bar-bg"><div class="gauge-bar-fill ' + gaugeColor(disk) + '" style="width:' + Math.min(disk, 100) + '%"></div></div>';
+      html += '<span class="gauge-value">' + disk.toFixed(0) + '%</span></div>';
+
+      if (w.disk_gb) {
+        html += '<div style="text-align:right;font-size:11px;color:var(--text-muted);margin-bottom:4px">' + (w.disk_gb.used || 0).toFixed(1) + '/' + (w.disk_gb.total || 0).toFixed(1) + ' GB</div>';
+      }
+
+      // Stats
+      html += '<div class="worker-stats">';
+      html += '<div class="worker-stat-item"><span class="stat-val">' + fmtUptime(w.uptime_seconds) + '</span><span class="stat-label">Uptime</span></div>';
+      html += '<div class="worker-stat-item"><span class="stat-val">' + (w.tasks_completed != null ? w.tasks_completed : "--") + '</span><span class="stat-label">Done</span></div>';
+
+      var rate = w.tasks_per_hour != null ? w.tasks_per_hour : 0;
+      var prevRate = prevRates[wid];
+      var trendArrow = "";
+      if (prevRate != null && prevRate !== rate) {
+        trendArrow = rate > prevRate ? ' <span class="trend-up">^</span>' : ' <span class="trend-down">v</span>';
+      }
+      prevRates[wid] = rate;
+      html += '<div class="worker-stat-item"><span class="stat-val">' + rate.toFixed(1) + '/h' + trendArrow + '</span><span class="stat-label">Rate</span></div>';
+
+      var ec = w.error_count || 0;
+      html += '<div class="worker-stat-item"><span class="error-badge ' + (ec > 0 ? "has-errors" : "no-errors") + '">' + ec + '</span><span class="stat-label">Errors</span></div>';
+      html += '</div>';
+
+      // Recent calls
+      var calls = w.recent_calls || [];
+      if (calls.length > 0) {
+        html += '<div class="recent-calls">';
+        calls.forEach(function(c) {
+          html += '<div class="call-line">';
+          html += '<span class="call-method">' + esc(c.method) + '</span>';
+          html += '<span class="call-path">' + esc(c.path) + '</span>';
+          html += '<span class="' + callStatusClass(c.status) + '">' + c.status + '</span>';
+          html += '<span class="call-time">' + timeAgo(c.timestamp) + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';
     });
+
     grid.innerHTML = html;
 
-    // Attach click handlers
-    grid.querySelectorAll('.worker-card').forEach(function(card) {
-      card.addEventListener('click', function(e) {
-        // Don't collapse if clicking inside the log
-        if (e.target.closest('.live-log')) return;
-        var wid = card.dataset.workerId;
-        if (expandedWorker === wid) {
-          expandedWorker = null;
-          stopLiveLog();
-        } else {
-          expandedWorker = wid;
-          startLiveLog(wid);
-        }
-        // Re-render to update expanded state
-        renderWorkers(lastWorkers);
-      });
-    });
-
-    // If a worker is expanded, fetch its live log immediately
-    if (expandedWorker) {
-      fetchLiveLog(expandedWorker);
+    if (changed) {
+      setTimeout(function() {
+        grid.querySelectorAll(".changed").forEach(function(el) { el.classList.remove("changed"); });
+      }, 1000);
     }
   }
 
-  // -- Live Log --
-  function fetchLiveLog(workerId) {
-    var el = document.getElementById('live-log-' + workerId);
-    if (!el) return;
-    if (useMock()) {
-      el.textContent = MOCK_LOG_LINES.join('\n');
-      el.scrollTop = el.scrollHeight;
-      return;
+  // -- Disconnected banner --
+  function showDisconnected() {
+    document.getElementById("disconnected-banner").classList.add("visible");
+    if (lastSuccessTime) {
+      document.getElementById("last-update-time").textContent = new Date(lastSuccessTime).toLocaleTimeString();
     }
-    fetch('/api/workers/' + encodeURIComponent(workerId) + '/live')
-      .then(function(r) { return r.ok ? r.text() : Promise.reject('HTTP ' + r.status); })
-      .then(function(text) {
-        if (!el) return;
-        // Last 50 lines
-        var lines = text.split('\n');
-        if (lines.length > 50) lines = lines.slice(-50);
-        el.textContent = lines.join('\n');
-        el.scrollTop = el.scrollHeight;
-      })
-      .catch(function(err) {
-        if (el) el.textContent = 'Error fetching live output: ' + err;
-      });
   }
 
-  function startLiveLog(workerId) {
-    stopLiveLog();
-    fetchLiveLog(workerId);
-    liveLogInterval = setInterval(function() { fetchLiveLog(workerId); }, 3000);
-  }
-
-  function stopLiveLog() {
-    if (liveLogInterval) { clearInterval(liveLogInterval); liveLogInterval = null; }
-  }
-
-  // -- Fleet Stats --
-  function renderStats(stats) {
-    document.getElementById('stat-workers').textContent = stats.total_workers != null ? stats.total_workers : '--';
-    document.getElementById('stat-idle').textContent = stats.idle != null ? stats.idle : '--';
-    document.getElementById('stat-busy').textContent = stats.busy != null ? stats.busy : '--';
-    document.getElementById('stat-tasks-today').textContent = stats.tasks_today != null ? stats.tasks_today : '--';
-    document.getElementById('stat-success-rate').textContent = stats.success_rate != null ? stats.success_rate + '%' : '--';
+  function hideDisconnected() {
+    document.getElementById("disconnected-banner").classList.remove("visible");
   }
 
   // -- Main refresh --
-  var lastWorkers = [];
-
   function refresh() {
-    countdown = 15;
+    countdown = REFRESH_SEC;
 
-    fetchJSON('/api/tasks')
-      .then(function(data) { renderTasks(Array.isArray(data) ? data : data.tasks || []); })
-      .catch(function(err) {
-        document.getElementById('tasks-body').innerHTML =
-          '<tr><td colspan="6" class="status-msg error-msg">Failed to load tasks: ' + escapeHtml(String(err)) + '</td></tr>';
-      });
-
-    fetchJSON('/api/workers')
+    fetchJSON("/dashboard/api/tasks")
       .then(function(data) {
-        lastWorkers = Array.isArray(data) ? data : data.workers || [];
-        renderWorkers(lastWorkers);
+        renderSummary(data.summary);
+        renderFeatures(data);
+        lastSuccessTime = Date.now();
+        hideDisconnected();
       })
-      .catch(function(err) {
-        document.getElementById('workers-grid').innerHTML =
-          '<div class="status-msg error-msg">Failed to load workers: ' + escapeHtml(String(err)) + '</div>';
-      });
-
-    fetchJSON('/api/stats')
-      .then(function(data) { renderStats(data); })
       .catch(function() {
-        renderStats({});
+        showDisconnected();
+      });
+
+    fetchJSON("/dashboard/api/infra")
+      .then(function(data) {
+        renderWorkers(data);
+        lastSuccessTime = Date.now();
+        hideDisconnected();
+      })
+      .catch(function() {
+        showDisconnected();
       });
   }
 
-  // Demo mode indicator
-  function updateDemoIndicator() {
-    var existing = document.getElementById('demo-badge');
-    if (useMock() && !existing) {
-      var badge = document.createElement('span');
-      badge.id = 'demo-badge';
-      badge.style.cssText = 'background:#4a3f00;color:#f0c040;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-left:12px';
-      badge.textContent = 'DEMO';
-      document.querySelector('.header h1').appendChild(badge);
+  // -- Visibility API: pause when tab hidden --
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    } else {
+      refresh();
+      refreshTimer = setInterval(refresh, REFRESH_MS);
     }
-  }
+  });
 
-  // Initial load + auto-refresh
+  // Demo badge
+  if (DEMO) document.getElementById("demo-badge").style.display = "inline-block";
+  setTimeout(function() {
+    if (apiFailed) document.getElementById("demo-badge").style.display = "inline-block";
+  }, 3000);
+
+  // Boot
   refresh();
-  setTimeout(updateDemoIndicator, 500);
-  setInterval(function() { refresh(); updateDemoIndicator(); }, 15000);
+  refreshTimer = setInterval(refresh, REFRESH_MS);
 })();
 </script>
 </body>
