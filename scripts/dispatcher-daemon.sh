@@ -192,6 +192,14 @@ start_key_sync_daemon
 write_heartbeat || true   # write immediately on start
 start_heartbeat_daemon
 
+# Dispatcher brain -- persistent AI agent for fleet management (background daemon)
+BRAIN_SCRIPT="${SCRIPT_DIR}/dispatcher-brain.py"
+if [ -f "$BRAIN_SCRIPT" ]; then
+  echo "[+] Starting dispatcher-brain.py as background daemon..."
+  python3 "$BRAIN_SCRIPT" >> /tmp/brain.log 2>&1 &
+  echo "  Brain daemon started (PID $!)"
+fi
+
 # ── Watchdog ──────────────────────────────────────────────────────────────────
 
 CRASH_COUNT=0

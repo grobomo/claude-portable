@@ -12,9 +12,14 @@ services:
       - DISPATCHER_MAX_WORKERS=${DISPATCHER_MAX_WORKERS:-5}
       - DISPATCHER_HEALTH_PORT=${DISPATCHER_HEALTH_PORT:-8080}
       - DISPATCHER_KEY_SYNC_INTERVAL=${DISPATCHER_KEY_SYNC_INTERVAL:-300}
+      - BRAIN_HEALTH_PORT=${BRAIN_HEALTH_PORT:-8081}
+      - BRAIN_LOOP_INTERVAL=${BRAIN_LOOP_INTERVAL:-30}
+      - BRAIN_MODEL_ID=${BRAIN_MODEL_ID:-us.anthropic.claude-sonnet-4-6-20250514-v1:0}
     # Run dispatcher-daemon.sh directly instead of bootstrap.sh
     entrypoint: ["/opt/claude-portable/scripts/dispatcher-daemon.sh"]
     command: []
     ports:
       # SSH only -- no VNC, Chrome DevTools, file browser, or web-chat
       - "2222:22"
+      # Dispatcher brain health endpoint
+      - "8081:8081"

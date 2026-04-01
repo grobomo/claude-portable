@@ -23,7 +23,7 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages
-RUN python3 -m pip install --break-system-packages keyring keyrings.alt pyyaml anthropic bcrypt
+RUN python3 -m pip install --break-system-packages keyring keyrings.alt pyyaml anthropic bcrypt boto3
 
 # Bitwarden Secrets Manager CLI
 RUN ARCH=$(dpkg --print-architecture) && \
