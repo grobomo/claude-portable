@@ -1464,6 +1464,33 @@ def _read_json_body(handler) -> dict | None:
         _send_json(handler, 400, {"error": "Invalid JSON body"})
         return None
 
+
+# ── Input validation helpers ───────────────────────────────────────────────────
+
+_WORKER_NAME_RE = re.compile(r"^hackathon26-worker-\d+$")
+_PRIVATE_IP_RE = re.compile(r"^172\.31\.\d{1,3}\.\d{1,3}$")
+_VALID_REPORT_STATUSES = frozenset({"idle", "busy", "error"})
+
+
+def _validate_worker_name(name):
+    return isinstance(name, str) and bool(_WORKER_NAME_RE.match(name))
+
+
+def _validate_private_ip(ip):
+    if not isinstance(ip, str) or not _PRIVATE_IP_RE.match(ip):
+        return False
+    return all(0 <= int(o) <= 255 for o in ip.split("."))
+
+
+def _reject_payload(handler, errors: dict, payload: dict, endpoint: str):
+    """Send 400 with field-level errors and log the rejected payload."""
+    log.warning(
+        "Rejected %s: errors=%s payload=%s",
+        endpoint, json.dumps(errors), json.dumps(payload, default=str)[:500],
+    )
+    _send_json(handler, 400, {"error": "Validation failed", "fields": errors})
+
+
 # ── Dashboard API helpers ──────────────────────────────────────────────────────
 
 def _api_get_tasks() -> list:
@@ -1783,6 +1810,23 @@ class HealthHandler(BaseHTTPRequestHandler):
             if not isinstance(capabilities, list):
                 capabilities = []
 
+            # -- Input validation --
+            errors = {}
+            raw_name = payload.get("worker_id", payload.get("name"))
+            if not _validate_worker_name(raw_name):
+                errors["name"] = (
+                    "Must match pattern hackathon26-worker-N "
+                    f"(got: {raw_name!r})"
+                )
+            if not _validate_private_ip(ip):
+                errors["ip"] = (
+                    "Must be a valid private IP in 172.31.x.x range "
+                    f"(got: {ip!r})"
+                )
+            if errors:
+                _reject_payload(self, errors, payload, "/worker/register")
+                return
+
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             with _fleet_roster_lock:
                 entry = _fleet_roster.setdefault(worker_id, {
@@ -2010,6 +2054,49 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif self.path == "/worker/report":
+            # -- Input validation --
+            worker_id = payload.get("worker_id")
+            status = payload.get("status")
+            errors = {}
+            if not worker_id or not isinstance(worker_id, str):
+                errors["worker_id"] = "Required"
+            else:
+                with _fleet_roster_lock:
+                    if worker_id not in _fleet_roster:
+                        errors["worker_id"] = (
+                            f"Worker {worker_id!r} not found in roster"
+                        )
+            if not status or status not in _VALID_REPORT_STATUSES:
+                errors["status"] = (
+                    "Required, must be one of: idle, busy, error"
+                )
+            if errors:
+                _reject_payload(self, errors, payload, "/worker/report")
+                return
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _fleet_roster_lock:
+                entry = _fleet_roster[worker_id]
+                entry["status"] = status
+                entry["last_report"] = now
+                if "message" in payload:
+                    entry["last_message"] = str(payload["message"])[:500]
+
+            _update_board()
+            log.info("Worker report: worker_id=%s status=%s", worker_id, status)
+
+            resp = json.dumps({
+                "status": "ok",
+                "worker_id": worker_id,
+                "reported_status": status,
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         elif self.path == "/worker/deregister":
             worker_id = str(payload.get("worker_id", payload.get("name", "unknown")))
             with _fleet_roster_lock:
@@ -2156,16 +2243,24 @@ class HealthHandler(BaseHTTPRequestHandler):
             # POST /task -- submit a new task
             if not _check_bearer_auth(self):
                 return
-            text = payload.get("text", "").strip()
+            # -- Input validation --
+            errors = {}
+            text = payload.get("text", "").strip() if isinstance(payload.get("text"), str) else ""
             if not text:
-                _send_json(self, 400, {"error": "Field 'text' is required and cannot be empty"})
+                errors["text"] = "Required and cannot be empty"
+            sender = payload.get("sender")
+            if not sender or not isinstance(sender, str) or not str(sender).strip():
+                errors["sender"] = "Required and cannot be empty"
+            else:
+                sender = str(sender).strip()
+            if errors:
+                _reject_payload(self, errors, payload, "/task")
                 return
-            sender = str(payload.get("sender", ""))
             priority = str(payload.get("priority", "normal"))
             if priority not in ("low", "normal", "high", "critical"):
-                _send_json(self, 400, {
-                    "error": "Invalid priority. Must be one of: low, normal, high, critical",
-                })
+                _reject_payload(self, {
+                    "priority": "Must be one of: low, normal, high, critical"
+                }, payload, "/task")
                 return
             task = _new_task(text=text, sender=sender, priority=priority)
             with _task_store_lock:
@@ -3040,6 +3135,8 @@ def main():
     parser.add_argument("--max-workers", type=int, default=MAX_WORKERS, help="Max concurrent workers")
     parser.add_argument("--standby", action="store_true",
                         help="Start in standby mode (monitor primary, promote if stale)")
+    parser.add_argument("--no-poll", action="store_true",
+                        help="HTTP server only, no poll loops (for testing)")
     args = parser.parse_args()
 
     POLL_INTERVAL = args.interval
@@ -3111,6 +3208,16 @@ def main():
         promote_to_primary(instance_name)
 
     start_health_server()
+
+    if args.no_poll:
+        log.info("  --no-poll: HTTP server only, skipping poll loops")
+        # Block on the health server thread (just sleep forever)
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            log.info("Shutting down (no-poll mode)")
+            return
 
     reg_monitor = threading.Thread(
         target=registration_monitor_loop,
