@@ -131,8 +131,8 @@ class TestHealthEndpointE2E(unittest.TestCase):
 
     def test_worker_register_flow(self):
         status, data = self._post("/worker/register", {
-            "worker_id": "e2e-worker-1",
-            "ip": "10.0.0.99",
+            "worker_id": "hackathon26-worker-1",
+            "ip": "172.31.0.99",
             "role": "worker",
             "capabilities": ["claude"],
         })
@@ -141,20 +141,20 @@ class TestHealthEndpointE2E(unittest.TestCase):
 
         # Verify in roster
         with gd._fleet_roster_lock:
-            entry = gd._fleet_roster.get("e2e-worker-1")
+            entry = gd._fleet_roster.get("hackathon26-worker-1")
         self.assertIsNotNone(entry)
         self.assertTrue(entry["registered"])
-        self.assertEqual(entry["ip"], "10.0.0.99")
+        self.assertEqual(entry["ip"], "172.31.0.99")
 
     def test_worker_done_flow(self):
         # Register first
         self._post("/worker/register", {
-            "worker_id": "e2e-worker-2", "ip": "10.0.0.100",
+            "worker_id": "hackathon26-worker-2", "ip": "172.31.0.100",
         })
 
         # Report done
         status, data = self._post("/worker/done", {
-            "worker_id": "e2e-worker-2",
+            "worker_id": "hackathon26-worker-2",
             "task": "Fix dispatcher relay poll",
             "duration": 120,
         })
@@ -162,7 +162,7 @@ class TestHealthEndpointE2E(unittest.TestCase):
 
         # Check roster updated
         with gd._fleet_roster_lock:
-            entry = gd._fleet_roster["e2e-worker-2"]
+            entry = gd._fleet_roster["hackathon26-worker-2"]
         self.assertEqual(entry["status"], "idle")
         self.assertEqual(entry["last_task"], "Fix dispatcher relay poll")
         self.assertEqual(entry["last_area"], "dispatcher")  # area affinity
