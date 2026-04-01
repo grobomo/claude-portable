@@ -1,0 +1,10 @@
+{
+  "worker_ratio": 2,
+  "worker_minimum": 10,
+  "monitor_ratio": 20,
+  "monitor_minimum": 1,
+  "dispatcher_count": 1,
+  "dispatcher_health_url": "http://localhost:8080/health",
+  "drift_threshold_percent": 20,
+  "critical_threshold_percent": 50
+}
