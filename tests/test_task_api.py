@@ -72,12 +72,12 @@ class TestTaskAPI(unittest.TestCase):
     # ── Auth tests ─────────────────────────────────────────────────────
 
     def test_no_auth_header_returns_401(self):
-        status, data = _request("POST", "/task", {"text": "hello"}, token=None)
+        status, data = _request("POST", "/task", {"text": "hello", "sender": "test"}, token=None)
         self.assertEqual(status, 401)
         self.assertIn("Missing", data["error"])
 
     def test_wrong_token_returns_403(self):
-        status, data = _request("POST", "/task", {"text": "hello"}, token="wrong")
+        status, data = _request("POST", "/task", {"text": "hello", "sender": "test"}, token="wrong")
         self.assertEqual(status, 403)
         self.assertIn("Invalid", data["error"])
 
@@ -85,7 +85,7 @@ class TestTaskAPI(unittest.TestCase):
         original = gd.DISPATCH_API_TOKEN
         gd.DISPATCH_API_TOKEN = ""
         try:
-            status, data = _request("POST", "/task", {"text": "hello"})
+            status, data = _request("POST", "/task", {"text": "hello", "sender": "test"})
             self.assertEqual(status, 503)
             self.assertIn("not configured", data["error"])
         finally:
@@ -109,29 +109,29 @@ class TestTaskAPI(unittest.TestCase):
         self.assertEqual(data["retries"], 0)
 
     def test_create_task_defaults(self):
-        status, data = _request("POST", "/task", {"text": "simple task"})
+        status, data = _request("POST", "/task", {"text": "simple task", "sender": "test"})
         self.assertEqual(status, 201)
-        self.assertEqual(data["sender"], "")
+        self.assertEqual(data["sender"], "test")
         self.assertEqual(data["priority"], "normal")
 
     def test_create_task_empty_text_returns_400(self):
-        status, data = _request("POST", "/task", {"text": ""})
+        status, data = _request("POST", "/task", {"text": "", "sender": "test"})
         self.assertEqual(status, 400)
-        self.assertIn("text", data["error"])
+        self.assertIn("text", data.get("fields", {}))
 
     def test_create_task_missing_text_returns_400(self):
         status, data = _request("POST", "/task", {"sender": "joel"})
         self.assertEqual(status, 400)
 
     def test_create_task_invalid_priority_returns_400(self):
-        status, data = _request("POST", "/task", {"text": "x", "priority": "urgent"})
+        status, data = _request("POST", "/task", {"text": "x", "sender": "test", "priority": "urgent"})
         self.assertEqual(status, 400)
-        self.assertIn("priority", data["error"].lower())
+        self.assertIn("priority", data.get("fields", {}))
 
     # ── GET /task/{id} ─────────────────────────────────────────────────
 
     def test_get_task_by_id(self):
-        _, created = _request("POST", "/task", {"text": "fetch me"})
+        _, created = _request("POST", "/task", {"text": "fetch me", "sender": "test"})
         task_id = created["id"]
         status, data = _request("GET", f"/task/{task_id}")
         self.assertEqual(status, 200)
@@ -145,16 +145,16 @@ class TestTaskAPI(unittest.TestCase):
     # ── GET /tasks ─────────────────────────────────────────────────────
 
     def test_list_all_tasks(self):
-        _request("POST", "/task", {"text": "task 1"})
-        _request("POST", "/task", {"text": "task 2"})
+        _request("POST", "/task", {"text": "task 1", "sender": "test"})
+        _request("POST", "/task", {"text": "task 2", "sender": "test"})
         status, data = _request("GET", "/tasks")
         self.assertEqual(status, 200)
         self.assertEqual(data["count"], 2)
         self.assertEqual(len(data["tasks"]), 2)
 
     def test_list_tasks_filter_by_status(self):
-        _, t1 = _request("POST", "/task", {"text": "task 1"})
-        _, t2 = _request("POST", "/task", {"text": "task 2"})
+        _, t1 = _request("POST", "/task", {"text": "task 1", "sender": "test"})
+        _, t2 = _request("POST", "/task", {"text": "task 2", "sender": "test"})
         # Move t2 to RUNNING
         _request("POST", f"/task/{t2['id']}", {"state": "RUNNING"})
         status, data = _request("GET", "/tasks?status=pending")
@@ -170,14 +170,14 @@ class TestTaskAPI(unittest.TestCase):
     # ── DELETE /task/{id} ──────────────────────────────────────────────
 
     def test_cancel_pending_task(self):
-        _, created = _request("POST", "/task", {"text": "cancel me"})
+        _, created = _request("POST", "/task", {"text": "cancel me", "sender": "test"})
         task_id = created["id"]
         status, data = _request("DELETE", f"/task/{task_id}")
         self.assertEqual(status, 200)
         self.assertEqual(data["state"], "CANCELLED")
 
     def test_cancel_running_task(self):
-        _, created = _request("POST", "/task", {"text": "running"})
+        _, created = _request("POST", "/task", {"text": "running", "sender": "test"})
         task_id = created["id"]
         _request("POST", f"/task/{task_id}", {"state": "RUNNING"})
         status, data = _request("DELETE", f"/task/{task_id}")
@@ -185,7 +185,7 @@ class TestTaskAPI(unittest.TestCase):
         self.assertEqual(data["state"], "CANCELLED")
 
     def test_cancel_completed_task_returns_409(self):
-        _, created = _request("POST", "/task", {"text": "done"})
+        _, created = _request("POST", "/task", {"text": "done", "sender": "test"})
         task_id = created["id"]
         _request("POST", f"/task/{task_id}", {"state": "COMPLETED"})
         status, data = _request("DELETE", f"/task/{task_id}")
@@ -193,7 +193,7 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIn("Cannot cancel", data["error"])
 
     def test_cancel_already_cancelled_returns_409(self):
-        _, created = _request("POST", "/task", {"text": "x"})
+        _, created = _request("POST", "/task", {"text": "x", "sender": "test"})
         task_id = created["id"]
         _request("DELETE", f"/task/{task_id}")
         status, data = _request("DELETE", f"/task/{task_id}")
@@ -206,7 +206,7 @@ class TestTaskAPI(unittest.TestCase):
     # ── POST /task/{id}/retry ──────────────────────────────────────────
 
     def test_retry_failed_task(self):
-        _, created = _request("POST", "/task", {"text": "fail and retry"})
+        _, created = _request("POST", "/task", {"text": "fail and retry", "sender": "test"})
         task_id = created["id"]
         # Move to FAILED
         _request("POST", f"/task/{task_id}", {"state": "FAILED", "error": "boom"})
@@ -217,7 +217,7 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIsNone(data["error"])
 
     def test_retry_non_failed_returns_409(self):
-        _, created = _request("POST", "/task", {"text": "not failed"})
+        _, created = _request("POST", "/task", {"text": "not failed", "sender": "test"})
         task_id = created["id"]
         status, data = _request("POST", f"/task/{task_id}/retry")
         self.assertEqual(status, 409)
@@ -228,7 +228,7 @@ class TestTaskAPI(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_retry_increments_counter(self):
-        _, created = _request("POST", "/task", {"text": "multi retry"})
+        _, created = _request("POST", "/task", {"text": "multi retry", "sender": "test"})
         task_id = created["id"]
         for i in range(3):
             _request("POST", f"/task/{task_id}", {"state": "FAILED", "error": f"fail {i}"})
@@ -239,7 +239,7 @@ class TestTaskAPI(unittest.TestCase):
     # ── POST /task/{id} (state update) ─────────────────────────────────
 
     def test_update_task_state(self):
-        _, created = _request("POST", "/task", {"text": "update me"})
+        _, created = _request("POST", "/task", {"text": "update me", "sender": "test"})
         task_id = created["id"]
         status, data = _request("POST", f"/task/{task_id}", {"state": "DISPATCHED"})
         self.assertEqual(status, 200)
@@ -247,14 +247,14 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIsNotNone(data["dispatched_at"])
 
     def test_update_task_progress(self):
-        _, created = _request("POST", "/task", {"text": "progress"})
+        _, created = _request("POST", "/task", {"text": "progress", "sender": "test"})
         task_id = created["id"]
         _request("POST", f"/task/{task_id}", {"state": "RUNNING", "progress": "50%"})
         status, data = _request("GET", f"/task/{task_id}")
         self.assertEqual(data["progress"], "50%")
 
     def test_update_task_result(self):
-        _, created = _request("POST", "/task", {"text": "result"})
+        _, created = _request("POST", "/task", {"text": "result", "sender": "test"})
         task_id = created["id"]
         _request("POST", f"/task/{task_id}", {"state": "COMPLETED", "result": "PR #42 merged"})
         status, data = _request("GET", f"/task/{task_id}")
@@ -286,7 +286,7 @@ class TestTaskAPI(unittest.TestCase):
 
     def test_failed_lifecycle(self):
         """PENDING -> DISPATCHED -> RUNNING -> FAILED -> retry -> PENDING."""
-        _, task = _request("POST", "/task", {"text": "fail lifecycle"})
+        _, task = _request("POST", "/task", {"text": "fail lifecycle", "sender": "test"})
         tid = task["id"]
         _request("POST", f"/task/{tid}", {"state": "RUNNING"})
         _request("POST", f"/task/{tid}", {"state": "FAILED", "error": "OOM"})
