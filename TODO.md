@@ -343,6 +343,120 @@ Every task in TODO.md must follow a standard template. A pre-commit hook or CI c
   - Context: from session 2026-03-28 — dispatcher bugs stacked up because tasks were one-liners without context
   - PR title: "feat: chatbot auto-fills task template from conversation"
 
+## Event-Driven Observability (spec: specs/event-driven-observability/)
+
+### Feature A: Event Log Foundation (branch prefix: feat/event-log-)
+
+- [ ] T01: Event emitter (JS module + bash helper)
+  - What: `event-emitter.js` in hook-runner repo, `scripts/emit-event.sh` in claude-portable. Both append JSONL to `$CLAUDE_EVENT_LOG`. No-op if env var unset (local). Rotation at 10MB built in
+  - Why: No structured event stream exists. Workers have no way to report what they're doing
+  - How: JS `emit({event, ...})` appends JSONL. Bash `emit_event <type> [detail]` same. Both check CLAUDE_EVENT_LOG -- if unset, return immediately (no file, no error)
+  - Acceptance: On worker (CLAUDE_EVENT_LOG=/data/events.jsonl): valid JSONL appended. Locally (unset): no file created
+  - Context: spec at specs/event-driven-observability/spec.md
+  - PR title: "feat: add event-emitter.js and shell emit_event helper"
+
+- [ ] T02: PostToolUse async hook -- tool-event-emitter module
+  - What: `modules/PostToolUse/tool-event-emitter.js` in hook-runner. Async hook emits `tool.used` event on every tool call
+  - Why: Primary heartbeat signal. Every tool call = proof Claude is alive. No tools for 5 min = stuck
+  - How: Reads tool name + command from stdin JSON, calls emit. Truncates command at 200 chars. Reads CURRENT_TASK_ID/CURRENT_STAGE from env. Async = doesn't block Claude
+  - Acceptance: During `claude --print` run with CLAUDE_EVENT_LOG set, events.jsonl gets `tool.used` entries every few seconds
+  - Context: spec section "PostToolUse async hook"
+  - PR title: "feat: PostToolUse async hook emits tool.used events"
+
+- [ ] T03: Stop hook -- status-emitter module
+  - What: `modules/Stop/status-emitter.js` in hook-runner. Emits `claude.stopped` event when Claude stops
+  - Why: Coarse-grained checkpoint every 5-10 min. No stop for 20 min = loop stuck
+  - How: Emits event with task_id, stage, stop reason. Runs alongside existing auto-continue module
+  - Acceptance: When Claude stops, events.jsonl gets a `claude.stopped` entry
+  - Context: spec section "Stop hook: status-emitter"
+  - PR title: "feat: Stop hook emits claude.stopped status events"
+
+- [ ] T04: Emit events from continuous-claude.sh
+  - What: Source emit-event.sh, emit at task/stage/PR transitions
+  - Why: Tool events show Claude is alive; stage events show pipeline progress
+  - How: Source emit-event.sh. Export CURRENT_TASK_ID/CURRENT_STAGE. Emit at: task pickup, stage enter/complete/fail, PR create/merge, task complete/fail, idle
+  - Acceptance: Pipeline run produces task.started, stage.entered, stage.completed, pr.created, task.completed events
+  - Context: spec section "Event Emission from continuous-claude.sh"
+  - PR title: "feat: emit structured events from continuous-claude pipeline"
+
+### Feature B: Hook-Runner as Container Component (branch prefix: feat/hook-runner-)
+
+- [ ] T05: Add hook-runner to components.yaml
+  - What: `grobomo/hook-runner` entry in components.yaml, type `hook-runner`
+  - Why: Workers need same gates as local. Currently get legacy hooks from claude-code-defaults
+  - How: Add YAML entry. sync-config doesn't handle this type yet (logs warning, skips)
+  - Acceptance: `grep hook-runner components.yaml` matches
+  - Context: spec section "Hook-Runner as Component"
+  - PR title: "feat: add hook-runner component to manifest"
+
+- [ ] T06: sync-config.sh handler for hook-runner type
+  - What: Teach sync-config to clone hook-runner and install into ~/.claude/hooks/
+  - Why: Components.yaml entry does nothing without a handler
+  - How: Add hook-runner case to Python processor. Clone, copy runners + modules + config, skip archive/test/docs, npm install
+  - Acceptance: `ls ~/.claude/hooks/run-pretooluse.js` and `ls ~/.claude/hooks/modules/PreToolUse/` show files
+  - Context: spec section "sync-config.sh handler"
+  - PR title: "feat: sync-config handler for hook-runner component type"
+
+- [ ] T07: Merge hook-runner into settings.json
+  - What: After installing hook-runner, MERGE hook entries into settings.json (preserve existing hooks)
+  - Why: Claude won't use hook-runner unless settings.json references runner scripts
+  - How: Read settings.json, add hook-runner entry per event type if not present. Keep existing custom hooks. Set CLAUDE_EVENT_LOG=/data/events.jsonl in env
+  - Acceptance: `jq '.hooks.PreToolUse' settings.json` shows hook-runner. Custom hooks preserved
+  - Context: spec section "settings.json hook wiring"
+  - PR title: "feat: merge hook-runner entries into settings.json"
+
+- [ ] T08: Container modules.yaml overlay
+  - What: `config/modules-container.yaml` with explicit add/remove lists per event type
+  - Why: Some local gates don't apply in container. Container needs tool-event-emitter and status-emitter
+  - How: Overlay format: `remove: {PreToolUse: [env-var-check]}`, `add: {PostToolUse: [tool-event-emitter], Stop: [status-emitter]}`. Merge script applies to upstream modules.yaml. No ambiguous array merge
+  - Acceptance: Container has tool-event-emitter in PostToolUse, status-emitter in Stop, no env-var-check
+  - Context: spec section "Container modules.yaml"
+  - PR title: "feat: container modules.yaml with explicit add/remove overlay"
+
+### Feature C: Worker-Agent Redesign (branch prefix: feat/worker-agent-)
+
+- [ ] T09: Event-tailing status derivation
+  - What: Rewrite worker-agent.py to derive status from events.jsonl, not pgrep/proc
+  - Why: Process probing is fragile, can't determine task/stage/last tool
+  - How: EventProcessor tails events.jsonl (poll 5s). Tracks: task, stage, last tool+command, timing, event counts. Writes /data/status.json every 30s. HTTP endpoints serve derived state. Remove all pgrep/proc
+  - Acceptance: GET /status returns task/stage/last_tool. Zero pgrep or /proc reads
+  - Context: spec section "Worker-Agent Redesign"
+  - PR title: "feat: event-driven worker-agent with status.json derivation"
+
+- [ ] T10: Two-tier stuck detection and self-healing
+  - What: Detect stuck from event gaps, auto-recover
+  - Why: Workers can spin for hours unnoticed. No automated detection exists
+  - How: Tier 1: no tool.used for 5 min = Claude stuck (kill, retry stage). Tier 2: no claude.stopped for 20 min = loop stuck (kill, fail task). 3+ stucks/hour = unhealthy
+  - Acceptance: 5min tool gap -> stuck detected. 20min stop gap -> loop-stuck detected. Claude killed
+  - Context: spec section "Two-tier stuck detection"
+  - PR title: "feat: two-tier stuck detection and self-healing"
+
+- [ ] T11: S3 fleet status sync
+  - What: Upload status.json + events to S3 periodically
+  - Why: Status readable from anywhere without SSH
+  - How: Every 30s: status.json to s3://bucket/fleet/{worker_id}/. Every 5min: events.jsonl
+  - Acceptance: `aws s3 ls s3://bucket/fleet/` shows per-worker files updating
+  - Context: spec section "S3 Status Sync"
+  - PR title: "feat: S3 fleet status sync from worker-agent"
+
+### Feature D: CCC Watch Command (branch prefix: feat/ccc-watch-)
+
+- [ ] T12: ccc watch fleet overview
+  - What: New ccc subcommand, reads S3 status files, renders fleet table. No SSH
+  - Why: Current dashboard needs SSH into each worker. Watch reads S3 (fast, works from phone)
+  - How: List s3://bucket/fleet/, download status.json per worker, render table. 10s refresh. --once for scripting
+  - Acceptance: `ccc watch --once` shows workers with state/task/stage/last-tool
+  - Context: spec section "ccc watch"
+  - PR title: "feat: ccc watch command for fleet monitoring via S3"
+
+- [ ] T13: ccc watch single-worker detail
+  - What: `ccc watch worker-1` shows status + recent tool events
+  - Why: Fleet view shows which worker is stuck. Detail view shows what it was doing
+  - How: Download status.json + last 100 events from S3. Show last 20 tool events reverse-chronological. 5s refresh
+  - Acceptance: `ccc watch worker-1 --once` shows detail with recent tool calls
+  - Context: spec section "ccc watch single worker"
+  - PR title: "feat: single-worker detail view in ccc watch"
+
 ## CRITICAL: Worker zero-touch boot
 
 - [x] Workers must be fully autonomous from boot. bootstrap.sh must: (1) clone the repo from ccc.config.json repo_url, (2) start continuous-claude.sh as a daemon, (3) register with dispatcher, (4) upload SSH key to S3 fleet-keys bucket. NO manual SSH, NO manual git clone, NO manual process startup. The `ccc --name worker-N --new` command should result in a worker that is picking up tasks within 5 minutes with zero human intervention. Test by launching a fresh worker and verifying it picks up a task and creates a PR without any manual steps.
